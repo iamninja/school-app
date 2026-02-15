@@ -34,7 +34,7 @@ export default function Home() {
         </nav>
         <div className="flex-1 flex flex-col gap-20 max-w-5xl p-5">
           <Hero />
-          <div className="grid gap-6 md:grid-cols-2">
+          <div className="grid gap-6 md:grid-cols-3">
             <div className="flex flex-col items-start gap-4 rounded-xl border bg-card/40 p-6 shadow-sm">
               <div>
                 <h2 className="text-lg font-semibold">Teacher dashboard</h2>
@@ -55,6 +55,17 @@ export default function Home() {
               </div>
               <Button asChild variant="outline">
                 <Link href="/auth/student-login">Login as Student</Link>
+              </Button>
+            </div>
+            <div className="flex flex-col items-start gap-4 rounded-xl border bg-card/40 p-6 shadow-sm">
+              <div>
+                <h2 className="text-lg font-semibold">Parent portal</h2>
+                <p className="text-sm text-muted-foreground">
+                  View your child's schedule, attendance, and class details.
+                </p>
+              </div>
+              <Button asChild variant="outline">
+                <Link href="/auth/parent-login">Login as Parent</Link>
               </Button>
             </div>
           </div>
