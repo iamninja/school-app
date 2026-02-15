@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 /**
  * Especially important if using Fluid compute: Don't put this client in a
@@ -28,6 +29,24 @@ export async function createClient() {
             // user sessions.
           }
         },
+      },
+    },
+  );
+}
+
+/**
+ * Creates a Supabase client with service role privileges.
+ * This bypasses RLS policies and should only be used for trusted server-side operations.
+ * DO NOT expose this client to the browser or use it with user input without validation.
+ */
+export function createServiceRoleClient() {
+  return createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
       },
     },
   );

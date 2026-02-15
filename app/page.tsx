@@ -34,16 +34,29 @@ export default function Home() {
         </nav>
         <div className="flex-1 flex flex-col gap-20 max-w-5xl p-5">
           <Hero />
-          <div className="flex flex-col items-start gap-4 rounded-xl border bg-card/40 p-6 shadow-sm">
-            <div>
-              <h2 className="text-lg font-semibold">Teacher dashboard</h2>
-              <p className="text-sm text-muted-foreground">
-                Manage classes, schedules, and students in one place.
-              </p>
+          <div className="grid gap-6 md:grid-cols-2">
+            <div className="flex flex-col items-start gap-4 rounded-xl border bg-card/40 p-6 shadow-sm">
+              <div>
+                <h2 className="text-lg font-semibold">Teacher dashboard</h2>
+                <p className="text-sm text-muted-foreground">
+                  Manage classes, schedules, and students in one place.
+                </p>
+              </div>
+              <Button asChild>
+                <Link href="/protected/teacher">Open teacher dashboard</Link>
+              </Button>
             </div>
-            <Button asChild>
-              <Link href="/protected/teacher">Open teacher dashboard</Link>
-            </Button>
+            <div className="flex flex-col items-start gap-4 rounded-xl border bg-card/40 p-6 shadow-sm">
+              <div>
+                <h2 className="text-lg font-semibold">Student portal</h2>
+                <p className="text-sm text-muted-foreground">
+                  View your schedule, attendance, and class information.
+                </p>
+              </div>
+              <Button asChild variant="outline">
+                <Link href="/auth/student-login">Login as Student</Link>
+              </Button>
+            </div>
           </div>
           <ShadcnDemo />
           <main className="flex-1 flex flex-col gap-6 px-4">

@@ -13,6 +13,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { format } from "date-fns";
 import { CalendarIcon, PlusIcon, XIcon } from "lucide-react";
+import { toast } from "sonner";
 
 import {
   createClassAction,
@@ -29,7 +30,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"] as const;
@@ -268,7 +273,7 @@ export function TeacherDashboard({
   loadErrors = [],
 }: TeacherDashboardProps) {
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
   );
   const [className, setClassName] = React.useState("");
   const [hoursPerWeek, setHoursPerWeek] = React.useState("2");
@@ -276,7 +281,7 @@ export function TeacherDashboard({
     initialClasses.map((item, index) => ({
       ...item,
       color: COLOR_CLASSES[index % COLOR_CLASSES.length],
-    }))
+    })),
   );
   const [schedule, setSchedule] = React.useState<ScheduleState>(() => {
     const initial: ScheduleState = {};
@@ -306,21 +311,22 @@ export function TeacherDashboard({
     tuitionStatus: "current" as StudentItem["tuitionStatus"],
     assignedClassIds: [] as string[],
   });
-  const [students, setStudents] = React.useState<StudentItem[]>(
-    initialStudents
-  );
+  const [students, setStudents] =
+    React.useState<StudentItem[]>(initialStudents);
   const [showSecondParent, setShowSecondParent] = React.useState(false);
-  const [selectedStudentId, setSelectedStudentId] = React.useState<string | null>(
-    null
-  );
+  const [studentFormErrors, setStudentFormErrors] = React.useState<
+    Record<string, boolean>
+  >({});
+  const [selectedStudentId, setSelectedStudentId] = React.useState<
+    string | null
+  >(null);
   const [attendanceDate, setAttendanceDate] = React.useState(() => new Date());
   const [attendanceClassId, setAttendanceClassId] = React.useState<string>("");
   const [attendanceStatusByStudent, setAttendanceStatusByStudent] =
     React.useState<Record<string, "present" | "late" | "absent" | "">>({});
   const [attendanceDateError, setAttendanceDateError] = React.useState("");
-  const [attendanceRecords, setAttendanceRecords] = React.useState<
-    AttendanceRecord[]
-  >(initialAttendance);
+  const [attendanceRecords, setAttendanceRecords] =
+    React.useState<AttendanceRecord[]>(initialAttendance);
 
   const scheduledCounts = React.useMemo(() => {
     const counts = new Map<string, number>();
@@ -437,9 +443,10 @@ export function TeacherDashboard({
 
   const handleStudentChange = (
     key: keyof typeof studentForm,
-    value: string | string[]
+    value: string | string[],
   ) => {
     setStudentForm((prev) => ({ ...prev, [key]: value }));
+    setStudentFormErrors((prev) => ({ ...prev, [key]: false }));
   };
 
   const handleToggleStudentClass = (classId: string) => {
@@ -451,11 +458,46 @@ export function TeacherDashboard({
     }));
   };
 
-  const handleAddStudent = async (
-    event: React.FormEvent<HTMLFormElement>
-  ) => {
+  const handleAddStudent = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!studentForm.firstName.trim() || !studentForm.lastName.trim()) {
+
+    const missingFields: string[] = [];
+    const errors: Record<string, boolean> = {};
+
+    if (!studentForm.firstName.trim()) {
+      missingFields.push("First name");
+      errors.firstName = true;
+    }
+    if (!studentForm.lastName.trim()) {
+      missingFields.push("Last name");
+      errors.lastName = true;
+    }
+    if (!studentForm.gradeLevel.trim()) {
+      missingFields.push("Grade");
+      errors.gradeLevel = true;
+    }
+    if (!studentForm.email.trim()) {
+      missingFields.push("Email");
+      errors.email = true;
+    }
+    if (!studentForm.parentName.trim()) {
+      missingFields.push("Parent name");
+      errors.parentName = true;
+    }
+    if (!studentForm.parentEmail.trim()) {
+      missingFields.push("Parent email");
+      errors.parentEmail = true;
+    }
+    if (!studentForm.parentPhone.trim()) {
+      missingFields.push("Parent phone");
+      errors.parentPhone = true;
+    }
+
+    if (missingFields.length > 0) {
+      setStudentFormErrors(errors);
+      toast.error("Please fill in all required fields", {
+        description: `Missing: ${missingFields.join(", ")}`,
+      });
       return;
     }
     const created = await createStudentAction({
@@ -489,6 +531,7 @@ export function TeacherDashboard({
       tuitionStatus: "current",
       assignedClassIds: [],
     });
+    setStudentFormErrors({});
     setShowSecondParent(false);
   };
 
@@ -497,7 +540,7 @@ export function TeacherDashboard({
       return [];
     }
     return students.filter((student) =>
-      student.assignedClassIds.includes(attendanceClassId)
+      student.assignedClassIds.includes(attendanceClassId),
     );
   }, [attendanceClassId, students]);
 
@@ -529,7 +572,7 @@ export function TeacherDashboard({
               record.studentId === studentId &&
               record.classId === attendanceClassId &&
               record.attendanceDate === attendanceDateKey
-            )
+            ),
         );
         if (status) {
           next.unshift({
@@ -542,7 +585,7 @@ export function TeacherDashboard({
         return next;
       });
     },
-    [attendanceClassId, attendanceDateKey]
+    [attendanceClassId, attendanceDateKey],
   );
 
   React.useEffect(() => {
@@ -598,9 +641,7 @@ export function TeacherDashboard({
 
     const dayLabel = getDayLabelFromDate(value);
     if (!attendanceAllowedDays.has(dayLabel)) {
-      setAttendanceDateError(
-        "Pick a date that matches a scheduled class day."
-      );
+      setAttendanceDateError("Pick a date that matches a scheduled class day.");
       return;
     }
 
@@ -679,7 +720,9 @@ export function TeacherDashboard({
                         min={1}
                         max={40}
                         value={hoursPerWeek}
-                        onChange={(event) => setHoursPerWeek(event.target.value)}
+                        onChange={(event) =>
+                          setHoursPerWeek(event.target.value)
+                        }
                         placeholder="e.g. 3"
                       />
                     </div>
@@ -690,7 +733,9 @@ export function TeacherDashboard({
                   </form>
 
                   <div className="space-y-3">
-                    <div className="text-sm font-medium">Unscheduled classes</div>
+                    <div className="text-sm font-medium">
+                      Unscheduled classes
+                    </div>
                     <div className="flex flex-wrap gap-2">
                       {classes.length === 0 ? (
                         <p className="text-xs text-muted-foreground">
@@ -740,7 +785,7 @@ export function TeacherDashboard({
                           const slotId = createSlotId(day, time);
                           const classId = schedule[slotId] ?? null;
                           const classItem = classes.find(
-                            (item) => item.id === classId
+                            (item) => item.id === classId,
                           );
                           const label = `${day} ${time}`;
 
@@ -772,7 +817,7 @@ export function TeacherDashboard({
             <div className="animate-in fade-in slide-in-from-right-8 duration-300">
               {(() => {
                 const student = students.find(
-                  (item) => item.id === selectedStudentId
+                  (item) => item.id === selectedStudentId,
                 );
                 if (!student) {
                   return null;
@@ -785,7 +830,8 @@ export function TeacherDashboard({
                           {student.firstName} {student.lastName}
                         </CardTitle>
                         <div className="text-sm text-muted-foreground">
-                          Grade {student.gradeLevel || "N/A"} • {student.email || "No email"}
+                          Grade {student.gradeLevel || "N/A"} •{" "}
+                          {student.email || "No email"}
                         </div>
                       </div>
                       <Button
@@ -807,7 +853,8 @@ export function TeacherDashboard({
                                 {student.parentName || "Not set"}
                               </div>
                               <div className="text-xs text-muted-foreground">
-                                {student.parentEmail || "No email"} • {student.parentPhone || "No phone"}
+                                {student.parentEmail || "No email"} •{" "}
+                                {student.parentPhone || "No phone"}
                               </div>
                             </div>
                             {student.parentTwoName ||
@@ -818,7 +865,8 @@ export function TeacherDashboard({
                                   {student.parentTwoName || "Second parent"}
                                 </div>
                                 <div className="text-xs text-muted-foreground">
-                                  {student.parentTwoEmail || "No email"} • {student.parentTwoPhone || "No phone"}
+                                  {student.parentTwoEmail || "No email"} •{" "}
+                                  {student.parentTwoPhone || "No phone"}
                                 </div>
                               </div>
                             ) : null}
@@ -882,7 +930,7 @@ export function TeacherDashboard({
                           </div>
                           <div className="mt-3 space-y-2 text-xs">
                             {attendanceRecords.filter(
-                              (record) => record.studentId === student.id
+                              (record) => record.studentId === student.id,
                             ).length === 0 ? (
                               <div className="text-muted-foreground">
                                 No attendance records yet.
@@ -891,14 +939,13 @@ export function TeacherDashboard({
                               <div className="divide-y rounded-md border">
                                 {attendanceRecords
                                   .filter(
-                                    (record) =>
-                                      record.studentId === student.id
+                                    (record) => record.studentId === student.id,
                                   )
                                   .slice(0, 10)
                                   .map((record) => {
                                     const className =
                                       classes.find(
-                                        (item) => item.id === record.classId
+                                        (item) => item.id === record.classId,
                                       )?.name ?? "Unknown class";
                                     return (
                                       <div
@@ -947,6 +994,11 @@ export function TeacherDashboard({
                             handleStudentChange("firstName", event.target.value)
                           }
                           placeholder="e.g. Maya"
+                          className={
+                            studentFormErrors.firstName
+                              ? "border-red-500 focus-visible:ring-red-500"
+                              : ""
+                          }
                         />
                       </div>
                       <div className="space-y-2">
@@ -958,6 +1010,11 @@ export function TeacherDashboard({
                             handleStudentChange("lastName", event.target.value)
                           }
                           placeholder="e.g. Carter"
+                          className={
+                            studentFormErrors.lastName
+                              ? "border-red-500 focus-visible:ring-red-500"
+                              : ""
+                          }
                         />
                       </div>
                       <div className="space-y-2">
@@ -966,9 +1023,16 @@ export function TeacherDashboard({
                           id="student-grade"
                           value={studentForm.gradeLevel}
                           onChange={(event) =>
-                            handleStudentChange("gradeLevel", event.target.value)
+                            handleStudentChange(
+                              "gradeLevel",
+                              event.target.value,
+                            )
                           }
-                          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                          className={`h-10 w-full rounded-md border bg-background px-3 text-sm ${
+                            studentFormErrors.gradeLevel
+                              ? "border-red-500 focus-visible:ring-red-500"
+                              : "border-input"
+                          }`}
                         >
                           <option value="">Select grade</option>
                           <option value="7">7th grade</option>
@@ -989,6 +1053,11 @@ export function TeacherDashboard({
                             handleStudentChange("email", event.target.value)
                           }
                           placeholder="student@email.com"
+                          className={
+                            studentFormErrors.email
+                              ? "border-red-500 focus-visible:ring-red-500"
+                              : ""
+                          }
                         />
                       </div>
                     </div>
@@ -1002,9 +1071,17 @@ export function TeacherDashboard({
                             id="parent-name"
                             value={studentForm.parentName}
                             onChange={(event) =>
-                              handleStudentChange("parentName", event.target.value)
+                              handleStudentChange(
+                                "parentName",
+                                event.target.value,
+                              )
                             }
                             placeholder="e.g. Jordan Carter"
+                            className={
+                              studentFormErrors.parentName
+                                ? "border-red-500 focus-visible:ring-red-500"
+                                : ""
+                            }
                           />
                         </div>
                         <div className="space-y-2">
@@ -1016,10 +1093,15 @@ export function TeacherDashboard({
                             onChange={(event) =>
                               handleStudentChange(
                                 "parentEmail",
-                                event.target.value
+                                event.target.value,
                               )
                             }
                             placeholder="parent@email.com"
+                            className={
+                              studentFormErrors.parentEmail
+                                ? "border-red-500 focus-visible:ring-red-500"
+                                : ""
+                            }
                           />
                         </div>
                         <div className="space-y-2 sm:col-span-2">
@@ -1030,10 +1112,15 @@ export function TeacherDashboard({
                             onChange={(event) =>
                               handleStudentChange(
                                 "parentPhone",
-                                event.target.value
+                                event.target.value,
                               )
                             }
                             placeholder="(555) 654-1234"
+                            className={
+                              studentFormErrors.parentPhone
+                                ? "border-red-500 focus-visible:ring-red-500"
+                                : ""
+                            }
                           />
                         </div>
                       </div>
@@ -1051,7 +1138,7 @@ export function TeacherDashboard({
                                 onChange={(event) =>
                                   handleStudentChange(
                                     "parentTwoName",
-                                    event.target.value
+                                    event.target.value,
                                   )
                                 }
                                 placeholder="e.g. Jamie Carter"
@@ -1066,7 +1153,7 @@ export function TeacherDashboard({
                                 onChange={(event) =>
                                   handleStudentChange(
                                     "parentTwoEmail",
-                                    event.target.value
+                                    event.target.value,
                                   )
                                 }
                                 placeholder="parent2@email.com"
@@ -1080,7 +1167,7 @@ export function TeacherDashboard({
                                 onChange={(event) =>
                                   handleStudentChange(
                                     "parentTwoPhone",
-                                    event.target.value
+                                    event.target.value,
                                   )
                                 }
                                 placeholder="(555) 777-1212"
@@ -1112,7 +1199,7 @@ export function TeacherDashboard({
                             onChange={(event) =>
                               handleStudentChange(
                                 "tuitionAmount",
-                                event.target.value
+                                event.target.value,
                               )
                             }
                             placeholder="e.g. 420"
@@ -1126,7 +1213,7 @@ export function TeacherDashboard({
                             onChange={(event) =>
                               handleStudentChange(
                                 "tuitionStatus",
-                                event.target.value
+                                event.target.value,
                               )
                             }
                             className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
@@ -1140,7 +1227,9 @@ export function TeacherDashboard({
                     </div>
 
                     <div className="space-y-3">
-                      <div className="text-sm font-medium">Assigned classes</div>
+                      <div className="text-sm font-medium">
+                        Assigned classes
+                      </div>
                       <div className="grid gap-3">
                         {classes.length === 0 ? (
                           <p className="text-xs text-muted-foreground">
@@ -1154,7 +1243,7 @@ export function TeacherDashboard({
                             >
                               <Checkbox
                                 checked={studentForm.assignedClassIds.includes(
-                                  classItem.id
+                                  classItem.id,
                                 )}
                                 onCheckedChange={() =>
                                   handleToggleStudentClass(classItem.id)
@@ -1196,7 +1285,8 @@ export function TeacherDashboard({
                               {student.firstName} {student.lastName}
                             </div>
                             <div className="text-xs text-muted-foreground">
-                              Grade {student.gradeLevel || "N/A"} • {student.email || "No email"}
+                              Grade {student.gradeLevel || "N/A"} •{" "}
+                              {student.email || "No email"}
                             </div>
                           </div>
                           <Badge variant="secondary">
@@ -1204,7 +1294,8 @@ export function TeacherDashboard({
                           </Badge>
                         </div>
                         <div className="mt-3 text-xs text-muted-foreground">
-                          Parent: {student.parentName || "Not set"} • {student.parentPhone || "No phone"}
+                          Parent: {student.parentName || "Not set"} •{" "}
+                          {student.parentPhone || "No phone"}
                         </div>
                         <div className="mt-3 flex flex-wrap gap-2">
                           {student.assignedClassIds.length === 0 ? (
@@ -1302,13 +1393,16 @@ export function TeacherDashboard({
                       });
                       if (allowed.size === 0) {
                         setAttendanceDateError(
-                          "This class has no scheduled days yet."
+                          "This class has no scheduled days yet.",
                         );
                         return;
                       }
                       const currentDay = getDayLabelFromDate(attendanceDate);
                       if (!allowed.has(currentDay)) {
-                        const nextDate = findNextValidDate(attendanceDate, allowed);
+                        const nextDate = findNextValidDate(
+                          attendanceDate,
+                          allowed,
+                        );
                         setAttendanceDate(nextDate);
                         setAttendanceDateError("");
                       }
@@ -1358,13 +1452,16 @@ export function TeacherDashboard({
                               {student.firstName} {student.lastName}
                             </div>
                             <div className="text-xs text-muted-foreground">
-                              Grade {student.gradeLevel || "N/A"} • {student.email || "No email"}
+                              Grade {student.gradeLevel || "N/A"} •{" "}
+                              {student.email || "No email"}
                             </div>
                           </div>
                           <div className="flex flex-wrap gap-2">
                             <Button
                               type="button"
-                              variant={status === "present" ? "default" : "outline"}
+                              variant={
+                                status === "present" ? "default" : "outline"
+                              }
                               size="sm"
                               onClick={async () => {
                                 if (!attendanceClassId) {
@@ -1384,7 +1481,11 @@ export function TeacherDashboard({
                                 });
                                 updateAttendanceRecords(
                                   student.id,
-                                  nextStatus as "present" | "late" | "absent" | ""
+                                  nextStatus as
+                                    | "present"
+                                    | "late"
+                                    | "absent"
+                                    | "",
                                 );
                               }}
                             >
@@ -1392,13 +1493,16 @@ export function TeacherDashboard({
                             </Button>
                             <Button
                               type="button"
-                              variant={status === "late" ? "default" : "outline"}
+                              variant={
+                                status === "late" ? "default" : "outline"
+                              }
                               size="sm"
                               onClick={async () => {
                                 if (!attendanceClassId) {
                                   return;
                                 }
-                                const nextStatus = status === "late" ? "" : "late";
+                                const nextStatus =
+                                  status === "late" ? "" : "late";
                                 setAttendanceStatusByStudent((prev) => ({
                                   ...prev,
                                   [student.id]: nextStatus,
@@ -1411,7 +1515,11 @@ export function TeacherDashboard({
                                 });
                                 updateAttendanceRecords(
                                   student.id,
-                                  nextStatus as "present" | "late" | "absent" | ""
+                                  nextStatus as
+                                    | "present"
+                                    | "late"
+                                    | "absent"
+                                    | "",
                                 );
                               }}
                             >
@@ -1419,7 +1527,9 @@ export function TeacherDashboard({
                             </Button>
                             <Button
                               type="button"
-                              variant={status === "absent" ? "destructive" : "outline"}
+                              variant={
+                                status === "absent" ? "destructive" : "outline"
+                              }
                               size="sm"
                               onClick={async () => {
                                 if (!attendanceClassId) {
@@ -1439,7 +1549,11 @@ export function TeacherDashboard({
                                 });
                                 updateAttendanceRecords(
                                   student.id,
-                                  nextStatus as "present" | "late" | "absent" | ""
+                                  nextStatus as
+                                    | "present"
+                                    | "late"
+                                    | "absent"
+                                    | "",
                                 );
                               }}
                             >
