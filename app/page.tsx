@@ -2,9 +2,11 @@ import { DeployButton } from "@/components/deploy-button";
 import { EnvVarWarning } from "@/components/env-var-warning";
 import { AuthButton } from "@/components/auth-button";
 import { Hero } from "@/components/hero";
+import { ShadcnDemo } from "@/components/shadcn-demo";
 import { ThemeSwitcher } from "@/components/theme-switcher";
 import { ConnectSupabaseSteps } from "@/components/tutorial/connect-supabase-steps";
 import { SignUpUserSteps } from "@/components/tutorial/sign-up-user-steps";
+import { Button } from "@/components/ui/button";
 import { hasEnvVars } from "@/lib/utils";
 import Link from "next/link";
 import { Suspense } from "react";
@@ -32,6 +34,18 @@ export default function Home() {
         </nav>
         <div className="flex-1 flex flex-col gap-20 max-w-5xl p-5">
           <Hero />
+          <div className="flex flex-col items-start gap-4 rounded-xl border bg-card/40 p-6 shadow-sm">
+            <div>
+              <h2 className="text-lg font-semibold">Teacher dashboard</h2>
+              <p className="text-sm text-muted-foreground">
+                Manage classes, schedules, and students in one place.
+              </p>
+            </div>
+            <Button asChild>
+              <Link href="/protected/teacher">Open teacher dashboard</Link>
+            </Button>
+          </div>
+          <ShadcnDemo />
           <main className="flex-1 flex flex-col gap-6 px-4">
             <h2 className="font-medium text-xl mb-4">Next steps</h2>
             {hasEnvVars ? <SignUpUserSteps /> : <ConnectSupabaseSteps />}
