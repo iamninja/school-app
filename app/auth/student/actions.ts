@@ -2,12 +2,22 @@
 
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
+import type {
+  StudentEmailCheckResult,
+  StudentDashboardData,
+  StudentClassAssignmentWithClass,
+  ClassScheduleSlot,
+  AttendanceRecord,
+  ActionResult,
+} from "@/lib/types/database";
 
 /**
  * Check if an email exists in the students table and is not already registered
  * Uses service role client to bypass RLS since user is not authenticated during signup
  */
-export async function checkStudentEmailAction(email: string) {
+export async function checkStudentEmailAction(
+  email: string,
+): Promise<StudentEmailCheckResult> {
   // Verify service role key is configured
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
     console.error("SUPABASE_SERVICE_ROLE_KEY environment variable is not set");
@@ -70,7 +80,7 @@ export async function checkStudentEmailAction(email: string) {
 export async function signUpStudentAction(data: {
   email: string;
   password: string;
-}) {
+}): Promise<ActionResult> {
   const supabaseAdmin = createServiceRoleClient();
 
   // First verify the email exists in students table and is not already registered
@@ -120,7 +130,7 @@ export async function signUpStudentAction(data: {
 export async function signInStudentAction(data: {
   email: string;
   password: string;
-}) {
+}): Promise<ActionResult | never> {
   const supabase = await createClient();
 
   const { error } = await supabase.auth.signInWithPassword({
@@ -150,7 +160,9 @@ export async function signInStudentAction(data: {
 /**
  * Get student dashboard data
  */
-export async function getStudentDashboardDataAction() {
+export async function getStudentDashboardDataAction(): Promise<
+  StudentDashboardData | never
+> {
   const supabase = await createClient();
 
   const {
@@ -206,7 +218,9 @@ export async function getStudentDashboardDataAction() {
 
   // Get class schedules
   const classIds =
-    classAssignments?.map((a: any) => a.class_id).filter(Boolean) || [];
+    (classAssignments as StudentClassAssignmentWithClass[] | null)
+      ?.map((a) => a.class_id)
+      .filter(Boolean) || [];
   const { data: schedules } = await supabase
     .from("class_schedule_slots")
     .select("class_id, day, time")
@@ -232,12 +246,14 @@ export async function getStudentDashboardDataAction() {
     },
     parents: parents || [],
     classes:
-      classAssignments?.map((a: any) => ({
-        id: a.classes.id,
-        name: a.classes.name,
-        hoursPerWeek: a.classes.hours_per_week,
-      })) || [],
-    schedules: schedules || [],
-    attendance: attendance || [],
+      (classAssignments as StudentClassAssignmentWithClass[] | null)?.map(
+        (a) => ({
+          id: a.classes.id,
+          name: a.classes.name,
+          hoursPerWeek: a.classes.hours_per_week,
+        }),
+      ) || [],
+    schedules: (schedules as ClassScheduleSlot[] | null) || [],
+    attendance: (attendance as AttendanceRecord[] | null) || [],
   };
 }

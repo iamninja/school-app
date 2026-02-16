@@ -1,8 +1,24 @@
 "use server";
 
 import { createServiceRoleClient } from "@/lib/supabase/server";
+import type { Student } from "@/lib/types/database";
 
-export async function diagnosticCheckAction() {
+interface DiagnosticSuccess {
+  students: Pick<
+    Student,
+    "id" | "first_name" | "last_name" | "email" | "user_id"
+  >[];
+  count: number;
+}
+
+interface DiagnosticError {
+  error: string;
+  details: unknown;
+}
+
+type DiagnosticResult = DiagnosticSuccess | DiagnosticError;
+
+export async function diagnosticCheckAction(): Promise<DiagnosticResult> {
   const supabase = createServiceRoleClient();
 
   // Check if students table has user_id column
@@ -19,7 +35,11 @@ export async function diagnosticCheckAction() {
   }
 
   return {
-    students,
+    students:
+      (students as Pick<
+        Student,
+        "id" | "first_name" | "last_name" | "email" | "user_id"
+      >[]) || [],
     count: students?.length || 0,
   };
 }

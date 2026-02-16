@@ -106,7 +106,7 @@ export function ParentDashboard(props: ParentDashboardProps) {
             Welcome, {props.parent.name}!
           </h1>
           <p className="text-sm text-muted-foreground">
-            View {props.student.firstName}'s classes, schedule, and attendance
+            View {props.student.firstName}&apos;s classes, schedule, and attendance
           </p>
         </div>
         <Button onClick={handleSignOut} variant="outline">

@@ -32,7 +32,7 @@ export function StudentSignUpForm({
   const [isCheckingEmail, setIsCheckingEmail] = useState(false);
   const [emailVerified, setEmailVerified] = useState(false);
   const [studentName, setStudentName] = useState("");
-  const [diagnosticInfo, setDiagnosticInfo] = useState<any>(null);
+  const [diagnosticInfo, setDiagnosticInfo] = useState<string | null>(null);
   const router = useRouter();
 
   const handleCheckEmail = async () => {
@@ -91,7 +91,7 @@ export function StudentSignUpForm({
 
     try {
       const result = await signUpStudentAction({ email, password });
-      if (result.error) {
+      if (!result.success && result.error) {
         setError(result.error);
       } else {
         router.push("/auth/student-login?registered=true");

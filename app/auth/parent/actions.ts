@@ -2,11 +2,21 @@
 
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
+import type {
+  ParentEmailCheckResult,
+  ParentDashboardData,
+  StudentClassAssignmentWithClass,
+  ClassScheduleSlot,
+  AttendanceRecord,
+  ActionResult,
+} from "@/lib/types/database";
 
 /**
  * Check if an email exists in the student_parents table and is not already registered
  */
-export async function checkParentEmailAction(email: string) {
+export async function checkParentEmailAction(
+  email: string,
+): Promise<ParentEmailCheckResult> {
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
     console.error("SUPABASE_SERVICE_ROLE_KEY environment variable is not set");
     return {
@@ -67,7 +77,7 @@ export async function checkParentEmailAction(email: string) {
 export async function signUpParentAction(data: {
   email: string;
   password: string;
-}) {
+}): Promise<ActionResult> {
   const supabaseAdmin = createServiceRoleClient();
 
   const emailCheck = await checkParentEmailAction(data.email);
@@ -113,7 +123,7 @@ export async function signUpParentAction(data: {
 export async function signInParentAction(data: {
   email: string;
   password: string;
-}) {
+}): Promise<ActionResult | never> {
   const supabase = await createClient();
 
   const { data: authData, error } = await supabase.auth.signInWithPassword({
@@ -149,7 +159,9 @@ export async function signInParentAction(data: {
 /**
  * Get parent dashboard data
  */
-export async function getParentDashboardDataAction() {
+export async function getParentDashboardDataAction(): Promise<
+  ActionResult<ParentDashboardData>
+> {
   const supabase = await createClient();
 
   const {
@@ -215,18 +227,18 @@ export async function getParentDashboardDataAction() {
     `,
     )
     .eq("student_id", student.id);
-
-  const classIds =
-    classAssignments?.map((a: any) => a.class_id).filter(Boolean) || [];
+(classAssignments as StudentClassAssignmentWithClass[] | null)
+      ?.map((a) => a.class_id)
+      .filter(Boolean) || [];
 
   // Use service role for schedules (avoids RLS recursion)
-  let schedules = [];
+  let schedules: ClassScheduleSlot[] = [];
   if (classIds.length > 0) {
     const { data } = await supabaseAdmin
       .from("class_schedule_slots")
       .select("class_id, day, time")
       .in("class_id", classIds);
-    schedules = data || [];
+    schedules = (data as ClassScheduleSlot[] | null) || [];
   }
 
   // Use service role for attendance (avoids RLS recursion)
@@ -258,11 +270,15 @@ export async function getParentDashboardDataAction() {
       },
       allParents: allParents || [],
       classes:
-        classAssignments?.map((a: any) => ({
-          id: a.classes.id,
-          name: a.classes.name,
-          hoursPerWeek: a.classes.hours_per_week,
-        })) || [],
+        (classAssignments as StudentClassAssignmentWithClass[] | null)?.map(
+          (a) => ({
+            id: a.classes.id,
+            name: a.classes.name,
+            hoursPerWeek: a.classes.hours_per_week,
+          }),
+        ) || [],
+      schedules: schedules,
+      attendance: (attendance as AttendanceRecord[] | null)
       schedules: schedules || [],
       attendance: attendance || [],
     },

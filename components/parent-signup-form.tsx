@@ -33,7 +33,12 @@ export function ParentSignUpForm({
   const [emailVerified, setEmailVerified] = useState(false);
   const [parentName, setParentName] = useState("");
   const [diagnosing, setDiagnosing] = useState(false);
-  const [diagnostic, setDiagnostic] = useState<any>(null);
+  const [diagnostic, setDiagnostic] = useState<{
+    status: string;
+    message: string;
+    suggestion?: string;
+    parentRecord?: Record<string, unknown>;
+  } | null>(null);
   const router = useRouter();
 
   const handleCheckEmail = async () => {
@@ -114,8 +119,8 @@ export function ParentSignUpForm({
         <CardHeader>
           <CardTitle className="text-2xl">Parent Sign Up</CardTitle>
           <CardDescription>
-            Create your parent account using the email provided to your child's
-            teacher
+            Create your parent account using the email provided to your
+            child&apos;s teacher
           </CardDescription>
         </CardHeader>
         <CardContent>

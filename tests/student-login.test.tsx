@@ -62,7 +62,7 @@ describe("StudentLoginForm", () => {
   it("submits form with valid credentials", async () => {
     const user = userEvent.setup();
     const signInStudentAction = vi.mocked(actions.signInStudentAction);
-    signInStudentAction.mockResolvedValue({});
+    signInStudentAction.mockResolvedValue({ success: true });
 
     render(<StudentLoginForm />);
 
@@ -102,7 +102,7 @@ describe("StudentLoginForm", () => {
     const user = userEvent.setup();
     const signInStudentAction = vi.mocked(actions.signInStudentAction);
     signInStudentAction.mockImplementation(
-      () => new Promise((resolve) => setTimeout(() => resolve({}), 100)),
+      () => new Promise((resolve) => setTimeout(() => resolve({ success: true }), 100)),
     );
 
     render(<StudentLoginForm />);

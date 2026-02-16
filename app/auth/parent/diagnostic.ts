@@ -1,12 +1,36 @@
 "use server";
 
 import { createServiceRoleClient } from "@/lib/supabase/server";
+import type { StudentParent } from "@/lib/types/database";
+
+type DiagnosticStatus =
+  | "error"
+  | "not_found"
+  | "not_registered"
+  | "orphaned"
+  | "mismatch"
+  | "valid";
+
+interface DiagnosticResult {
+  status: DiagnosticStatus;
+  message: string;
+  suggestion?: string;
+  details?: string;
+  parentRecord?: StudentParent;
+  authUser?: {
+    id: string;
+    email: string | undefined;
+    created_at: string;
+  };
+}
 
 /**
  * Diagnostic tool to check parent registration status
  * This helps debug why a parent can't log in
  */
-export async function diagnoseParentAccountAction(email: string) {
+export async function diagnoseParentAccountAction(
+  email: string,
+): Promise<DiagnosticResult> {
   const supabase = createServiceRoleClient();
   const normalizedEmail = email.trim().toLowerCase();
 
@@ -44,7 +68,9 @@ export async function diagnoseParentAccountAction(email: string) {
   );
 
   // Check if any of these parents have a user_id
-  const parentWithUser = parentRecords.find((p) => p.user_id);
+  const parentWithUser = (parentRecords as StudentParent[]).find(
+    (p) => p.user_id,
+  );
 
   if (!parentWithUser) {
     console.log("✓ Parent email exists but no user_id set");
@@ -53,7 +79,7 @@ export async function diagnoseParentAccountAction(email: string) {
       status: "not_registered",
       message: "Parent record exists but account not created yet",
       suggestion: "Use the Parent Sign Up page to create your account",
-      parentRecord: parentRecords[0],
+      parentRecord: parentRecords[0] as StudentParent,
     };
   }
 
