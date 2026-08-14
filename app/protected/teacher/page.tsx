@@ -10,7 +10,7 @@ export default async function TeacherPage() {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect("/auth/login");
+    redirect("/auth/teacher-login");
   }
 
   const [
