@@ -60,9 +60,172 @@ export interface AttendanceRecord {
   created_at?: string;
 }
 
+export interface Quiz {
+  id: string;
+  teacher_id: string;
+  class_id: string;
+  title: string;
+  description: string | null;
+  created_at?: string;
+}
+
+export type QuizQuestionType = "multiple_choice" | "true_false" | "short_answer";
+
+export interface QuizQuestion {
+  id: string;
+  quiz_id: string;
+  question_text: string;
+  question_type: QuizQuestionType;
+  order_index: number;
+  points: number;
+  created_at?: string;
+}
+
+export interface QuizQuestionOption {
+  id: string;
+  question_id: string;
+  option_text: string;
+  is_correct: boolean;
+  order_index: number;
+  created_at?: string;
+}
+
+export interface QuizAttempt {
+  id: string;
+  quiz_id: string;
+  student_id: string;
+  submitted_at: string;
+  score: number;
+}
+
+export interface QuizAttemptAnswer {
+  id: string;
+  attempt_id: string;
+  question_id: string;
+  selected_option_id: string | null;
+  text_answer: string | null;
+  is_correct: boolean | null;
+  points_awarded: number | null;
+  created_at?: string;
+}
+
 // Join query result types
 export interface StudentClassAssignmentWithClass extends StudentClassAssignment {
   classes: Class;
+}
+
+// Quiz-taking types: deliberately omit is_correct. These are what the
+// student-facing "take this quiz" action returns - the answer key is
+// never sent to the browser before submission.
+export interface QuizQuestionOptionForTaking {
+  id: string;
+  optionText: string;
+  orderIndex: number;
+}
+
+export interface QuizQuestionForTaking {
+  id: string;
+  questionText: string;
+  questionType: QuizQuestionType;
+  orderIndex: number;
+  points: number;
+  options: QuizQuestionOptionForTaking[];
+}
+
+export interface QuizForTaking {
+  id: string;
+  title: string;
+  description: string | null;
+  questions: QuizQuestionForTaking[];
+}
+
+// Quiz submission input/output
+export interface QuizAnswerInput {
+  questionId: string;
+  selectedOptionId?: string;
+  textAnswer?: string;
+}
+
+export interface QuizAttemptAnswerReview {
+  questionId: string;
+  questionText: string;
+  questionType: QuizQuestionType;
+  selectedOptionId: string | null;
+  textAnswer: string | null;
+  correctOptionId: string | null;
+  isCorrect: boolean | null;
+  pointsAwarded: number | null;
+  pointsPossible: number;
+}
+
+export interface QuizAttemptReview {
+  attemptId: string;
+  quizId: string;
+  quizTitle: string;
+  score: number;
+  maxScore: number;
+  submittedAt: string;
+  answers: QuizAttemptAnswerReview[];
+}
+
+// Quiz summary shown on student/parent dashboards - covers both
+// not-yet-taken and completed quizzes.
+export interface QuizSummary {
+  id: string;
+  title: string;
+  classId: string;
+  className: string;
+  completed: boolean;
+  score: number | null;
+  maxScore: number;
+  submittedAt: string | null;
+}
+
+// Teacher-side: authoring input
+export interface QuizQuestionOptionInput {
+  optionText: string;
+  isCorrect: boolean;
+}
+
+export interface QuizQuestionInput {
+  questionText: string;
+  questionType: QuizQuestionType;
+  points: number;
+  options: QuizQuestionOptionInput[];
+}
+
+export interface CreateQuizInput {
+  classId: string;
+  title: string;
+  description?: string;
+  questions: QuizQuestionInput[];
+}
+
+export interface TeacherQuizListItem {
+  id: string;
+  classId: string;
+  className: string;
+  title: string;
+  description: string | null;
+  questionCount: number;
+  createdAt?: string;
+}
+
+// Teacher-side: per-quiz results
+export interface QuizResultRow {
+  studentId: string;
+  studentName: string;
+  completed: boolean;
+  score: number | null;
+  maxScore: number;
+  submittedAt: string | null;
+  pendingShortAnswerCount: number;
+}
+
+export interface QuizResults {
+  quizId: string;
+  quizTitle: string;
+  results: QuizResultRow[];
 }
 
 // Dashboard data types
@@ -97,6 +260,7 @@ export interface StudentDashboardData {
     attendance_date: string;
     status: string;
   }>;
+  quizzes: QuizSummary[];
 }
 
 export interface ParentDashboardData {
@@ -137,6 +301,7 @@ export interface ParentDashboardData {
     attendance_date: string;
     status: string;
   }>;
+  quizzes: QuizSummary[];
 }
 
 // Action result types

@@ -9,6 +9,7 @@ import type {
   ClassScheduleSlot,
   AttendanceRecord,
   ActionResult,
+  QuizSummary,
 } from "@/lib/types/database";
 
 /**
@@ -250,6 +251,58 @@ export async function getParentDashboardDataAction(): Promise<
     .order("attendance_date", { ascending: false })
     .limit(50);
 
+  // Use service role for quizzes + this child's attempts (avoids RLS recursion)
+  let quizzes: QuizSummary[] = [];
+  if (classIds.length > 0) {
+    const { data: quizRows } = await supabaseAdmin
+      .from("quizzes")
+      .select("id, title, class_id, classes:class_id (name)")
+      .in("class_id", classIds);
+
+    const quizIds = (quizRows ?? []).map((quiz) => quiz.id);
+
+    if (quizIds.length > 0) {
+      const [{ data: attempts }, { data: questions }] = await Promise.all([
+        supabaseAdmin
+          .from("quiz_attempts")
+          .select("quiz_id, score, submitted_at")
+          .eq("student_id", student.id)
+          .in("quiz_id", quizIds),
+        supabaseAdmin
+          .from("quiz_questions")
+          .select("quiz_id, points")
+          .in("quiz_id", quizIds),
+      ]);
+
+      const attemptByQuiz = new Map(
+        (attempts ?? []).map((attempt) => [attempt.quiz_id, attempt]),
+      );
+      const maxScoreByQuiz = new Map<string, number>();
+      for (const question of questions ?? []) {
+        maxScoreByQuiz.set(
+          question.quiz_id,
+          (maxScoreByQuiz.get(question.quiz_id) ?? 0) + question.points,
+        );
+      }
+
+      quizzes = (quizRows ?? []).map((quiz) => {
+        const quizClass = quiz.classes as unknown as { name: string } | null;
+        const attempt = attemptByQuiz.get(quiz.id);
+
+        return {
+          id: quiz.id,
+          title: quiz.title,
+          classId: quiz.class_id,
+          className: quizClass?.name ?? "",
+          completed: Boolean(attempt),
+          score: attempt?.score ?? null,
+          maxScore: maxScoreByQuiz.get(quiz.id) ?? 0,
+          submittedAt: attempt?.submitted_at ?? null,
+        };
+      });
+    }
+  }
+
   return {
     success: true,
     data: {
@@ -280,6 +333,7 @@ export async function getParentDashboardDataAction(): Promise<
         ) || [],
       schedules: schedules,
       attendance: (attendance as AttendanceRecord[] | null) || [],
+      quizzes,
     },
   };
 }
