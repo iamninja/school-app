@@ -24,18 +24,11 @@ Last reviewed: 2026-08-14 (post 1-2 month gap re-orientation)
 
 ## Nice-to-haves
 
-- [ ] Resolve legal business form (ατομική επιχείρηση vs ΙΚΕ) — affects invoice schema (VAT numbers, entity type). Still unresolved as of this review.
 - [ ] Shared auth-action factory to de-duplicate the three near-identical role flows (teacher/student/parent `checkXEmail`/`signUpX`/`signInX`).
 - [ ] Soft-delete/withdrawal state for student enrollment history.
 - [ ] Investigate Vitest per-run overhead — full suite (66 tests) takes 45-65s (one outlier at 98s), and the `import`/`environment`/`setup` phases regularly outweigh actual test execution time (e.g. one run: 178s environment vs 66s tests). Not urgent at this size, but won't get faster on its own as the suite grows since it's fixed overhead, not per-test cost. Check Vitest `pool`/thread config for unnecessary jsdom re-initialization per file.
 
-## Launch costs & operational setup
-
-Business/infra decisions, not code — tracked separately so they don't get lost among engineering tasks.
-
-- [ ] Register a domain — will serve the app, the marketing site, and outbound email (SMTP) all from one domain via separate DNS records (A/CNAME for hosting, TXT/CNAME for SMTP verification). No conflict between the three uses.
-- [ ] Set up custom SMTP for Supabase auth emails (password reset, signup confirmations). Supabase's built-in email service is capped at 2/hour on every plan — upgrading Supabase itself does not fix this. Resend recommended: free tier, 3,000 emails/month (100/day), dedicated Supabase integration guide, comfortably covers this app's realistic volume at $0/month. Needs the domain above for sender verification.
-- [ ] Budget for Vercel Pro, $20/month, once real tuition payments are involved. Vercel's free Hobby plan Terms of Service explicitly prohibit commercial use — "processing payment" is named as a disqualifying activity, which the Viva Wallet billing flow will be. This isn't a usage-limit problem (Hobby's limits are far more than this app needs); it's a ToS one. Not urgent until billing goes live, but budget for it.
+Business/financial items (legal business form, launch costs, operational budgeting) are tracked in Todoist only, not here — this file is code-focused and pushed to a public repo.
 
 ---
 *See full re-orientation assessment from 2026-08-14 conversation for context behind each item.*
