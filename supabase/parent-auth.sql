@@ -12,10 +12,14 @@ create unique index if not exists student_parents_email_unique
   on public.student_parents(email)
   where email is not null;
 
--- NOTE: We intentionally do NOT add RLS policies for parent access.
--- Parent authentication uses service role client to bypass RLS, with security
--- enforced in the application layer by verifying user_id matches the parent record.
--- This avoids infinite recursion issues with circular policy references.
+-- NOTE: This originally skipped RLS policies for parent access due to
+-- infinite recursion from circular policy references (a naive students<->
+-- student_parents policy pair triggers each other's RLS indefinitely).
+-- Superseded by supabase/parent-rls.sql, which restores RLS using
+-- SECURITY DEFINER helper functions to break the recursion. Run that file
+-- after this one. The application layer (service role client + user_id
+-- verification) remains in place as defense-in-depth alongside RLS, not
+-- as a replacement for it.
 
 -- Clean up any existing parent policies that may cause recursion
 drop policy if exists "Parents view own data" on public.student_parents;
