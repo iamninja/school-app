@@ -8,6 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
+import { StudentQuizPanel } from "@/components/student-quiz-panel";
+import type { QuizSummary } from "@/lib/types/database";
 
 type StudentDashboardProps = {
   student: {
@@ -40,6 +42,7 @@ type StudentDashboardProps = {
     attendance_date: string;
     status: string;
   }>;
+  quizzes: QuizSummary[];
 };
 
 const DAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -329,6 +332,8 @@ export function StudentDashboard(props: StudentDashboardProps) {
           )}
         </CardContent>
       </Card>
+
+      <StudentQuizPanel quizzes={props.quizzes} />
     </div>
   );
 }
