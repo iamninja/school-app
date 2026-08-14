@@ -217,9 +217,9 @@ export function StudentQuizPanel({
                 className={
                   "rounded-lg border p-3 " +
                   (answer.isCorrect === true
-                    ? "border-green-200 bg-green-50"
+                    ? "border-green-200 bg-green-50 text-green-950 dark:border-green-900 dark:bg-green-950 dark:text-green-50"
                     : answer.isCorrect === false
-                      ? "border-red-200 bg-red-50"
+                      ? "border-red-200 bg-red-50 text-red-950 dark:border-red-900 dark:bg-red-950 dark:text-red-50"
                       : "")
                 }
               >
