@@ -61,7 +61,7 @@ export default function Home() {
               <div>
                 <h2 className="text-lg font-semibold">Parent portal</h2>
                 <p className="text-sm text-muted-foreground">
-                  View your child's schedule, attendance, and class details.
+                  View your child&apos;s schedule, attendance, and class details.
                 </p>
               </div>
               <Button asChild variant="outline">

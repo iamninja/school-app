@@ -21,8 +21,6 @@ describe("StudentSignUpForm", () => {
   });
 
   it("requires email verification before showing password fields", async () => {
-    const user = userEvent.setup();
-
     render(<StudentSignUpForm />);
 
     // Password fields should not be visible initially

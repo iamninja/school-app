@@ -7,7 +7,7 @@ export default function ParentLoginPage() {
         <div className="space-y-2 text-center">
           <h1 className="text-3xl font-bold">Parent Login</h1>
           <p className="text-muted-foreground">
-            Sign in to view your child's information
+            Sign in to view your child&apos;s information
           </p>
         </div>
         <ParentLoginForm />

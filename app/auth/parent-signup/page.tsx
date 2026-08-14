@@ -7,7 +7,7 @@ export default function ParentSignUpPage() {
         <div className="space-y-2 text-center">
           <h1 className="text-3xl font-bold">Parent Sign Up</h1>
           <p className="text-muted-foreground">
-            Create your account using the email provided by your child's teacher
+            Create your account using the email provided by your child&apos;s teacher
           </p>
         </div>
         <ParentSignUpForm />
