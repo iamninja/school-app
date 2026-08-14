@@ -11,7 +11,7 @@ type DiagnosticStatus =
   | "mismatch"
   | "valid";
 
-interface DiagnosticResult {
+export interface DiagnosticResult {
   status: DiagnosticStatus;
   message: string;
   suggestion?: string;
@@ -72,7 +72,7 @@ export async function diagnoseParentAccountAction(
     (p) => p.user_id,
   );
 
-  if (!parentWithUser) {
+  if (!parentWithUser || !parentWithUser.user_id) {
     console.log("✓ Parent email exists but no user_id set");
     console.log("→ This parent needs to SIGN UP (not login)");
     return {
@@ -108,7 +108,11 @@ export async function diagnoseParentAccountAction(
       status: "mismatch",
       message: "Email mismatch between parent record and auth user",
       parentRecord: parentWithUser,
-      authUser: authUser.user,
+      authUser: {
+        id: authUser.user.id,
+        email: authUser.user.email,
+        created_at: authUser.user.created_at,
+      },
     };
   }
 

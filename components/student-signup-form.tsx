@@ -18,7 +18,10 @@ import {
   checkStudentEmailAction,
   signUpStudentAction,
 } from "@/app/auth/student/actions";
-import { diagnosticCheckAction } from "@/app/auth/student/diagnostic";
+import {
+  diagnosticCheckAction,
+  type DiagnosticResult,
+} from "@/app/auth/student/diagnostic";
 
 export function StudentSignUpForm({
   className,
@@ -32,7 +35,9 @@ export function StudentSignUpForm({
   const [isCheckingEmail, setIsCheckingEmail] = useState(false);
   const [emailVerified, setEmailVerified] = useState(false);
   const [studentName, setStudentName] = useState("");
-  const [diagnosticInfo, setDiagnosticInfo] = useState<string | null>(null);
+  const [diagnosticInfo, setDiagnosticInfo] = useState<DiagnosticResult | null>(
+    null,
+  );
   const router = useRouter();
 
   const handleCheckEmail = async () => {

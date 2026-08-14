@@ -4,10 +4,11 @@ Last reviewed: 2026-08-14 (post 1-2 month gap re-orientation)
 
 ## Bugs (fix first)
 
-- [ ] Fix syntax error / missing `classIds` declaration in `app/auth/parent/actions.ts` (~line 230-283). Project currently fails `tsc --noEmit` and would crash on every parent dashboard load.
+- [x] Fix syntax error / missing `classIds` declaration in `app/auth/parent/actions.ts` (~line 230-283). Project currently fails `tsc --noEmit` and would crash on every parent dashboard load. — Fixed 2026-08-14; also unmasked and fixed 12 downstream `ActionResult` narrowing errors across parent/student login/signup forms and diagnostic.ts files that TS couldn't previously reach.
 - [ ] Add test coverage for the parent flow (login, signup, dashboard) — this bug shipped specifically because parent has no tests while student/teacher do.
 - [ ] Investigate flaky timeout in `tests/teacher-dashboard.student-form.test.tsx` ("does not submit without first name").
 - [ ] Run `npm audit fix` for vitest/vite/ws dev-dependency advisories (dev-only blast radius, but the vitest one is critical-rated and the fix is trivial).
+- [ ] Fix ESLint config scope — `npx eslint .` returns 15,765 problems, almost certainly linting `node_modules`/`.next` instead of just the project source. Needs an `ignores` entry in `eslint.config.mjs`.
 
 ## Missing core features
 

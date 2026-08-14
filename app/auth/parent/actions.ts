@@ -227,7 +227,8 @@ export async function getParentDashboardDataAction(): Promise<
     `,
     )
     .eq("student_id", student.id);
-(classAssignments as StudentClassAssignmentWithClass[] | null)
+  const classIds =
+    (classAssignments as StudentClassAssignmentWithClass[] | null)
       ?.map((a) => a.class_id)
       .filter(Boolean) || [];
 
@@ -278,9 +279,7 @@ export async function getParentDashboardDataAction(): Promise<
           }),
         ) || [],
       schedules: schedules,
-      attendance: (attendance as AttendanceRecord[] | null)
-      schedules: schedules || [],
-      attendance: attendance || [],
+      attendance: (attendance as AttendanceRecord[] | null) || [],
     },
   };
 }

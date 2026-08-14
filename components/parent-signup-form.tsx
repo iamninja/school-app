@@ -18,7 +18,10 @@ import {
   checkParentEmailAction,
   signUpParentAction,
 } from "@/app/auth/parent/actions";
-import { diagnoseParentAccountAction } from "@/app/auth/parent/diagnostic";
+import {
+  diagnoseParentAccountAction,
+  type DiagnosticResult,
+} from "@/app/auth/parent/diagnostic";
 
 export function ParentSignUpForm({
   className,
@@ -33,12 +36,7 @@ export function ParentSignUpForm({
   const [emailVerified, setEmailVerified] = useState(false);
   const [parentName, setParentName] = useState("");
   const [diagnosing, setDiagnosing] = useState(false);
-  const [diagnostic, setDiagnostic] = useState<{
-    status: string;
-    message: string;
-    suggestion?: string;
-    parentRecord?: Record<string, unknown>;
-  } | null>(null);
+  const [diagnostic, setDiagnostic] = useState<DiagnosticResult | null>(null);
   const router = useRouter();
 
   const handleCheckEmail = async () => {
@@ -101,7 +99,7 @@ export function ParentSignUpForm({
 
     try {
       const result = await signUpParentAction({ email, password });
-      if (result.error) {
+      if (!result.success && result.error) {
         setError(result.error);
       } else {
         router.push("/auth/parent-login?registered=true");

@@ -14,7 +14,10 @@ import { Label } from "@/components/ui/label";
 import Link from "next/link";
 import { useState } from "react";
 import { signInParentAction } from "@/app/auth/parent/actions";
-import { diagnoseParentAccountAction } from "@/app/auth/parent/diagnostic";
+import {
+  diagnoseParentAccountAction,
+  type DiagnosticResult,
+} from "@/app/auth/parent/diagnostic";
 import { useSearchParams } from "next/navigation";
 
 export function ParentLoginForm({
@@ -26,12 +29,7 @@ export function ParentLoginForm({
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [diagnosing, setDiagnosing] = useState(false);
-  const [diagnostic, setDiagnostic] = useState<{
-    status: string;
-    message: string;
-    suggestion?: string;
-    parentRecord?: Record<string, unknown>;
-  } | null>(null);
+  const [diagnostic, setDiagnostic] = useState<DiagnosticResult | null>(null);
   const searchParams = useSearchParams();
   const registered = searchParams.get("registered");
 
@@ -43,7 +41,7 @@ export function ParentLoginForm({
 
     try {
       const result = await signInParentAction({ email, password });
-      if (result?.error) {
+      if (result && !result.success && result.error) {
         setError(result.error);
       }
     } catch (error: unknown) {

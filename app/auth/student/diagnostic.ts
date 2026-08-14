@@ -3,7 +3,7 @@
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import type { Student } from "@/lib/types/database";
 
-interface DiagnosticSuccess {
+export interface DiagnosticSuccess {
   students: Pick<
     Student,
     "id" | "first_name" | "last_name" | "email" | "user_id"
@@ -11,12 +11,12 @@ interface DiagnosticSuccess {
   count: number;
 }
 
-interface DiagnosticError {
+export interface DiagnosticError {
   error: string;
   details: unknown;
 }
 
-type DiagnosticResult = DiagnosticSuccess | DiagnosticError;
+export type DiagnosticResult = DiagnosticSuccess | DiagnosticError;
 
 export async function diagnosticCheckAction(): Promise<DiagnosticResult> {
   const supabase = createServiceRoleClient();

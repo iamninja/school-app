@@ -34,7 +34,7 @@ export function StudentLoginForm({
 
     try {
       const result = await signInStudentAction({ email, password });
-      if (result?.error) {
+      if (result && !result.success && result.error) {
         setError(result.error);
       }
       // If successful, signInStudentAction will redirect
