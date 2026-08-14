@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { ParentLoginForm } from "@/components/parent-login-form";
 
 export default function ParentLoginPage() {
@@ -10,7 +11,9 @@ export default function ParentLoginPage() {
             Sign in to view your child&apos;s information
           </p>
         </div>
-        <ParentLoginForm />
+        <Suspense fallback={null}>
+          <ParentLoginForm />
+        </Suspense>
       </div>
     </div>
   );
