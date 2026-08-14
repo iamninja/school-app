@@ -31,9 +31,17 @@ export function UpdatePasswordForm({
     setError(null);
 
     try {
-      const { error } = await supabase.auth.updateUser({ password });
+      const { data, error } = await supabase.auth.updateUser({ password });
       if (error) throw error;
-      router.push("/protected/teacher");
+
+      const role = data.user?.user_metadata?.role;
+      if (role === "student") {
+        router.push("/student-dashboard");
+      } else if (role === "parent") {
+        router.push("/parent-dashboard");
+      } else {
+        router.push("/protected/teacher");
+      }
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred");
     } finally {
