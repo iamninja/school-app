@@ -48,6 +48,16 @@ const baseProps = {
     attendance_date: string;
     status: string;
   }[],
+  quizzes: [] as {
+    id: string;
+    title: string;
+    classId: string;
+    className: string;
+    completed: boolean;
+    score: number | null;
+    maxScore: number;
+    submittedAt: string | null;
+  }[],
 };
 
 describe("ParentDashboard", () => {

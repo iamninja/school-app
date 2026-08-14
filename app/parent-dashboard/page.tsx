@@ -56,6 +56,7 @@ export default async function ParentDashboardPage() {
         classes={result.data.classes}
         schedules={result.data.schedules}
         attendance={result.data.attendance}
+        quizzes={result.data.quizzes}
       />
     </div>
   );

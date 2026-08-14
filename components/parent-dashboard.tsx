@@ -2,12 +2,20 @@
 
 import * as React from "react";
 import { format } from "date-fns";
-import { Calendar, GraduationCap, Users, ClockIcon, User } from "lucide-react";
+import {
+  Calendar,
+  ClipboardList,
+  GraduationCap,
+  Users,
+  ClockIcon,
+  User,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
+import type { QuizSummary } from "@/lib/types/database";
 
 type ParentDashboardProps = {
   parent: {
@@ -47,6 +55,7 @@ type ParentDashboardProps = {
     attendance_date: string;
     status: string;
   }>;
+  quizzes: QuizSummary[];
 };
 
 const DAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -329,6 +338,45 @@ export function ParentDashboard(props: ParentDashboardProps) {
                   </div>
                 </div>
               )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <ClipboardList className="h-5 w-5" />
+            Quiz Results
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {props.quizzes.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No quizzes assigned yet.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {props.quizzes.map((quiz) => (
+                <div
+                  key={quiz.id}
+                  className="flex items-center justify-between rounded-md border bg-muted/50 px-3 py-2"
+                >
+                  <div>
+                    <p className="text-sm font-medium">{quiz.title}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {quiz.className}
+                    </p>
+                  </div>
+                  {quiz.completed ? (
+                    <Badge>
+                      {quiz.score} / {quiz.maxScore}
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline">Not taken yet</Badge>
+                  )}
+                </div>
+              ))}
             </div>
           )}
         </CardContent>
