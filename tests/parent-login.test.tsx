@@ -40,6 +40,19 @@ describe("ParentLoginForm", () => {
     expect(signUpLink).toHaveAttribute("href", "/auth/parent-signup");
   });
 
+  it("shows link to forgot password page", () => {
+    render(<ParentLoginForm />);
+
+    const forgotPasswordLink = screen.getByRole("link", {
+      name: /forgot your password/i,
+    });
+    expect(forgotPasswordLink).toBeInTheDocument();
+    expect(forgotPasswordLink).toHaveAttribute(
+      "href",
+      "/auth/forgot-password",
+    );
+  });
+
   it("does not submit without email", async () => {
     const user = userEvent.setup();
     const signInParentAction = vi.mocked(actions.signInParentAction);

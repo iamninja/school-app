@@ -35,6 +35,19 @@ describe("StudentLoginForm", () => {
     expect(signUpLink).toHaveAttribute("href", "/auth/student-signup");
   });
 
+  it("shows link to forgot password page", () => {
+    render(<StudentLoginForm />);
+
+    const forgotPasswordLink = screen.getByRole("link", {
+      name: /forgot your password/i,
+    });
+    expect(forgotPasswordLink).toBeInTheDocument();
+    expect(forgotPasswordLink).toHaveAttribute(
+      "href",
+      "/auth/forgot-password",
+    );
+  });
+
   it("does not submit without email", async () => {
     const user = userEvent.setup();
     const signInStudentAction = vi.mocked(actions.signInStudentAction);
