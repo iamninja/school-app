@@ -336,7 +336,7 @@ export async function getQuizReviewAction(
   const { data: answers, error: answersError } = await supabase
     .from("quiz_attempt_answers")
     .select(
-      "question_id, selected_option_id, text_answer, is_correct, points_awarded, quiz_questions:question_id (question_text, question_type, points)",
+      "question_id, selected_option_id, text_answer, is_correct, points_awarded",
     )
     .eq("attempt_id", attempt.id);
 
@@ -345,40 +345,56 @@ export async function getQuizReviewAction(
   }
 
   const questionIds = (answers ?? []).map((answer) => answer.question_id);
-  const { data: options } = await supabase
-    .from("quiz_question_options")
-    .select("id, question_id, is_correct")
-    .in("question_id", questionIds);
 
+  // Fetched separately rather than embedded via a join - keeps this
+  // consistent with getQuizForTakingAction/submitQuizAttemptAction, which
+  // both fetch quiz_questions directly rather than relying on PostgREST's
+  // embed cardinality inference.
+  const [{ data: questionRows }, { data: options }] = await Promise.all([
+    questionIds.length > 0
+      ? supabase
+          .from("quiz_questions")
+          .select("id, question_text, question_type, points")
+          .in("id", questionIds)
+      : Promise.resolve({ data: [] as never[] }),
+    questionIds.length > 0
+      ? supabase
+          .from("quiz_question_options")
+          .select("id, question_id, is_correct")
+          .in("question_id", questionIds)
+      : Promise.resolve({ data: [] as never[] }),
+  ]);
+
+  const questionById = new Map(
+    (questionRows ?? []).map((question) => [question.id, question]),
+  );
   const correctOptionByQuestion = new Map(
     (options ?? [])
       .filter((option) => option.is_correct)
       .map((option) => [option.question_id, option.id]),
   );
 
-  const maxScore = (answers ?? []).reduce((sum, answer) => {
-    const question = answer.quiz_questions as unknown as { points: number };
-    return sum + question.points;
-  }, 0);
+  const maxScore = (questionRows ?? []).reduce(
+    (sum, question) => sum + question.points,
+    0,
+  );
 
   const reviewAnswers: QuizAttemptAnswerReview[] = (answers ?? []).map(
     (answer) => {
-      const question = answer.quiz_questions as unknown as {
-        question_text: string;
-        question_type: QuizQuestionForTaking["questionType"];
-        points: number;
-      };
+      const question = questionById.get(answer.question_id);
 
       return {
         questionId: answer.question_id,
-        questionText: question.question_text,
-        questionType: question.question_type,
+        questionText: question?.question_text ?? "",
+        questionType:
+          (question?.question_type as QuizQuestionForTaking["questionType"]) ??
+          "short_answer",
         selectedOptionId: answer.selected_option_id,
         textAnswer: answer.text_answer,
         correctOptionId: correctOptionByQuestion.get(answer.question_id) ?? null,
         isCorrect: answer.is_correct,
         pointsAwarded: answer.points_awarded,
-        pointsPossible: question.points,
+        pointsPossible: question?.points ?? 0,
       };
     },
   );

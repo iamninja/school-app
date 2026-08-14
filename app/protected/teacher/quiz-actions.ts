@@ -123,12 +123,31 @@ export async function getQuizResultsAction(
 
   const { data: assignments, error: assignmentsError } = await supabase
     .from("student_class_assignments")
-    .select("student_id, students:student_id (id, first_name, last_name)")
+    .select("student_id")
     .eq("class_id", quiz.class_id);
 
   if (assignmentsError) {
     throw assignmentsError;
   }
+
+  const studentIds = (assignments ?? []).map(
+    (assignment) => assignment.student_id,
+  );
+
+  // Fetched separately rather than embedded via a join - PostgREST's embed
+  // cardinality inference isn't reliable enough here to trust silently; a
+  // direct fetch-then-join in JS is what the rest of this feature already
+  // does (see student-dashboard/quiz-actions.ts).
+  const { data: students } =
+    studentIds.length > 0
+      ? await supabase
+          .from("students")
+          .select("id, first_name, last_name")
+          .in("id", studentIds)
+      : { data: [] as never[] };
+  const studentById = new Map(
+    (students ?? []).map((student) => [student.id, student]),
+  );
 
   const { data: attempts, error: attemptsError } = await supabase
     .from("quiz_attempts")
@@ -163,16 +182,14 @@ export async function getQuizResultsAction(
   }
 
   const results: QuizResultRow[] = (assignments ?? []).map((assignment) => {
-    const student = assignment.students as unknown as {
-      id: string;
-      first_name: string;
-      last_name: string;
-    };
+    const student = studentById.get(assignment.student_id);
     const attempt = attemptByStudent.get(assignment.student_id);
 
     return {
       studentId: assignment.student_id,
-      studentName: `${student.first_name} ${student.last_name}`,
+      studentName: student
+        ? `${student.first_name} ${student.last_name}`
+        : "Unknown student",
       completed: Boolean(attempt),
       score: attempt?.score ?? null,
       maxScore,

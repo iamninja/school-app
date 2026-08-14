@@ -31,7 +31,12 @@ type ViewState =
   | { mode: "taking"; quiz: QuizForTaking }
   | { mode: "review"; review: QuizAttemptReview };
 
-export function StudentQuizPanel({ quizzes }: { quizzes: QuizSummary[] }) {
+export function StudentQuizPanel({
+  quizzes: initialQuizzes,
+}: {
+  quizzes: QuizSummary[];
+}) {
+  const [quizzes, setQuizzes] = React.useState(initialQuizzes);
   const [view, setView] = React.useState<ViewState>({ mode: "list" });
   const [isLoading, setIsLoading] = React.useState(false);
   const [answers, setAnswers] = React.useState<
@@ -98,6 +103,19 @@ export function StudentQuizPanel({ quizzes }: { quizzes: QuizSummary[] }) {
       const review = await submitQuizAttemptAction(
         view.quiz.id,
         Object.values(answers),
+      );
+      setQuizzes((prev) =>
+        prev.map((quiz) =>
+          quiz.id === review.quizId
+            ? {
+                ...quiz,
+                completed: true,
+                score: review.score,
+                maxScore: review.maxScore,
+                submittedAt: review.submittedAt,
+              }
+            : quiz,
+        ),
       );
       setView({ mode: "review", review });
       toast.success("Quiz submitted");
