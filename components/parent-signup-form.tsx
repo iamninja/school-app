@@ -192,7 +192,7 @@ export function ParentSignUpForm({
               {error && <p className="text-sm text-red-500">{error}</p>}
 
               {emailVerified && (
-                <Button type="submit" className="w-full" disabled={isLoading}>
+                <>
                   <div className="mt-6 border-t pt-6">
                     <Button
                       type="button"
@@ -236,8 +236,10 @@ export function ParentSignUpForm({
                       </div>
                     )}
                   </div>
-                  {isLoading ? "Creating account..." : "Create Account"}
-                </Button>
+                  <Button type="submit" className="w-full" disabled={isLoading}>
+                    {isLoading ? "Creating account..." : "Create Account"}
+                  </Button>
+                </>
               )}
             </div>
             <div className="mt-4 text-center text-sm">
