@@ -36,6 +36,8 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { TeacherQuizBuilder } from "@/components/teacher-quiz-builder";
+import type { TeacherQuizListItem } from "@/lib/types/database";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"] as const;
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -97,6 +99,7 @@ type TeacherDashboardProps = {
   }>;
   initialStudents: StudentItem[];
   initialAttendance: AttendanceRecord[];
+  initialQuizzes?: TeacherQuizListItem[];
   loadErrors?: string[];
 };
 
@@ -270,6 +273,7 @@ export function TeacherDashboard({
   initialSlots,
   initialStudents,
   initialAttendance,
+  initialQuizzes = [],
   loadErrors = [],
 }: TeacherDashboardProps) {
   const sensors = useSensors(
@@ -692,6 +696,7 @@ export function TeacherDashboard({
           <TabsTrigger value="schedule">Schedule</TabsTrigger>
           <TabsTrigger value="students">Students</TabsTrigger>
           <TabsTrigger value="attendance">Attendance</TabsTrigger>
+          <TabsTrigger value="quizzes">Quizzes</TabsTrigger>
         </TabsList>
 
         <TabsContent value="schedule" className="mt-6">
@@ -1571,6 +1576,13 @@ export function TeacherDashboard({
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        <TabsContent value="quizzes" className="mt-6">
+          <TeacherQuizBuilder
+            classes={classes.map(({ id, name }) => ({ id, name }))}
+            initialQuizzes={initialQuizzes}
+          />
         </TabsContent>
       </Tabs>
     </div>

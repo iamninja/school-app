@@ -18,6 +18,7 @@ export default async function TeacherPage() {
     { data: scheduleSlots, error: scheduleError },
     { data: students, error: studentsError },
     { data: attendance, error: attendanceError },
+    { data: quizzes, error: quizzesError },
   ] = await Promise.all([
     supabase
       .from("classes")
@@ -40,6 +41,11 @@ export default async function TeacherPage() {
       .select("student_id, class_id, attendance_date, status")
       .eq("teacher_id", user.id)
       .order("attendance_date", { ascending: false }),
+    supabase
+      .from("quizzes")
+      .select("id, class_id, title, description, created_at, classes:class_id (name)")
+      .eq("teacher_id", user.id)
+      .order("created_at", { ascending: false }),
   ]);
 
   const loadErrors = [
@@ -47,6 +53,7 @@ export default async function TeacherPage() {
     scheduleError?.message,
     studentsError?.message,
     attendanceError?.message,
+    quizzesError?.message,
   ].filter(Boolean) as string[];
 
   const initialClasses = (classes ?? []).map((item) => ({
@@ -95,12 +102,42 @@ export default async function TeacherPage() {
     status: record.status,
   }));
 
+  const quizIds = (quizzes ?? []).map((quiz) => quiz.id);
+  const questionCountByQuiz = new Map<string, number>();
+  if (quizIds.length > 0) {
+    const { data: questionRows } = await supabase
+      .from("quiz_questions")
+      .select("quiz_id")
+      .in("quiz_id", quizIds);
+
+    for (const row of questionRows ?? []) {
+      questionCountByQuiz.set(
+        row.quiz_id,
+        (questionCountByQuiz.get(row.quiz_id) ?? 0) + 1,
+      );
+    }
+  }
+
+  const initialQuizzes = (quizzes ?? []).map((quiz) => {
+    const quizClass = quiz.classes as unknown as { name: string } | null;
+    return {
+      id: quiz.id,
+      classId: quiz.class_id,
+      className: quizClass?.name ?? "",
+      title: quiz.title,
+      description: quiz.description,
+      questionCount: questionCountByQuiz.get(quiz.id) ?? 0,
+      createdAt: quiz.created_at,
+    };
+  });
+
   return (
     <TeacherDashboard
       initialClasses={initialClasses}
       initialSlots={initialSlots}
       initialStudents={initialStudents}
       initialAttendance={initialAttendance}
+      initialQuizzes={initialQuizzes}
       loadErrors={loadErrors}
     />
   );
