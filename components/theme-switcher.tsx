@@ -16,8 +16,11 @@ const ThemeSwitcher = () => {
   const [mounted, setMounted] = useState(false);
   const { theme, setTheme } = useTheme();
 
-  // useEffect only runs on the client, so now we can safely show the UI
+  // useEffect only runs on the client, so now we can safely show the UI.
+  // This is the standard next-themes hydration-safe mount pattern -
+  // detecting first client render has no substitute for setState in an effect.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
   }, []);
 
