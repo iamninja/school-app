@@ -14,6 +14,7 @@ vi.mock("@/app/protected/teacher/quiz-actions", () => ({
   getQuizForEditingAction: vi.fn(),
   updateQuizAction: vi.fn(),
   duplicateQuizAction: vi.fn(),
+  getQuizQuestionBreakdownAction: vi.fn(),
 }));
 
 vi.mock("sonner", () => ({
@@ -584,6 +585,115 @@ describe("TeacherQuizBuilder", () => {
       expect(duplicateQuizAction).toHaveBeenCalledWith("quiz-1");
       expect(screen.getByText("Chapter 3 Quiz (copy)")).toBeInTheDocument();
       expect(screen.getAllByText("Unassigned").length).toBeGreaterThan(0);
+    });
+  });
+
+  it("shows a per-question answer distribution and each student's answer", async () => {
+    const user = userEvent.setup();
+    const getQuizQuestionBreakdownAction = vi.mocked(
+      quizActions.getQuizQuestionBreakdownAction,
+    );
+
+    getQuizQuestionBreakdownAction.mockResolvedValue({
+      quizId: "quiz-1",
+      quizTitle: "Chapter 3 Quiz",
+      questions: [
+        {
+          questionId: "q1",
+          questionText: "2 + 2 = ?",
+          questionType: "multiple_choice",
+          points: 1,
+          optionBreakdown: [
+            { optionId: "opt-1", optionText: "4", isCorrect: true, count: 2 },
+            { optionId: "opt-2", optionText: "5", isCorrect: false, count: 1 },
+          ],
+          studentAnswers: [
+            {
+              studentId: "student-1",
+              studentName: "Ava Chen",
+              selectedOptionText: "4",
+              textAnswer: null,
+              isCorrect: true,
+            },
+            {
+              studentId: "student-2",
+              studentName: "Maya Carter",
+              selectedOptionText: "5",
+              textAnswer: null,
+              isCorrect: false,
+            },
+            {
+              studentId: "student-3",
+              studentName: "Noah Diaz",
+              selectedOptionText: "4",
+              textAnswer: null,
+              isCorrect: true,
+            },
+          ],
+        },
+      ],
+    });
+
+    render(
+      <TeacherQuizBuilder classes={classes} initialQuizzes={[baseQuiz]} />,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: /question breakdown/i }),
+    );
+
+    await waitFor(() => {
+      expect(getQuizQuestionBreakdownAction).toHaveBeenCalledWith("quiz-1");
+      expect(screen.getByText("1. 2 + 2 = ?")).toBeInTheDocument();
+      expect(screen.getByText("2 / 3")).toBeInTheDocument();
+      expect(screen.getByText("1 / 3")).toBeInTheDocument();
+      expect(screen.getByText("Ava Chen")).toBeInTheDocument();
+      expect(screen.getByText("Maya Carter")).toBeInTheDocument();
+      expect(screen.getByText("Noah Diaz")).toBeInTheDocument();
+    });
+  });
+
+  it("shows an awaiting-review badge for short-answer questions in the breakdown, with no option distribution", async () => {
+    const user = userEvent.setup();
+    const getQuizQuestionBreakdownAction = vi.mocked(
+      quizActions.getQuizQuestionBreakdownAction,
+    );
+
+    getQuizQuestionBreakdownAction.mockResolvedValue({
+      quizId: "quiz-1",
+      quizTitle: "Chapter 3 Quiz",
+      questions: [
+        {
+          questionId: "q1",
+          questionText: "Explain your reasoning",
+          questionType: "short_answer",
+          points: 1,
+          optionBreakdown: [],
+          studentAnswers: [
+            {
+              studentId: "student-1",
+              studentName: "Ava Chen",
+              selectedOptionText: null,
+              textAnswer: "Because math",
+              isCorrect: null,
+            },
+          ],
+        },
+      ],
+    });
+
+    render(
+      <TeacherQuizBuilder classes={classes} initialQuizzes={[baseQuiz]} />,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: /question breakdown/i }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Because math")).toBeInTheDocument();
+      expect(screen.getByText("Awaiting review")).toBeInTheDocument();
+      expect(screen.queryByText(/\d \/ \d/)).not.toBeInTheDocument();
     });
   });
 });

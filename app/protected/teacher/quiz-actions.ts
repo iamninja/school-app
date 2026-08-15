@@ -10,6 +10,8 @@ import type {
   QuizResultRow,
   QuizAttemptReview,
   QuizAttemptAnswerReview,
+  QuizQuestionBreakdown,
+  QuizQuestionBreakdownResult,
   QuizQuestionType,
   UpdateQuizInput,
 } from "@/lib/types/database";
@@ -634,5 +636,171 @@ export async function getStudentQuizAttemptAction(
     maxScore,
     submittedAt: attempt.submitted_at,
     answers: reviewAnswers,
+  };
+}
+
+/**
+ * Per-question view across every student who has attempted the quiz - the
+ * complement to getQuizResultsAction, which is per-student across all
+ * questions. Useful for spotting a question everyone missed or a common
+ * wrong answer.
+ */
+export async function getQuizQuestionBreakdownAction(
+  quizId: string,
+): Promise<QuizQuestionBreakdownResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error("Not authenticated");
+  }
+
+  const { data: quiz, error: quizError } = await supabase
+    .from("quizzes")
+    .select("id, title")
+    .eq("id", quizId)
+    .eq("teacher_id", user.id)
+    .single();
+
+  if (quizError || !quiz) {
+    throw new Error("Quiz not found");
+  }
+
+  const { data: questionRows, error: questionsError } = await supabase
+    .from("quiz_questions")
+    .select("id, question_text, question_type, points, order_index")
+    .eq("quiz_id", quizId)
+    .order("order_index", { ascending: true });
+
+  if (questionsError) {
+    throw questionsError;
+  }
+
+  const questionIds = (questionRows ?? []).map((question) => question.id);
+
+  const { data: options } =
+    questionIds.length > 0
+      ? await supabase
+          .from("quiz_question_options")
+          .select("id, question_id, option_text, is_correct, order_index")
+          .in("question_id", questionIds)
+          .order("order_index", { ascending: true })
+      : { data: [] as never[] };
+
+  const optionsByQuestion = new Map<
+    string,
+    { id: string; option_text: string; is_correct: boolean }[]
+  >();
+  const optionById = new Map(
+    (options ?? []).map((option) => [option.id, option]),
+  );
+  for (const option of options ?? []) {
+    const list = optionsByQuestion.get(option.question_id) ?? [];
+    list.push(option);
+    optionsByQuestion.set(option.question_id, list);
+  }
+
+  const { data: attempts, error: attemptsError } = await supabase
+    .from("quiz_attempts")
+    .select("id, student_id")
+    .eq("quiz_id", quizId);
+
+  if (attemptsError) {
+    throw attemptsError;
+  }
+
+  const studentIds = [
+    ...new Set((attempts ?? []).map((attempt) => attempt.student_id)),
+  ];
+
+  const { data: students } =
+    studentIds.length > 0
+      ? await supabase
+          .from("students")
+          .select("id, first_name, last_name")
+          .in("id", studentIds)
+      : { data: [] as never[] };
+  const studentById = new Map(
+    (students ?? []).map((student) => [student.id, student]),
+  );
+  const studentIdByAttempt = new Map(
+    (attempts ?? []).map((attempt) => [attempt.id, attempt.student_id]),
+  );
+
+  const attemptIds = (attempts ?? []).map((attempt) => attempt.id);
+  const { data: answers } =
+    attemptIds.length > 0
+      ? await supabase
+          .from("quiz_attempt_answers")
+          .select("attempt_id, question_id, selected_option_id, text_answer, is_correct")
+          .in("attempt_id", attemptIds)
+      : { data: [] as never[] };
+
+  const answersByQuestion = new Map<
+    string,
+    {
+      attempt_id: string;
+      selected_option_id: string | null;
+      text_answer: string | null;
+      is_correct: boolean | null;
+    }[]
+  >();
+  for (const answer of answers ?? []) {
+    const list = answersByQuestion.get(answer.question_id) ?? [];
+    list.push(answer);
+    answersByQuestion.set(answer.question_id, list);
+  }
+
+  const questions: QuizQuestionBreakdown[] = (questionRows ?? []).map(
+    (question) => {
+      const questionOptions = optionsByQuestion.get(question.id) ?? [];
+      const questionAnswers = answersByQuestion.get(question.id) ?? [];
+
+      const optionBreakdown = questionOptions.map((option) => ({
+        optionId: option.id,
+        optionText: option.option_text,
+        isCorrect: option.is_correct,
+        count: questionAnswers.filter(
+          (answer) => answer.selected_option_id === option.id,
+        ).length,
+      }));
+
+      const studentAnswers = questionAnswers
+        .map((answer) => {
+          const studentId = studentIdByAttempt.get(answer.attempt_id);
+          const student = studentId ? studentById.get(studentId) : undefined;
+          const selectedOption = answer.selected_option_id
+            ? optionById.get(answer.selected_option_id)
+            : undefined;
+
+          return {
+            studentId: studentId ?? "",
+            studentName: student
+              ? `${student.first_name} ${student.last_name}`
+              : "Unknown student",
+            selectedOptionText: selectedOption?.option_text ?? null,
+            textAnswer: answer.text_answer,
+            isCorrect: answer.is_correct,
+          };
+        })
+        .sort((a, b) => a.studentName.localeCompare(b.studentName));
+
+      return {
+        questionId: question.id,
+        questionText: question.question_text,
+        questionType: question.question_type as QuizQuestionType,
+        points: question.points,
+        optionBreakdown,
+        studentAnswers,
+      };
+    },
+  );
+
+  return {
+    quizId: quiz.id,
+    quizTitle: quiz.title,
+    questions,
   };
 }

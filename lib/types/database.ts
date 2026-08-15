@@ -254,6 +254,39 @@ export interface QuizResults {
   results: QuizResultRow[];
 }
 
+// Teacher-side: per-question breakdown across every student who has
+// attempted the quiz - the complement to QuizResults, which is per-student
+// across all questions.
+export interface QuizQuestionOptionBreakdown {
+  optionId: string;
+  optionText: string;
+  isCorrect: boolean;
+  count: number;
+}
+
+export interface QuizQuestionStudentAnswer {
+  studentId: string;
+  studentName: string;
+  selectedOptionText: string | null;
+  textAnswer: string | null;
+  isCorrect: boolean | null;
+}
+
+export interface QuizQuestionBreakdown {
+  questionId: string;
+  questionText: string;
+  questionType: QuizQuestionType;
+  points: number;
+  optionBreakdown: QuizQuestionOptionBreakdown[];
+  studentAnswers: QuizQuestionStudentAnswer[];
+}
+
+export interface QuizQuestionBreakdownResult {
+  quizId: string;
+  quizTitle: string;
+  questions: QuizQuestionBreakdown[];
+}
+
 // Dashboard data types
 export interface StudentDashboardData {
   student: {

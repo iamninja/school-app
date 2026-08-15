@@ -2,13 +2,14 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { CopyIcon, PencilIcon, UsersIcon } from "lucide-react";
+import { BarChart3Icon, CopyIcon, PencilIcon, UsersIcon } from "lucide-react";
 
 import {
   assignQuizToClassAction,
   createQuizAction,
   duplicateQuizAction,
   getQuizForEditingAction,
+  getQuizQuestionBreakdownAction,
   getQuizResultsAction,
   getStudentQuizAttemptAction,
   unassignQuizFromClassAction,
@@ -43,6 +44,7 @@ import {
 } from "@/components/quiz-question-editor";
 import type {
   QuizAttemptReview,
+  QuizQuestionBreakdownResult,
   QuizResults,
   TeacherQuizListItem,
 } from "@/lib/types/database";
@@ -91,6 +93,13 @@ export function TeacherQuizBuilder({
   const [duplicatingQuizId, setDuplicatingQuizId] = React.useState<
     string | null
   >(null);
+
+  const [breakdownQuizId, setBreakdownQuizId] = React.useState<string | null>(
+    null,
+  );
+  const [breakdown, setBreakdown] =
+    React.useState<QuizQuestionBreakdownResult | null>(null);
+  const [isLoadingBreakdown, setIsLoadingBreakdown] = React.useState(false);
 
   const resetForm = () => {
     setTitle("");
@@ -289,6 +298,22 @@ export function TeacherQuizBuilder({
     }
   };
 
+  const handleViewBreakdown = async (quizId: string) => {
+    setBreakdownQuizId(quizId);
+    setIsLoadingBreakdown(true);
+    setBreakdown(null);
+    try {
+      const data = await getQuizQuestionBreakdownAction(quizId);
+      setBreakdown(data);
+    } catch (error: unknown) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to load breakdown",
+      );
+    } finally {
+      setIsLoadingBreakdown(false);
+    }
+  };
+
   const handleDuplicate = async (quizId: string) => {
     setDuplicatingQuizId(quizId);
     try {
@@ -335,6 +360,129 @@ export function TeacherQuizBuilder({
                 <QuizReviewAnswers answers={studentReview.answers} />
               </>
             ) : null}
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (breakdownQuizId) {
+    return (
+      <div className="space-y-4">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            setBreakdownQuizId(null);
+            setBreakdown(null);
+          }}
+        >
+          Back to quizzes
+        </Button>
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              {breakdown?.quizTitle ?? "Loading..."} — Question breakdown
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {isLoadingBreakdown ? (
+              <p className="text-sm text-muted-foreground">
+                Loading breakdown...
+              </p>
+            ) : breakdown && breakdown.questions.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                This quiz has no questions yet.
+              </p>
+            ) : (
+              breakdown?.questions.map((question, index) => {
+                const respondents = question.studentAnswers.length;
+                return (
+                  <div
+                    key={question.questionId}
+                    className="space-y-3 rounded-lg border p-3"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-sm font-semibold">
+                        {index + 1}. {question.questionText}
+                      </p>
+                      <Badge variant="outline">
+                        {question.points} pt{question.points === 1 ? "" : "s"}
+                      </Badge>
+                    </div>
+
+                    {respondents === 0 ? (
+                      <p className="text-xs text-muted-foreground">
+                        No submissions yet.
+                      </p>
+                    ) : (
+                      <>
+                        {question.optionBreakdown.length > 0 && (
+                          <div className="space-y-1">
+                            {question.optionBreakdown.map((option) => (
+                              <div
+                                key={option.optionId}
+                                className={
+                                  "flex items-center justify-between rounded-md border px-3 py-1.5 text-sm " +
+                                  (option.isCorrect
+                                    ? "border-green-200 bg-green-50 text-green-950 dark:border-green-900 dark:bg-green-950 dark:text-green-50"
+                                    : "")
+                                }
+                              >
+                                <span>{option.optionText}</span>
+                                <Badge
+                                  variant={
+                                    option.isCorrect ? "default" : "secondary"
+                                  }
+                                >
+                                  {option.count} / {respondents}
+                                </Badge>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="space-y-1">
+                          <p className="text-xs font-medium text-muted-foreground">
+                            Student answers
+                          </p>
+                          {question.studentAnswers.map((answer) => (
+                            <div
+                              key={answer.studentId}
+                              className="flex items-center justify-between rounded-md border px-3 py-1.5 text-sm"
+                            >
+                              <span>{answer.studentName}</span>
+                              <span className="flex items-center gap-2">
+                                <span className="text-muted-foreground">
+                                  {answer.selectedOptionText ??
+                                    answer.textAnswer ??
+                                    "(no answer)"}
+                                </span>
+                                {answer.isCorrect === true && (
+                                  <Badge>Correct</Badge>
+                                )}
+                                {answer.isCorrect === false && (
+                                  <Badge variant="destructive">
+                                    Incorrect
+                                  </Badge>
+                                )}
+                                {answer.isCorrect === null &&
+                                  question.questionType ===
+                                    "short_answer" && (
+                                    <Badge variant="outline">
+                                      Awaiting review
+                                    </Badge>
+                                  )}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })
+            )}
           </CardContent>
         </Card>
       </div>
@@ -537,6 +685,15 @@ export function TeacherQuizBuilder({
                       onClick={() => openEditDialog(quiz.id)}
                     >
                       <PencilIcon className="mr-1 h-3.5 w-3.5" /> Edit
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleViewBreakdown(quiz.id)}
+                    >
+                      <BarChart3Icon className="mr-1 h-3.5 w-3.5" /> Question
+                      breakdown
                     </Button>
                     <Button
                       type="button"
