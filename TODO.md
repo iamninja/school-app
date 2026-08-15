@@ -28,6 +28,7 @@ Last reviewed: 2026-08-14 (post 1-2 month gap re-orientation)
 - [ ] Quiz editing, reuse, and reassignment — teacher should be able to edit a saved quiz and re-assign it to the same or a different class rather than only ever creating new ones.
 - [ ] Teacher should be able to unassign an already-assigned quiz from a class.
 - [ ] Timer support for quizzes (time limit, auto-submit when it runs out).
+- [ ] Per-question view for the teacher — see every student's answer to a single question across the whole class, not just per-student across all questions (which is what `getStudentQuizAttemptAction` builds today). Useful for spotting a question everyone missed or a common wrong answer.
 
 ## Nice-to-haves
 
