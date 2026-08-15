@@ -127,6 +127,98 @@ describe("TeacherQuizBuilder", () => {
     });
   });
 
+  it("creates a quiz with a true/false question", async () => {
+    const user = userEvent.setup();
+    const createQuizAction = vi.mocked(quizActions.createQuizAction);
+    createQuizAction.mockResolvedValue({
+      id: "quiz-2",
+      classId: "class-1",
+      className: "Algebra II",
+      title: "True/False Quiz",
+      description: null,
+      questionCount: 1,
+      createdAt: "2026-01-01T00:00:00Z",
+    });
+
+    render(<TeacherQuizBuilder classes={classes} initialQuizzes={[]} />);
+
+    await user.type(screen.getByLabelText(/title/i), "True/False Quiz");
+    await user.type(
+      screen.getByPlaceholderText(/question text/i),
+      "The sky is green",
+    );
+    await user.selectOptions(
+      screen.getByLabelText(/question type/i),
+      "true_false",
+    );
+    await user.click(screen.getByRole("radio", { name: "False" }));
+    await user.click(screen.getByRole("button", { name: /create quiz/i }));
+
+    await waitFor(() => {
+      expect(createQuizAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          questions: [
+            expect.objectContaining({
+              questionText: "The sky is green",
+              questionType: "true_false",
+              options: [
+                { optionText: "True", isCorrect: false },
+                { optionText: "False", isCorrect: true },
+              ],
+            }),
+          ],
+        }),
+      );
+    });
+  });
+
+  it("creates a quiz with a short answer question", async () => {
+    const user = userEvent.setup();
+    const createQuizAction = vi.mocked(quizActions.createQuizAction);
+    createQuizAction.mockResolvedValue({
+      id: "quiz-3",
+      classId: "class-1",
+      className: "Algebra II",
+      title: "Short Answer Quiz",
+      description: null,
+      questionCount: 1,
+      createdAt: "2026-01-01T00:00:00Z",
+    });
+
+    render(<TeacherQuizBuilder classes={classes} initialQuizzes={[]} />);
+
+    await user.type(screen.getByLabelText(/title/i), "Short Answer Quiz");
+    await user.type(
+      screen.getByPlaceholderText(/question text/i),
+      "Explain your reasoning",
+    );
+    await user.selectOptions(
+      screen.getByLabelText(/question type/i),
+      "short_answer",
+    );
+
+    expect(
+      screen.getByText(/students will type a free-text answer/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/option 1/i)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /create quiz/i }));
+
+    await waitFor(() => {
+      expect(createQuizAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          questions: [
+            expect.objectContaining({
+              questionText: "Explain your reasoning",
+              questionType: "short_answer",
+              options: [],
+            }),
+          ],
+        }),
+      );
+    });
+  });
+
   it("shows per-student results when a quiz is selected", async () => {
     const user = userEvent.setup();
     const getQuizResultsAction = vi.mocked(quizActions.getQuizResultsAction);

@@ -152,4 +152,45 @@ describe("ParentDashboard", () => {
     expect(signOut).toHaveBeenCalled();
     expect(push).toHaveBeenCalledWith("/");
   });
+
+  it("shows a message when there are no quizzes assigned", () => {
+    render(<ParentDashboard {...baseProps} />);
+
+    expect(screen.getByText(/no quizzes assigned yet/i)).toBeInTheDocument();
+  });
+
+  it("lists quizzes with scores and a not-taken-yet state", () => {
+    render(
+      <ParentDashboard
+        {...baseProps}
+        quizzes={[
+          {
+            id: "quiz-1",
+            title: "Chapter 3 Quiz",
+            classId: "class-1",
+            className: "Algebra II",
+            completed: true,
+            score: 4,
+            maxScore: 5,
+            submittedAt: "2026-01-02T00:00:00Z",
+          },
+          {
+            id: "quiz-2",
+            title: "Pop Quiz",
+            classId: "class-2",
+            className: "Biology",
+            completed: false,
+            score: null,
+            maxScore: 3,
+            submittedAt: null,
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("Chapter 3 Quiz")).toBeInTheDocument();
+    expect(screen.getByText("4 / 5")).toBeInTheDocument();
+    expect(screen.getByText("Pop Quiz")).toBeInTheDocument();
+    expect(screen.getByText(/not taken yet/i)).toBeInTheDocument();
+  });
 });

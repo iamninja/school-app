@@ -229,4 +229,123 @@ describe("StudentQuizPanel", () => {
       expect(screen.getByText("1 / 1")).toBeInTheDocument();
     });
   });
+
+  it("renders a true/false question with True/False options when taking a quiz", async () => {
+    const user = userEvent.setup();
+    const getQuizForTakingAction = vi.mocked(
+      quizActions.getQuizForTakingAction,
+    );
+    getQuizForTakingAction.mockResolvedValue({
+      id: "quiz-1",
+      title: "Chapter 3 Quiz",
+      description: null,
+      questions: [
+        {
+          id: "q1",
+          questionText: "The sky is green",
+          questionType: "true_false",
+          orderIndex: 0,
+          points: 1,
+          options: [
+            { id: "opt-true", optionText: "True", orderIndex: 0 },
+            { id: "opt-false", optionText: "False", orderIndex: 1 },
+          ],
+        },
+      ],
+    });
+
+    render(<StudentQuizPanel quizzes={quizzes} />);
+    await user.click(screen.getByRole("button", { name: /take quiz/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/the sky is green/i)).toBeInTheDocument();
+      expect(screen.getByRole("radio", { name: "True" })).toBeInTheDocument();
+      expect(
+        screen.getByRole("radio", { name: "False" }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("renders a short answer question with a text input when taking a quiz", async () => {
+    const user = userEvent.setup();
+    const getQuizForTakingAction = vi.mocked(
+      quizActions.getQuizForTakingAction,
+    );
+    getQuizForTakingAction.mockResolvedValue({
+      id: "quiz-1",
+      title: "Chapter 3 Quiz",
+      description: null,
+      questions: [
+        {
+          id: "q1",
+          questionText: "Explain your reasoning",
+          questionType: "short_answer",
+          orderIndex: 0,
+          points: 1,
+          options: [],
+        },
+      ],
+    });
+
+    render(<StudentQuizPanel quizzes={quizzes} />);
+    await user.click(screen.getByRole("button", { name: /take quiz/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/explain your reasoning/i)).toBeInTheDocument();
+      expect(
+        screen.getByPlaceholderText(/your answer/i),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("radio")).not.toBeInTheDocument();
+  });
+
+  it("shows an awaiting-review badge for short-answer questions in the review", async () => {
+    const user = userEvent.setup();
+    const getQuizReviewAction = vi.mocked(quizActions.getQuizReviewAction);
+    getQuizReviewAction.mockResolvedValue({
+      attemptId: "attempt-1",
+      quizId: "quiz-1",
+      quizTitle: "Chapter 3 Quiz",
+      score: 0,
+      maxScore: 1,
+      submittedAt: "2026-01-02T00:00:00Z",
+      answers: [
+        {
+          questionId: "q1",
+          questionText: "Explain your reasoning",
+          questionType: "short_answer",
+          selectedOptionId: null,
+          selectedOptionText: null,
+          textAnswer: "Because the numbers add up",
+          correctOptionId: null,
+          correctOptionText: null,
+          isCorrect: null,
+          pointsAwarded: null,
+          pointsPossible: 1,
+        },
+      ],
+    });
+
+    render(
+      <StudentQuizPanel
+        quizzes={[
+          {
+            ...quizzes[0],
+            completed: true,
+            score: 0,
+            submittedAt: "2026-01-02T00:00:00Z",
+          },
+        ]}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /0 \/ 1.*review/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/because the numbers add up/i),
+      ).toBeInTheDocument();
+      expect(screen.getByText(/awaiting review/i)).toBeInTheDocument();
+    });
+  });
 });

@@ -505,6 +505,7 @@ export function TeacherQuizBuilder({
                   />
                   <div className="grid grid-cols-2 gap-2">
                     <select
+                      aria-label="Question type"
                       value={question.questionType}
                       onChange={(event) => {
                         const nextType = event.target
