@@ -7,6 +7,8 @@
     "start": "next start",
     "lint": "eslint .",
     "test": "vitest",
+    "test:rls": "vitest run --config vitest.rls.config.ts tests/rls/parent-family-isolation.test.ts",
+    "test:seed": "vitest run --config vitest.rls.config.ts tests/rls/local-stack-reset.test.ts",
     "db:pull": "supabase db pull",
     "db:push": "supabase db push",
     "db:diff": "supabase db diff",

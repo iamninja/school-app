@@ -1,6 +1,6 @@
 import path from "path";
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vitest/config";
+import { defaultExclude, defineConfig } from "vitest/config";
 
 export default defineConfig({
   plugins: [react()],
@@ -9,6 +9,11 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: "./vitest.setup.ts",
     testTimeout: 15000,
+    // tests/rls/** needs a running local Supabase stack (`supabase start`)
+    // and is run separately via `npm run test:rls` (see vitest.rls.config.ts)
+    // - excluded here so the default suite never depends on Docker/local
+    // services being up.
+    exclude: [...defaultExclude, "tests/rls/**"],
     // isolate: false lets files sharing a worker reuse the same jsdom
     // environment and module graph (React/Radix/KaTeX etc.) instead of
     // reinitializing per file - measured as the dominant cost over actual
