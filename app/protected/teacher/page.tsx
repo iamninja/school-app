@@ -13,6 +13,16 @@ export default async function TeacherPage() {
     redirect("/auth/teacher-login");
   }
 
+  const { data: teacherRow } = await supabase
+    .from("teachers")
+    .select("user_id")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (!teacherRow) {
+    redirect("/");
+  }
+
   const [
     { data: classes, error: classesError },
     { data: scheduleSlots, error: scheduleError },

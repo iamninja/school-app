@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { requireTeacher } from "@/lib/auth/require-teacher";
 
 export async function createClassAction(data: {
   name: string;
@@ -14,6 +15,8 @@ export async function createClassAction(data: {
   if (!user) {
     throw new Error("Not authenticated");
   }
+
+  await requireTeacher(supabase, user.id);
 
   const { data: row, error } = await supabase
     .from("classes")
@@ -49,6 +52,8 @@ export async function setScheduleSlotAction(data: {
   if (!user) {
     throw new Error("Not authenticated");
   }
+
+  await requireTeacher(supabase, user.id);
 
   if (!data.classId) {
     const { error } = await supabase
@@ -111,6 +116,8 @@ export async function createStudentAction(data: {
   if (!user) {
     throw new Error("Not authenticated");
   }
+
+  await requireTeacher(supabase, user.id);
 
   const tuitionAmount = data.tuitionAmount.trim()
     ? Number.parseFloat(data.tuitionAmount)
@@ -208,6 +215,8 @@ export async function getAttendanceAction(data: {
     throw new Error("Not authenticated");
   }
 
+  await requireTeacher(supabase, user.id);
+
   const { data: rows, error } = await supabase
     .from("attendance_records")
     .select("student_id, status")
@@ -236,6 +245,8 @@ export async function setAttendanceAction(data: {
   if (!user) {
     throw new Error("Not authenticated");
   }
+
+  await requireTeacher(supabase, user.id);
 
   if (!data.status) {
     const { error } = await supabase

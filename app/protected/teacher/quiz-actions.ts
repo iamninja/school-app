@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { requireTeacher } from "@/lib/auth/require-teacher";
 import type {
   CreateQuizInput,
   QuizForEditing,
@@ -145,6 +146,8 @@ export async function createQuizAction(
     throw new Error("Not authenticated");
   }
 
+  await requireTeacher(supabase, user.id);
+
   const { data: quiz, error: quizError } = await supabase
     .from("quizzes")
     .insert({
@@ -193,6 +196,8 @@ export async function assignQuizToClassAction(
     throw new Error("Not authenticated");
   }
 
+  await requireTeacher(supabase, user.id);
+
   await requireOwnedQuiz(supabase, quizId, user.id);
 
   const { error } = await supabase
@@ -220,6 +225,8 @@ export async function unassignQuizFromClassAction(
     throw new Error("Not authenticated");
   }
 
+  await requireTeacher(supabase, user.id);
+
   await requireOwnedQuiz(supabase, quizId, user.id);
 
   const { error } = await supabase
@@ -244,6 +251,8 @@ export async function getQuizForEditingAction(
   if (!user) {
     throw new Error("Not authenticated");
   }
+
+  await requireTeacher(supabase, user.id);
 
   const quiz = await requireOwnedQuiz(supabase, quizId, user.id);
 
@@ -317,6 +326,8 @@ export async function updateQuizAction(
     throw new Error("Not authenticated");
   }
 
+  await requireTeacher(supabase, user.id);
+
   const quiz = await requireOwnedQuiz(supabase, data.quizId, user.id);
 
   const { data: updatedQuiz, error: updateError } = await supabase
@@ -369,6 +380,8 @@ export async function duplicateQuizAction(
     throw new Error("Not authenticated");
   }
 
+  await requireTeacher(supabase, user.id);
+
   const source = await getQuizForEditingAction(quizId);
 
   const { data: newQuiz, error: quizError } = await supabase
@@ -402,6 +415,8 @@ export async function getQuizResultsAction(
   if (!user) {
     throw new Error("Not authenticated");
   }
+
+  await requireTeacher(supabase, user.id);
 
   const { data: quiz, error: quizError } = await supabase
     .from("quizzes")
@@ -547,6 +562,8 @@ export async function getStudentQuizAttemptAction(
     throw new Error("Not authenticated");
   }
 
+  await requireTeacher(supabase, user.id);
+
   const { data: quiz, error: quizError } = await supabase
     .from("quizzes")
     .select("id, title")
@@ -667,6 +684,8 @@ export async function getQuizQuestionBreakdownAction(
   if (!user) {
     throw new Error("Not authenticated");
   }
+
+  await requireTeacher(supabase, user.id);
 
   const { data: quiz, error: quizError } = await supabase
     .from("quizzes")

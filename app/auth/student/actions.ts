@@ -1,7 +1,12 @@
 "use server";
 
-import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
+import {
+  createRoleAuthUser,
+  lookupRoleEmail,
+  signInAsRole,
+} from "@/lib/auth/role-account-actions";
 import type {
   StudentEmailCheckResult,
   StudentDashboardData,
@@ -19,60 +24,23 @@ import type {
 export async function checkStudentEmailAction(
   email: string,
 ): Promise<StudentEmailCheckResult> {
-  // Verify service role key is configured
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    console.error("SUPABASE_SERVICE_ROLE_KEY environment variable is not set");
-    return {
-      exists: false,
-      error: "Server configuration error. Please contact support.",
-    };
-  }
-
-  // Use service role client to bypass RLS - user isn't authenticated yet
-  const supabase = createServiceRoleClient();
-
-  // Normalize email (trim whitespace and lowercase)
-  const normalizedEmail = email.trim().toLowerCase();
-
-  console.log("Checking email (normalized):", normalizedEmail);
-
-  const { data: student, error } = await supabase
-    .from("students")
-    .select("id, user_id, first_name, last_name, email")
-    .ilike("email", normalizedEmail)
-    .single();
-
-  if (error) {
-    console.error("Database error checking student email:", error);
-    return {
-      exists: false,
-      error: "No student found with this email. Please contact your teacher.",
-    };
-  }
-
-  if (!student) {
-    console.log("No student found with email:", normalizedEmail);
-    return {
-      exists: false,
-      error: "No student found with this email. Please contact your teacher.",
-    };
-  }
-
-  if (student.user_id) {
-    console.log("Email already has user_id:", student.user_id);
-    return {
-      exists: false,
-      error: "This email is already registered. Please login instead.",
-    };
-  }
-
-  console.log("Student found:", student.first_name, student.last_name);
-  return {
-    exists: true,
-    studentId: student.id,
-    firstName: student.first_name,
-    lastName: student.last_name,
-  };
+  return lookupRoleEmail(email, {
+    role: "student",
+    table: "students",
+    columns: "id, user_id, first_name, last_name, email",
+    notFoundError:
+      "No student found with this email. Please contact your teacher.",
+    toSuccess: (row: {
+      id: string;
+      user_id: string | null;
+      first_name: string;
+      last_name: string;
+    }) => ({
+      studentId: row.id,
+      firstName: row.first_name,
+      lastName: row.last_name,
+    }),
+  });
 }
 
 /**
@@ -82,47 +50,18 @@ export async function signUpStudentAction(data: {
   email: string;
   password: string;
 }): Promise<ActionResult> {
-  const supabaseAdmin = createServiceRoleClient();
-
-  // First verify the email exists in students table and is not already registered
   const emailCheck = await checkStudentEmailAction(data.email);
   if (!emailCheck.exists) {
     return { error: emailCheck.error };
   }
 
-  // Create the auth user with email already confirmed (bypasses confirmation email)
-  const { data: authData, error: signUpError } =
-    await supabaseAdmin.auth.admin.createUser({
-      email: data.email,
-      password: data.password,
-      email_confirm: true, // Auto-confirm email
-      user_metadata: {
-        role: "student",
-      },
-    });
-
-  if (signUpError) {
-    return { error: signUpError.message };
-  }
-
-  if (!authData.user) {
-    return { error: "Failed to create user account" };
-  }
-
-  // Link the auth user to the student record using admin client (bypasses RLS)
-  const { error: updateError } = await supabaseAdmin
-    .from("students")
-    .update({ user_id: authData.user.id })
-    .eq("email", data.email)
-    .eq("id", emailCheck.studentId);
-
-  if (updateError) {
-    // If linking fails, delete the auth user
-    await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
-    return { error: "Failed to link student account" };
-  }
-
-  return { success: true };
+  return createRoleAuthUser({
+    role: "student",
+    table: "students",
+    recordId: emailCheck.studentId,
+    email: data.email,
+    password: data.password,
+  });
 }
 
 /**
@@ -132,30 +71,14 @@ export async function signInStudentAction(data: {
   email: string;
   password: string;
 }): Promise<ActionResult | never> {
-  const supabase = await createClient();
-
-  const { error } = await supabase.auth.signInWithPassword({
+  return signInAsRole({
+    role: "student",
+    table: "students",
     email: data.email,
     password: data.password,
+    useServiceRoleForVerification: false,
+    redirectTo: "/student-dashboard",
   });
-
-  if (error) {
-    return { error: error.message };
-  }
-
-  // Verify this user is linked to a student
-  const { data: student } = await supabase
-    .from("students")
-    .select("id")
-    .eq("user_id", (await supabase.auth.getUser()).data.user?.id)
-    .single();
-
-  if (!student) {
-    await supabase.auth.signOut();
-    return { error: "This account is not registered as a student" };
-  }
-
-  return redirect("/student-dashboard");
 }
 
 /**

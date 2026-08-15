@@ -223,16 +223,6 @@ export function ParentSignUpForm({
                             → {diagnostic.suggestion}
                           </p>
                         )}
-                        {diagnostic.parentRecord && (
-                          <details className="text-xs">
-                            <summary className="cursor-pointer">
-                              View details
-                            </summary>
-                            <pre className="mt-2 p-2 bg-background rounded overflow-auto">
-                              {JSON.stringify(diagnostic.parentRecord, null, 2)}
-                            </pre>
-                          </details>
-                        )}
                       </div>
                     )}
                   </div>

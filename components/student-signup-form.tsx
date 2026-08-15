@@ -18,10 +18,6 @@ import {
   checkStudentEmailAction,
   signUpStudentAction,
 } from "@/app/auth/student/actions";
-import {
-  diagnosticCheckAction,
-  type DiagnosticResult,
-} from "@/app/auth/student/diagnostic";
 
 export function StudentSignUpForm({
   className,
@@ -35,9 +31,6 @@ export function StudentSignUpForm({
   const [isCheckingEmail, setIsCheckingEmail] = useState(false);
   const [emailVerified, setEmailVerified] = useState(false);
   const [studentName, setStudentName] = useState("");
-  const [diagnosticInfo, setDiagnosticInfo] = useState<DiagnosticResult | null>(
-    null,
-  );
   const router = useRouter();
 
   const handleCheckEmail = async () => {
@@ -69,12 +62,6 @@ export function StudentSignUpForm({
     } finally {
       setIsCheckingEmail(false);
     }
-  };
-
-  const handleDiagnostic = async () => {
-    const result = await diagnosticCheckAction();
-    console.log("Diagnostic result:", result);
-    setDiagnosticInfo(result);
   };
 
   const handleSignUp = async (e: React.FormEvent) => {
@@ -192,23 +179,6 @@ export function StudentSignUpForm({
                   {isLoading ? "Creating account..." : "Create Account"}
                 </Button>
               )}
-
-              {/* Diagnostic section - remove after debugging */}
-              <div className="border-t pt-4">
-                <Button
-                  type="button"
-                  onClick={handleDiagnostic}
-                  variant="outline"
-                  className="w-full"
-                >
-                  Debug: Check Database
-                </Button>
-                {diagnosticInfo && (
-                  <div className="mt-2 p-3 bg-muted rounded text-xs font-mono overflow-auto max-h-48">
-                    <pre>{JSON.stringify(diagnosticInfo, null, 2)}</pre>
-                  </div>
-                )}
-              </div>
             </div>
             <div className="mt-4 text-center text-sm">
               Already have an account?{" "}
