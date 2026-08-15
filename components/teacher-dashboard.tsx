@@ -19,8 +19,10 @@ import {
   createClassAction,
   createStudentAction,
   getAttendanceAction,
+  restoreStudentAction,
   setAttendanceAction,
   setScheduleSlotAction,
+  withdrawStudentAction,
 } from "@/app/protected/teacher/actions";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -35,6 +37,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TeacherQuizBuilder } from "@/components/teacher-quiz-builder";
 import type { TeacherQuizListItem } from "@/lib/types/database";
@@ -68,6 +71,8 @@ type StudentItem = {
   lastName: string;
   gradeLevel: string;
   email: string;
+  familyId?: string;
+  withdrawnAt?: string | null;
   parentName: string;
   parentEmail: string;
   parentPhone: string;
@@ -77,6 +82,13 @@ type StudentItem = {
   tuitionAmount: string;
   tuitionStatus: "current" | "past-due" | "scholarship";
   assignedClassIds: string[];
+};
+
+type FamilyItem = {
+  id: string;
+  parentNames: string[];
+  parentEmails: string[];
+  studentNames: string[];
 };
 
 type AttendanceRecord = {
@@ -98,6 +110,7 @@ type TeacherDashboardProps = {
     classId: string;
   }>;
   initialStudents: StudentItem[];
+  initialFamilies?: FamilyItem[];
   initialAttendance: AttendanceRecord[];
   initialQuizzes?: TeacherQuizListItem[];
   loadErrors?: string[];
@@ -272,6 +285,7 @@ export function TeacherDashboard({
   initialClasses,
   initialSlots,
   initialStudents,
+  initialFamilies = [],
   initialAttendance,
   initialQuizzes = [],
   loadErrors = [],
@@ -305,6 +319,8 @@ export function TeacherDashboard({
     lastName: "",
     gradeLevel: "",
     email: "",
+    familyMode: "new" as "new" | "existing",
+    familyId: "",
     parentName: "",
     parentEmail: "",
     parentPhone: "",
@@ -317,6 +333,9 @@ export function TeacherDashboard({
   });
   const [students, setStudents] =
     React.useState<StudentItem[]>(initialStudents);
+  const [families, setFamilies] =
+    React.useState<FamilyItem[]>(initialFamilies);
+  const [showWithdrawn, setShowWithdrawn] = React.useState(false);
   const [showSecondParent, setShowSecondParent] = React.useState(false);
   const [studentFormErrors, setStudentFormErrors] = React.useState<
     Record<string, boolean>
@@ -484,17 +503,25 @@ export function TeacherDashboard({
       missingFields.push("Email");
       errors.email = true;
     }
-    if (!studentForm.parentName.trim()) {
-      missingFields.push("Parent name");
-      errors.parentName = true;
-    }
-    if (!studentForm.parentEmail.trim()) {
-      missingFields.push("Parent email");
-      errors.parentEmail = true;
-    }
-    if (!studentForm.parentPhone.trim()) {
-      missingFields.push("Parent phone");
-      errors.parentPhone = true;
+
+    if (studentForm.familyMode === "existing") {
+      if (!studentForm.familyId) {
+        missingFields.push("Family");
+        errors.familyId = true;
+      }
+    } else {
+      if (!studentForm.parentName.trim()) {
+        missingFields.push("Parent name");
+        errors.parentName = true;
+      }
+      if (!studentForm.parentEmail.trim()) {
+        missingFields.push("Parent email");
+        errors.parentEmail = true;
+      }
+      if (!studentForm.parentPhone.trim()) {
+        missingFields.push("Parent phone");
+        errors.parentPhone = true;
+      }
     }
 
     if (missingFields.length > 0) {
@@ -504,27 +531,82 @@ export function TeacherDashboard({
       });
       return;
     }
-    const created = await createStudentAction({
-      firstName: studentForm.firstName.trim(),
-      lastName: studentForm.lastName.trim(),
-      gradeLevel: studentForm.gradeLevel.trim(),
-      email: studentForm.email.trim(),
-      parentName: studentForm.parentName.trim(),
-      parentEmail: studentForm.parentEmail.trim(),
-      parentPhone: studentForm.parentPhone.trim(),
-      parentTwoName: studentForm.parentTwoName.trim(),
-      parentTwoEmail: studentForm.parentTwoEmail.trim(),
-      parentTwoPhone: studentForm.parentTwoPhone.trim(),
-      tuitionAmount: studentForm.tuitionAmount.trim(),
-      tuitionStatus: studentForm.tuitionStatus,
-      assignedClassIds: studentForm.assignedClassIds,
-    });
+
+    let created;
+    try {
+      created = await createStudentAction(
+        studentForm.familyMode === "existing"
+          ? {
+              familyMode: "existing",
+              familyId: studentForm.familyId,
+              firstName: studentForm.firstName.trim(),
+              lastName: studentForm.lastName.trim(),
+              gradeLevel: studentForm.gradeLevel.trim(),
+              email: studentForm.email.trim(),
+              tuitionAmount: studentForm.tuitionAmount.trim(),
+              tuitionStatus: studentForm.tuitionStatus,
+              assignedClassIds: studentForm.assignedClassIds,
+            }
+          : {
+              familyMode: "new",
+              firstName: studentForm.firstName.trim(),
+              lastName: studentForm.lastName.trim(),
+              gradeLevel: studentForm.gradeLevel.trim(),
+              email: studentForm.email.trim(),
+              parentName: studentForm.parentName.trim(),
+              parentEmail: studentForm.parentEmail.trim(),
+              parentPhone: studentForm.parentPhone.trim(),
+              parentTwoName: studentForm.parentTwoName.trim(),
+              parentTwoEmail: studentForm.parentTwoEmail.trim(),
+              parentTwoPhone: studentForm.parentTwoPhone.trim(),
+              tuitionAmount: studentForm.tuitionAmount.trim(),
+              tuitionStatus: studentForm.tuitionStatus,
+              assignedClassIds: studentForm.assignedClassIds,
+            },
+      );
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to create student",
+      );
+      return;
+    }
+
     setStudents((prev) => [created, ...prev]);
+    setFamilies((prev) => {
+      if (studentForm.familyMode === "existing") {
+        return prev.map((family) =>
+          family.id === created.familyId
+            ? {
+                ...family,
+                studentNames: [
+                  ...family.studentNames,
+                  `${created.firstName} ${created.lastName}`,
+                ],
+              }
+            : family,
+        );
+      }
+      return [
+        ...prev,
+        {
+          id: created.familyId,
+          parentNames: [created.parentName, created.parentTwoName].filter(
+            (name): name is string => Boolean(name),
+          ),
+          parentEmails: [created.parentEmail, created.parentTwoEmail].filter(
+            (email): email is string => Boolean(email),
+          ),
+          studentNames: [`${created.firstName} ${created.lastName}`],
+        },
+      ];
+    });
     setStudentForm({
       firstName: "",
       lastName: "",
       gradeLevel: "",
       email: "",
+      familyMode: "new",
+      familyId: "",
       parentName: "",
       parentEmail: "",
       parentPhone: "",
@@ -539,12 +621,36 @@ export function TeacherDashboard({
     setShowSecondParent(false);
   };
 
+  const handleWithdrawStudent = async (studentId: string) => {
+    const result = await withdrawStudentAction(studentId);
+    setStudents((prev) =>
+      prev.map((student) =>
+        student.id === studentId
+          ? { ...student, withdrawnAt: result.withdrawnAt }
+          : student,
+      ),
+    );
+  };
+
+  const handleRestoreStudent = async (studentId: string) => {
+    const result = await restoreStudentAction(studentId);
+    setStudents((prev) =>
+      prev.map((student) =>
+        student.id === studentId
+          ? { ...student, withdrawnAt: result.withdrawnAt }
+          : student,
+      ),
+    );
+  };
+
   const attendanceRoster = React.useMemo(() => {
     if (!attendanceClassId) {
       return [];
     }
-    return students.filter((student) =>
-      student.assignedClassIds.includes(attendanceClassId),
+    return students.filter(
+      (student) =>
+        !student.withdrawnAt &&
+        student.assignedClassIds.includes(attendanceClassId),
     );
   }, [attendanceClassId, students]);
 
@@ -831,20 +937,40 @@ export function TeacherDashboard({
                   <Card>
                     <CardHeader className="flex flex-row items-center justify-between gap-4">
                       <div>
-                        <CardTitle>
+                        <CardTitle className="flex items-center gap-2">
                           {student.firstName} {student.lastName}
+                          {student.withdrawnAt ? (
+                            <Badge variant="destructive">Withdrawn</Badge>
+                          ) : null}
                         </CardTitle>
                         <div className="text-sm text-muted-foreground">
                           Grade {student.gradeLevel || "N/A"} •{" "}
                           {student.email || "No email"}
                         </div>
                       </div>
-                      <Button
-                        variant="outline"
-                        onClick={() => setSelectedStudentId(null)}
-                      >
-                        Back to students
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        {student.withdrawnAt ? (
+                          <Button
+                            variant="outline"
+                            onClick={() => handleRestoreStudent(student.id)}
+                          >
+                            Restore
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            onClick={() => handleWithdrawStudent(student.id)}
+                          >
+                            Withdraw
+                          </Button>
+                        )}
+                        <Button
+                          variant="outline"
+                          onClick={() => setSelectedStudentId(null)}
+                        >
+                          Back to students
+                        </Button>
+                      </div>
                     </CardHeader>
                     <CardContent className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
                       <div className="space-y-4">
@@ -1067,8 +1193,69 @@ export function TeacherDashboard({
                       </div>
                     </div>
 
-                    <div className="rounded-lg border p-4">
-                      <div className="text-sm font-medium">Parent contact</div>
+                    <div className="rounded-lg border p-4 space-y-4">
+                      <div className="text-sm font-medium">Family</div>
+                      <RadioGroup
+                        value={studentForm.familyMode}
+                        onValueChange={(value) =>
+                          handleStudentChange(
+                            "familyMode",
+                            value as "new" | "existing",
+                          )
+                        }
+                        className="flex gap-4"
+                      >
+                        <label className="flex items-center gap-2 text-sm">
+                          <RadioGroupItem id="family-mode-new" value="new" />
+                          New family
+                        </label>
+                        <label className="flex items-center gap-2 text-sm">
+                          <RadioGroupItem
+                            id="family-mode-existing"
+                            value="existing"
+                          />
+                          Existing family
+                        </label>
+                      </RadioGroup>
+
+                      {studentForm.familyMode === "existing" ? (
+                        <div className="space-y-2">
+                          <Label htmlFor="existing-family">
+                            Select family
+                          </Label>
+                          <select
+                            id="existing-family"
+                            value={studentForm.familyId}
+                            onChange={(event) =>
+                              handleStudentChange(
+                                "familyId",
+                                event.target.value,
+                              )
+                            }
+                            className={`h-10 w-full rounded-md border bg-background px-3 text-sm ${
+                              studentFormErrors.familyId
+                                ? "border-red-500 focus-visible:ring-red-500"
+                                : "border-input"
+                            }`}
+                          >
+                            <option value="">Select a family</option>
+                            {families.map((family) => (
+                              <option key={family.id} value={family.id}>
+                                {family.parentNames.join(" & ") ||
+                                  "Unnamed parent"}{" "}
+                                — {family.studentNames.join(", ")}
+                              </option>
+                            ))}
+                          </select>
+                          {families.length === 0 ? (
+                            <p className="text-xs text-muted-foreground">
+                              No existing families yet - create a student with
+                              &quot;New family&quot; first.
+                            </p>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <div>
                       <div className="mt-3 grid gap-4 sm:grid-cols-2">
                         <div className="space-y-2">
                           <Label htmlFor="parent-name">Parent name</Label>
@@ -1189,6 +1376,8 @@ export function TeacherDashboard({
                       >
                         {showSecondParent ? "Remove" : "Add"} second parent
                       </Button>
+                        </div>
+                      )}
                     </div>
 
                     <div className="rounded-lg border p-4">
@@ -1269,16 +1458,28 @@ export function TeacherDashboard({
               </Card>
 
               <Card className="order-2">
-                <CardHeader>
+                <CardHeader className="flex flex-row items-center justify-between gap-4">
                   <CardTitle>Students</CardTitle>
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Checkbox
+                      checked={showWithdrawn}
+                      onCheckedChange={(checked) =>
+                        setShowWithdrawn(checked === true)
+                      }
+                    />
+                    Show withdrawn
+                  </label>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {students.length === 0 ? (
+                  {students.filter((student) => showWithdrawn || !student.withdrawnAt)
+                    .length === 0 ? (
                     <p className="text-sm text-muted-foreground">
                       No students yet. Add one on the left.
                     </p>
                   ) : (
-                    students.map((student) => (
+                    students
+                      .filter((student) => showWithdrawn || !student.withdrawnAt)
+                      .map((student) => (
                       <div
                         key={student.id}
                         className="cursor-pointer rounded-lg border p-4 transition hover:border-foreground/40"
@@ -1286,17 +1487,45 @@ export function TeacherDashboard({
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div>
-                            <div className="text-sm font-semibold">
+                            <div className="flex items-center gap-2 text-sm font-semibold">
                               {student.firstName} {student.lastName}
+                              {student.withdrawnAt ? (
+                                <Badge variant="destructive">Withdrawn</Badge>
+                              ) : null}
                             </div>
                             <div className="text-xs text-muted-foreground">
                               Grade {student.gradeLevel || "N/A"} •{" "}
                               {student.email || "No email"}
                             </div>
                           </div>
-                          <Badge variant="secondary">
-                            {student.tuitionStatus.replace("-", " ")}
-                          </Badge>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="secondary">
+                              {student.tuitionStatus.replace("-", " ")}
+                            </Badge>
+                            {student.withdrawnAt ? (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  void handleRestoreStudent(student.id);
+                                }}
+                              >
+                                Restore
+                              </Button>
+                            ) : (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  void handleWithdrawStudent(student.id);
+                                }}
+                              >
+                                Withdraw
+                              </Button>
+                            )}
+                          </div>
                         </div>
                         <div className="mt-3 text-xs text-muted-foreground">
                           Parent: {student.parentName || "Not set"} •{" "}

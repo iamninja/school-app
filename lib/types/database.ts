@@ -4,6 +4,13 @@
  */
 
 // Base table types
+export interface Family {
+  id: string;
+  teacher_id: string;
+  deleted_at: string | null;
+  created_at?: string;
+}
+
 export interface Student {
   id: string;
   first_name: string;
@@ -14,18 +21,32 @@ export interface Student {
   tuition_status: string;
   user_id: string | null;
   teacher_id: string | null;
+  family_id: string;
+  withdrawn_at: string | null;
   created_at?: string;
 }
 
-export interface StudentParent {
+// One row per parent PERSON per family (not per student-parent pairing) -
+// replaces the old student_parents shape, which duplicated a parent's row
+// per child and made a second child impossible under the unique email
+// index.
+export interface FamilyParent {
   id: string;
-  student_id: string;
+  family_id: string;
   name: string | null;
   email: string | null;
   phone: string | null;
   is_primary: boolean;
   user_id: string | null;
   created_at?: string;
+}
+
+// Lightweight summary for the teacher-side "existing family" picker.
+export interface FamilySummary {
+  id: string;
+  parentNames: string[];
+  parentEmails: string[];
+  studentNames: string[];
 }
 
 export interface Class {
@@ -329,14 +350,7 @@ export interface StudentDashboardData {
   quizzes: QuizSummary[];
 }
 
-export interface ParentDashboardData {
-  parent: {
-    id: string;
-    name: string | null;
-    email: string | null;
-    phone: string | null;
-    isPrimary: boolean;
-  };
+export interface ParentDashboardChild {
   student: {
     id: string;
     firstName: string;
@@ -345,13 +359,8 @@ export interface ParentDashboardData {
     email: string | null;
     tuitionAmount: number | null;
     tuitionStatus: string;
+    withdrawnAt: string | null;
   };
-  allParents: Array<{
-    name: string | null;
-    email: string | null;
-    phone: string | null;
-    is_primary: boolean;
-  }>;
   classes: Array<{
     id: string;
     name: string;
@@ -368,6 +377,26 @@ export interface ParentDashboardData {
     status: string;
   }>;
   quizzes: QuizSummary[];
+}
+
+export interface ParentDashboardData {
+  parent: {
+    id: string;
+    name: string | null;
+    email: string | null;
+    phone: string | null;
+    isPrimary: boolean;
+  };
+  allParents: Array<{
+    name: string | null;
+    email: string | null;
+    phone: string | null;
+    is_primary: boolean;
+  }>;
+  // Named `kids`, not `children` - the latter is a reserved React prop name
+  // and would collide when passed as a JSX attribute (<ParentDashboard
+  // children={...} />) triggers react/no-children-prop).
+  kids: ParentDashboardChild[];
 }
 
 // Action result types
@@ -404,7 +433,7 @@ export interface ParentEmailCheckSuccess {
   exists: true;
   parentId: string;
   parentName: string | null;
-  studentId: string;
+  familyId: string;
 }
 
 export interface ParentEmailCheckError {

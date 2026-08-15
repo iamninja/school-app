@@ -26,7 +26,7 @@ export async function lookupRoleEmail<
   email: string,
   params: {
     role: "student" | "parent";
-    table: "students" | "student_parents";
+    table: "students" | "family_parents";
     columns: string;
     notFoundError: string;
     toSuccess: (row: TRow) => TExtra;
@@ -70,7 +70,7 @@ export async function lookupRoleEmail<
 
 export async function createRoleAuthUser(params: {
   role: "student" | "parent";
-  table: "students" | "student_parents";
+  table: "students" | "family_parents";
   recordId: string;
   email: string;
   password: string;
@@ -109,7 +109,7 @@ export async function createRoleAuthUser(params: {
 
 export async function signInAsRole(params: {
   role: "student" | "parent";
-  table: "students" | "student_parents";
+  table: "students" | "family_parents";
   email: string;
   password: string;
   // true for parent - avoids RLS recursion, per supabase/parent-rls.sql

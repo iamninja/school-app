@@ -108,7 +108,8 @@ export async function getStudentDashboardDataAction(): Promise<
       grade_level,
       email,
       tuition_amount,
-      tuition_status
+      tuition_status,
+      family_id
     `,
     )
     .eq("user_id", user.id)
@@ -120,9 +121,9 @@ export async function getStudentDashboardDataAction(): Promise<
 
   // Get parent info
   const { data: parents } = await supabase
-    .from("student_parents")
+    .from("family_parents")
     .select("name, email, phone, is_primary")
-    .eq("student_id", student.id)
+    .eq("family_id", student.family_id)
     .order("is_primary", { ascending: false });
 
   // Get assigned classes

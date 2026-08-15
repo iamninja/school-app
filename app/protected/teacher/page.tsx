@@ -3,6 +3,25 @@ import { redirect } from "next/navigation";
 import { TeacherDashboard } from "@/components/teacher-dashboard";
 import { createClient } from "@/lib/supabase/server";
 
+// The Supabase client has no Database generic here, so its select-string
+// parser can't determine embed cardinality and infers every embed as an
+// array. At runtime, `families` is embedded via the forward FK on
+// students.family_id (many students -> one family), so PostgREST actually
+// returns a single object (or null), not an array - only the NESTED
+// family_parents (has-many from families' side) is really an array.
+// Indexing families as an array (families?.[0]) silently returns undefined
+// on the real response and drops every parent, so this cast corrects the
+// type to match actual runtime shape instead of runtime code moving to
+// match the (wrong) inferred type.
+type FamilyParentRow = {
+  id: string;
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  is_primary: boolean;
+};
+type StudentFamilyEmbed = { id: string; family_parents: FamilyParentRow[] } | null;
+
 export default async function TeacherPage() {
   const supabase = await createClient();
   const {
@@ -42,7 +61,7 @@ export default async function TeacherPage() {
     supabase
       .from("students")
       .select(
-        "id, first_name, last_name, grade_level, email, tuition_amount, tuition_status, created_at, student_parents(id, name, email, phone, is_primary), student_class_assignments(class_id)"
+        "id, first_name, last_name, grade_level, email, tuition_amount, tuition_status, created_at, family_id, withdrawn_at, families(id, family_parents(id, name, email, phone, is_primary)), student_class_assignments(class_id)"
       )
       .eq("teacher_id", user.id)
       .order("created_at", { ascending: false }),
@@ -79,7 +98,8 @@ export default async function TeacherPage() {
   }));
 
   const initialStudents = (students ?? []).map((student) => {
-    const parents = student.student_parents ?? [];
+    const familyEmbed = student.families as unknown as StudentFamilyEmbed;
+    const parents = familyEmbed?.family_parents ?? [];
     const primaryParent = parents.find((parent) => parent.is_primary) ?? parents[0];
     const secondaryParent = parents.find((parent) => !parent.is_primary);
 
@@ -89,6 +109,8 @@ export default async function TeacherPage() {
       lastName: student.last_name,
       gradeLevel: student.grade_level ?? "",
       email: student.email ?? "",
+      familyId: student.family_id,
+      withdrawnAt: student.withdrawn_at,
       parentName: primaryParent?.name ?? "",
       parentEmail: primaryParent?.email ?? "",
       parentPhone: primaryParent?.phone ?? "",
@@ -104,6 +126,28 @@ export default async function TeacherPage() {
         student.student_class_assignments?.map((row) => row.class_id) ?? [],
     };
   });
+
+  const familyMap = new Map<
+    string,
+    { id: string; parentNames: string[]; parentEmails: string[]; studentNames: string[] }
+  >();
+  for (const student of students ?? []) {
+    const familyId = student.family_id;
+    if (!familyMap.has(familyId)) {
+      const familyEmbed = student.families as unknown as StudentFamilyEmbed;
+      const parents = familyEmbed?.family_parents ?? [];
+      familyMap.set(familyId, {
+        id: familyId,
+        parentNames: parents.map((p) => p.name).filter((n): n is string => Boolean(n)),
+        parentEmails: parents.map((p) => p.email).filter((e): e is string => Boolean(e)),
+        studentNames: [],
+      });
+    }
+    familyMap
+      .get(familyId)!
+      .studentNames.push(`${student.first_name} ${student.last_name}`);
+  }
+  const initialFamilies = Array.from(familyMap.values());
 
   const initialAttendance = (attendance ?? []).map((record) => ({
     studentId: record.student_id,
@@ -168,6 +212,7 @@ export default async function TeacherPage() {
       initialClasses={initialClasses}
       initialSlots={initialSlots}
       initialStudents={initialStudents}
+      initialFamilies={initialFamilies}
       initialAttendance={initialAttendance}
       initialQuizzes={initialQuizzes}
       loadErrors={loadErrors}

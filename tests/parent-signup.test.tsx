@@ -86,7 +86,7 @@ describe("ParentSignUpForm", () => {
       exists: true,
       parentId: "parent-123",
       parentName: "Jane Doe",
-      studentId: "student-123",
+      familyId: "family-123",
     });
 
     render(<ParentSignUpForm />);
@@ -112,7 +112,7 @@ describe("ParentSignUpForm", () => {
       exists: true,
       parentId: "parent-123",
       parentName: "Jane Doe",
-      studentId: "student-123",
+      familyId: "family-123",
     });
 
     render(<ParentSignUpForm />);
@@ -140,7 +140,7 @@ describe("ParentSignUpForm", () => {
       exists: true,
       parentId: "parent-123",
       parentName: "Jane Doe",
-      studentId: "student-123",
+      familyId: "family-123",
     });
 
     render(<ParentSignUpForm />);
@@ -172,7 +172,7 @@ describe("ParentSignUpForm", () => {
       exists: true,
       parentId: "parent-123",
       parentName: "Jane Doe",
-      studentId: "student-123",
+      familyId: "family-123",
     });
 
     signUpParentAction.mockResolvedValue({ success: true });
@@ -207,7 +207,7 @@ describe("ParentSignUpForm", () => {
       exists: true,
       parentId: "parent-123",
       parentName: "Jane Doe",
-      studentId: "student-123",
+      familyId: "family-123",
     });
 
     signUpParentAction.mockResolvedValue({
@@ -241,7 +241,7 @@ describe("ParentSignUpForm", () => {
       exists: true,
       parentId: "parent-123",
       parentName: "Jane Doe",
-      studentId: "student-123",
+      familyId: "family-123",
     });
 
     render(<ParentSignUpForm />);

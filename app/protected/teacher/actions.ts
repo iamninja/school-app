@@ -93,21 +93,32 @@ export async function setScheduleSlotAction(data: {
   return { day: row.day, time: row.time, classId: row.class_id };
 }
 
-export async function createStudentAction(data: {
+type CreateStudentBase = {
   firstName: string;
   lastName: string;
   gradeLevel: string;
   email: string;
-  parentName: string;
-  parentEmail: string;
-  parentPhone: string;
-  parentTwoName?: string;
-  parentTwoEmail?: string;
-  parentTwoPhone?: string;
   tuitionAmount: string;
   tuitionStatus: "current" | "past-due" | "scholarship";
   assignedClassIds: string[];
-}) {
+};
+
+export type CreateStudentInput =
+  | (CreateStudentBase & {
+      familyMode: "new";
+      parentName: string;
+      parentEmail: string;
+      parentPhone: string;
+      parentTwoName?: string;
+      parentTwoEmail?: string;
+      parentTwoPhone?: string;
+    })
+  | (CreateStudentBase & {
+      familyMode: "existing";
+      familyId: string;
+    });
+
+export async function createStudentAction(data: CreateStudentInput) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -119,6 +130,35 @@ export async function createStudentAction(data: {
 
   await requireTeacher(supabase, user.id);
 
+  let familyId: string;
+
+  if (data.familyMode === "existing") {
+    const { data: family, error: familyLookupError } = await supabase
+      .from("families")
+      .select("id")
+      .eq("id", data.familyId)
+      .eq("teacher_id", user.id)
+      .single();
+
+    if (familyLookupError || !family) {
+      throw new Error("Family not found");
+    }
+
+    familyId = family.id;
+  } else {
+    const { data: family, error: familyError } = await supabase
+      .from("families")
+      .insert({ teacher_id: user.id })
+      .select("id")
+      .single();
+
+    if (familyError) {
+      throw familyError;
+    }
+
+    familyId = family.id;
+  }
+
   const tuitionAmount = data.tuitionAmount.trim()
     ? Number.parseFloat(data.tuitionAmount)
     : null;
@@ -127,6 +167,7 @@ export async function createStudentAction(data: {
     .from("students")
     .insert({
       teacher_id: user.id,
+      family_id: familyId,
       first_name: data.firstName,
       last_name: data.lastName,
       grade_level: data.gradeLevel || null,
@@ -141,32 +182,41 @@ export async function createStudentAction(data: {
     throw studentError;
   }
 
-  const parentsToInsert = [
-    {
-      student_id: student.id,
-      name: data.parentName || null,
-      email: data.parentEmail || null,
-      phone: data.parentPhone || null,
-      is_primary: true,
-    },
-  ];
+  if (data.familyMode === "new") {
+    const parentsToInsert = [
+      {
+        family_id: familyId,
+        name: data.parentName || null,
+        email: data.parentEmail || null,
+        phone: data.parentPhone || null,
+        is_primary: true,
+      },
+    ];
 
-  if (data.parentTwoName || data.parentTwoEmail || data.parentTwoPhone) {
-    parentsToInsert.push({
-      student_id: student.id,
-      name: data.parentTwoName || null,
-      email: data.parentTwoEmail || null,
-      phone: data.parentTwoPhone || null,
-      is_primary: false,
-    });
-  }
+    if (data.parentTwoName || data.parentTwoEmail || data.parentTwoPhone) {
+      parentsToInsert.push({
+        family_id: familyId,
+        name: data.parentTwoName || null,
+        email: data.parentTwoEmail || null,
+        phone: data.parentTwoPhone || null,
+        is_primary: false,
+      });
+    }
 
-  const { error: parentError } = await supabase
-    .from("student_parents")
-    .insert(parentsToInsert);
+    const { error: parentError } = await supabase
+      .from("family_parents")
+      .insert(parentsToInsert);
 
-  if (parentError) {
-    throw parentError;
+    if (parentError) {
+      // 23505 = unique_violation on family_parents_email_unique - the
+      // teacher likely meant "Existing family" for this parent's email.
+      if (parentError.code === "23505") {
+        throw new Error(
+          'This parent email is already registered to another family. Use "Existing family" instead.'
+        );
+      }
+      throw parentError;
+    }
   }
 
   if (data.assignedClassIds.length > 0) {
@@ -186,20 +236,73 @@ export async function createStudentAction(data: {
 
   return {
     id: student.id,
+    familyId,
     firstName: data.firstName,
     lastName: data.lastName,
     gradeLevel: data.gradeLevel,
     email: data.email,
-    parentName: data.parentName,
-    parentEmail: data.parentEmail,
-    parentPhone: data.parentPhone,
-    parentTwoName: data.parentTwoName,
-    parentTwoEmail: data.parentTwoEmail,
-    parentTwoPhone: data.parentTwoPhone,
+    withdrawnAt: null as string | null,
+    parentName: data.familyMode === "new" ? data.parentName : "",
+    parentEmail: data.familyMode === "new" ? data.parentEmail : "",
+    parentPhone: data.familyMode === "new" ? data.parentPhone : "",
+    parentTwoName: data.familyMode === "new" ? data.parentTwoName : undefined,
+    parentTwoEmail: data.familyMode === "new" ? data.parentTwoEmail : undefined,
+    parentTwoPhone: data.familyMode === "new" ? data.parentTwoPhone : undefined,
     tuitionAmount: data.tuitionAmount,
     tuitionStatus: data.tuitionStatus,
     assignedClassIds: data.assignedClassIds,
   };
+}
+
+export async function withdrawStudentAction(studentId: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error("Not authenticated");
+  }
+
+  await requireTeacher(supabase, user.id);
+
+  const withdrawnAt = new Date().toISOString();
+  const { error } = await supabase
+    .from("students")
+    .update({ withdrawn_at: withdrawnAt })
+    .eq("id", studentId)
+    .eq("teacher_id", user.id);
+
+  if (error) {
+    throw error;
+  }
+
+  return { id: studentId, withdrawnAt };
+}
+
+export async function restoreStudentAction(studentId: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error("Not authenticated");
+  }
+
+  await requireTeacher(supabase, user.id);
+
+  const { error } = await supabase
+    .from("students")
+    .update({ withdrawn_at: null })
+    .eq("id", studentId)
+    .eq("teacher_id", user.id);
+
+  if (error) {
+    throw error;
+  }
+
+  return { id: studentId, withdrawnAt: null as string | null };
 }
 
 export async function getAttendanceAction(data: {

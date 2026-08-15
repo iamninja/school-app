@@ -33,12 +33,12 @@ export async function diagnoseParentAccountAction(
   const normalizedEmail = email.trim().toLowerCase();
 
   const { data: parentRecords, error: parentError } = await supabase
-    .from("student_parents")
+    .from("family_parents")
     .select("id, user_id")
     .ilike("email", normalizedEmail);
 
   if (parentError) {
-    console.error("Error querying student_parents:", parentError);
+    console.error("Error querying family_parents:", parentError);
     return {
       status: "error",
       message: "Something went wrong checking that email. Please try again.",

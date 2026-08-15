@@ -16,7 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { MathText } from "@/components/math-text";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
-import type { QuizSummary } from "@/lib/types/database";
+import type { ParentDashboardChild } from "@/lib/types/database";
 
 type ParentDashboardProps = {
   parent: {
@@ -26,51 +26,22 @@ type ParentDashboardProps = {
     phone: string | null;
     isPrimary: boolean;
   };
-  student: {
-    id: string;
-    firstName: string;
-    lastName: string;
-    gradeLevel: string | null;
-    email: string | null;
-    tuitionAmount: number | null;
-    tuitionStatus: string;
-  };
   allParents: Array<{
     name: string | null;
     email: string | null;
     phone: string | null;
     is_primary: boolean;
   }>;
-  classes: Array<{
-    id: string;
-    name: string;
-    hoursPerWeek: number;
-  }>;
-  schedules: Array<{
-    class_id: string;
-    day: string;
-    time: string;
-  }>;
-  attendance: Array<{
-    class_id: string;
-    attendance_date: string;
-    status: string;
-  }>;
-  quizzes: QuizSummary[];
+  // Named `kids`, not `children` - the latter is a reserved React prop
+  // name (react/no-children-prop) and would collide when passed as a JSX
+  // attribute.
+  kids: ParentDashboardChild[];
 };
 
 const DAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-export function ParentDashboard(props: ParentDashboardProps) {
-  const router = useRouter();
-
-  const handleSignOut = async () => {
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    router.push("/");
-  };
-
-  const schedulesByClass = props.schedules.reduce(
+function ChildSection({ student, classes, schedules, attendance, quizzes }: ParentDashboardChild) {
+  const schedulesByClass = schedules.reduce(
     (acc, schedule) => {
       if (!acc[schedule.class_id]) {
         acc[schedule.class_id] = [];
@@ -78,7 +49,7 @@ export function ParentDashboard(props: ParentDashboardProps) {
       acc[schedule.class_id].push(schedule);
       return acc;
     },
-    {} as Record<string, typeof props.schedules>,
+    {} as Record<string, typeof schedules>,
   );
 
   Object.keys(schedulesByClass).forEach((classId) => {
@@ -90,9 +61,9 @@ export function ParentDashboard(props: ParentDashboardProps) {
   });
 
   const attendanceStats = {
-    present: props.attendance.filter((a) => a.status === "present").length,
-    late: props.attendance.filter((a) => a.status === "late").length,
-    absent: props.attendance.filter((a) => a.status === "absent").length,
+    present: attendance.filter((a) => a.status === "present").length,
+    late: attendance.filter((a) => a.status === "late").length,
+    absent: attendance.filter((a) => a.status === "absent").length,
   };
   const totalRecords =
     attendanceStats.present + attendanceStats.late + attendanceStats.absent;
@@ -105,25 +76,7 @@ export function ParentDashboard(props: ParentDashboardProps) {
       : 0;
 
   return (
-    <div className="flex w-full flex-col gap-6 p-6">
-      <div className="flex items-start justify-between gap-4">
-        <div className="space-y-2">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <User className="h-4 w-4" />
-            Parent Dashboard
-          </div>
-          <h1 className="text-2xl font-semibold">
-            Welcome, {props.parent.name}!
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            View {props.student.firstName}&apos;s classes, schedule, and attendance
-          </p>
-        </div>
-        <Button onClick={handleSignOut} variant="outline">
-          Sign Out
-        </Button>
-      </div>
-
+    <div className="flex flex-col gap-6">
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -136,74 +89,42 @@ export function ParentDashboard(props: ParentDashboardProps) {
             <div>
               <p className="text-sm font-medium">Student Name</p>
               <p className="text-sm text-muted-foreground">
-                {props.student.firstName} {props.student.lastName}
+                {student.firstName} {student.lastName}
               </p>
             </div>
-            {props.student.gradeLevel && (
+            {student.gradeLevel && (
               <div>
                 <p className="text-sm font-medium">Grade</p>
                 <p className="text-sm text-muted-foreground">
-                  {props.student.gradeLevel}
+                  {student.gradeLevel}
                 </p>
               </div>
             )}
-            {props.student.email && (
+            {student.email && (
               <div>
                 <p className="text-sm font-medium">Student Email</p>
                 <p className="text-sm text-muted-foreground">
-                  {props.student.email}
+                  {student.email}
                 </p>
               </div>
             )}
-            {props.student.tuitionStatus && (
+            {student.tuitionStatus && (
               <div>
                 <p className="text-sm font-medium">Tuition Status</p>
                 <Badge
                   variant={
-                    props.student.tuitionStatus === "current"
+                    student.tuitionStatus === "current"
                       ? "default"
-                      : props.student.tuitionStatus === "scholarship"
+                      : student.tuitionStatus === "scholarship"
                         ? "secondary"
                         : "destructive"
                   }
                 >
-                  {props.student.tuitionStatus}
+                  {student.tuitionStatus}
                 </Badge>
               </div>
             )}
           </div>
-
-          {props.allParents.length > 1 && (
-            <div className="mt-4 border-t pt-4">
-              <p className="text-sm font-medium mb-2">Other Parent/Guardian</p>
-              <div className="grid gap-3 md:grid-cols-2">
-                {props.allParents
-                  .filter((p) => p.email !== props.parent.email)
-                  .map((otherParent, idx) => (
-                    <div
-                      key={idx}
-                      className="rounded-md border bg-muted/50 p-3 space-y-1"
-                    >
-                      {otherParent.name && (
-                        <p className="text-sm font-medium">
-                          {otherParent.name}
-                        </p>
-                      )}
-                      {otherParent.email && (
-                        <p className="text-xs text-muted-foreground">
-                          {otherParent.email}
-                        </p>
-                      )}
-                      {otherParent.phone && (
-                        <p className="text-xs text-muted-foreground">
-                          {otherParent.phone}
-                        </p>
-                      )}
-                    </div>
-                  ))}
-              </div>
-            </div>
-          )}
         </CardContent>
       </Card>
 
@@ -215,13 +136,13 @@ export function ParentDashboard(props: ParentDashboardProps) {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {props.classes.length === 0 ? (
+          {classes.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               Not enrolled in any classes yet.
             </p>
           ) : (
             <div className="space-y-4">
-              {props.classes.map((classItem) => (
+              {classes.map((classItem) => (
                 <div
                   key={classItem.id}
                   className="rounded-lg border bg-card p-4 space-y-3"
@@ -298,12 +219,12 @@ export function ParentDashboard(props: ParentDashboardProps) {
                 </div>
               </div>
 
-              {props.attendance.length > 0 && (
+              {attendance.length > 0 && (
                 <div className="border-t pt-4">
                   <p className="text-sm font-medium mb-3">Recent Records</p>
                   <div className="space-y-2">
-                    {props.attendance.slice(0, 10).map((record, idx) => {
-                      const classInfo = props.classes.find(
+                    {attendance.slice(0, 10).map((record, idx) => {
+                      const classInfo = classes.find(
                         (c) => c.id === record.class_id,
                       );
                       return (
@@ -352,13 +273,13 @@ export function ParentDashboard(props: ParentDashboardProps) {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {props.quizzes.length === 0 ? (
+          {quizzes.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               No quizzes assigned yet.
             </p>
           ) : (
             <div className="space-y-2">
-              {props.quizzes.map((quiz) => (
+              {quizzes.map((quiz) => (
                 <div
                   key={quiz.id}
                   className="flex items-center justify-between rounded-md border bg-muted/50 px-3 py-2"
@@ -384,6 +305,83 @@ export function ParentDashboard(props: ParentDashboardProps) {
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+export function ParentDashboard(props: ParentDashboardProps) {
+  const router = useRouter();
+
+  const handleSignOut = async () => {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push("/");
+  };
+
+  return (
+    <div className="flex w-full flex-col gap-8 p-6">
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <User className="h-4 w-4" />
+            Parent Dashboard
+          </div>
+          <h1 className="text-2xl font-semibold">
+            Welcome, {props.parent.name}!
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            {props.kids.length > 1
+              ? "View your children's classes, schedule, and attendance"
+              : `View ${props.kids[0]?.student.firstName ?? "your child"}'s classes, schedule, and attendance`}
+          </p>
+        </div>
+        <Button onClick={handleSignOut} variant="outline">
+          Sign Out
+        </Button>
+      </div>
+
+      {props.allParents.length > 1 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Other Parent/Guardian</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-3 md:grid-cols-2">
+              {props.allParents
+                .filter((p) => p.email !== props.parent.email)
+                .map((otherParent, idx) => (
+                  <div
+                    key={idx}
+                    className="rounded-md border bg-muted/50 p-3 space-y-1"
+                  >
+                    {otherParent.name && (
+                      <p className="text-sm font-medium">{otherParent.name}</p>
+                    )}
+                    {otherParent.email && (
+                      <p className="text-xs text-muted-foreground">
+                        {otherParent.email}
+                      </p>
+                    )}
+                    {otherParent.phone && (
+                      <p className="text-xs text-muted-foreground">
+                        {otherParent.phone}
+                      </p>
+                    )}
+                  </div>
+                ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {props.kids.map((child) => (
+        <div key={child.student.id} className="space-y-4 rounded-xl border p-4">
+          <h2 className="text-lg font-semibold">
+            {child.student.firstName} {child.student.lastName}
+          </h2>
+          <ChildSection {...child} />
+        </div>
+      ))}
     </div>
   );
 }

@@ -51,12 +51,8 @@ export default async function ParentDashboardPage() {
     <div className="min-h-screen bg-background">
       <ParentDashboard
         parent={result.data.parent}
-        student={result.data.student}
         allParents={result.data.allParents}
-        classes={result.data.classes}
-        schedules={result.data.schedules}
-        attendance={result.data.attendance}
-        quizzes={result.data.quizzes}
+        kids={result.data.kids}
       />
     </div>
   );
