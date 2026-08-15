@@ -39,13 +39,31 @@ const baseQuiz = {
   createdAt: "2026-01-01T00:00:00Z",
 };
 
+async function openCreateDialog(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("button", { name: /new quiz/i }));
+  await screen.findByRole("dialog");
+}
+
 describe("TeacherQuizBuilder", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("renders the create quiz form with one blank question by default", () => {
+  it("keeps the create quiz form hidden behind a New quiz button by default", () => {
     render(<TeacherQuizBuilder classes={classes} initialQuizzes={[]} />);
+
+    expect(
+      screen.getByRole("button", { name: /new quiz/i }),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText(/title/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/question 1/i)).not.toBeInTheDocument();
+  });
+
+  it("opens the create quiz form with one blank question when New quiz is clicked", async () => {
+    const user = userEvent.setup();
+    render(<TeacherQuizBuilder classes={classes} initialQuizzes={[]} />);
+
+    await openCreateDialog(user);
 
     expect(screen.getByLabelText(/title/i)).toBeInTheDocument();
     expect(screen.getByText(/question 1/i)).toBeInTheDocument();
@@ -57,6 +75,7 @@ describe("TeacherQuizBuilder", () => {
   it("adds and removes question rows", async () => {
     const user = userEvent.setup();
     render(<TeacherQuizBuilder classes={classes} initialQuizzes={[]} />);
+    await openCreateDialog(user);
 
     await user.click(screen.getByRole("button", { name: /add question/i }));
     expect(screen.getByText(/question 2/i)).toBeInTheDocument();
@@ -70,6 +89,7 @@ describe("TeacherQuizBuilder", () => {
   it("adds and removes option rows for a multiple choice question", async () => {
     const user = userEvent.setup();
     render(<TeacherQuizBuilder classes={classes} initialQuizzes={[]} />);
+    await openCreateDialog(user);
 
     expect(screen.getByPlaceholderText(/option 1/i)).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/option 2/i)).toBeInTheDocument();
@@ -90,6 +110,7 @@ describe("TeacherQuizBuilder", () => {
     const createQuizAction = vi.mocked(quizActions.createQuizAction);
 
     render(<TeacherQuizBuilder classes={classes} initialQuizzes={[]} />);
+    await openCreateDialog(user);
 
     await user.type(screen.getByPlaceholderText(/question text/i), "2+2=?");
     await user.type(screen.getByPlaceholderText(/option 1/i), "4");
@@ -114,6 +135,7 @@ describe("TeacherQuizBuilder", () => {
     });
 
     render(<TeacherQuizBuilder classes={classes} initialQuizzes={[]} />);
+    await openCreateDialog(user);
 
     await user.type(screen.getByLabelText(/title/i), "Chapter 3 Quiz");
     await user.type(screen.getByPlaceholderText(/question text/i), "2+2=?");
@@ -161,6 +183,7 @@ describe("TeacherQuizBuilder", () => {
     });
 
     render(<TeacherQuizBuilder classes={classes} initialQuizzes={[]} />);
+    await openCreateDialog(user);
 
     await user.type(screen.getByLabelText(/title/i), "Chapter 3 Quiz");
     await user.type(screen.getByPlaceholderText(/question text/i), "2+2=?");
@@ -194,6 +217,7 @@ describe("TeacherQuizBuilder", () => {
     });
 
     render(<TeacherQuizBuilder classes={classes} initialQuizzes={[]} />);
+    await openCreateDialog(user);
 
     await user.type(screen.getByLabelText(/title/i), "True/False Quiz");
     await user.type(
@@ -239,6 +263,7 @@ describe("TeacherQuizBuilder", () => {
     });
 
     render(<TeacherQuizBuilder classes={classes} initialQuizzes={[]} />);
+    await openCreateDialog(user);
 
     await user.type(screen.getByLabelText(/title/i), "Short Answer Quiz");
     await user.type(
@@ -308,7 +333,7 @@ describe("TeacherQuizBuilder", () => {
       screen.getByRole("button", { name: /back to quizzes/i }),
     );
     expect(
-      screen.getByRole("button", { name: /create quiz/i }),
+      screen.getByRole("button", { name: /new quiz/i }),
     ).toBeInTheDocument();
   });
 

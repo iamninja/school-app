@@ -2,7 +2,13 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { BarChart3Icon, CopyIcon, PencilIcon, UsersIcon } from "lucide-react";
+import {
+  BarChart3Icon,
+  CopyIcon,
+  PencilIcon,
+  PlusIcon,
+  UsersIcon,
+} from "lucide-react";
 
 import {
   assignQuizToClassAction,
@@ -60,6 +66,7 @@ export function TeacherQuizBuilder({
 }) {
   const [quizzes, setQuizzes] =
     React.useState<TeacherQuizListItem[]>(initialQuizzes);
+  const [isCreateOpen, setIsCreateOpen] = React.useState(false);
   const [classIds, setClassIds] = React.useState<string[]>([]);
   const [title, setTitle] = React.useState("");
   const [description, setDescription] = React.useState("");
@@ -141,6 +148,7 @@ export function TeacherQuizBuilder({
 
       setQuizzes((prev) => [created, ...prev]);
       resetForm();
+      setIsCreateOpen(false);
       toast.success("Quiz created");
     } catch (error: unknown) {
       toast.error(
@@ -565,78 +573,13 @@ export function TeacherQuizBuilder({
   }
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[420px_1fr]">
+    <div className="space-y-6">
       <Card>
-        <CardHeader>
-          <CardTitle>Create Quiz</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleCreateQuiz} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="quiz-title">Title</Label>
-              <Input
-                id="quiz-title"
-                value={title}
-                onChange={(event) => setTitle(event.target.value)}
-                placeholder="Chapter 3 Quiz"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="quiz-description">Description (optional)</Label>
-              <Input
-                id="quiz-description"
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Assign to classes (optional)</Label>
-              {classes.length === 0 ? (
-                <p className="text-xs text-muted-foreground">
-                  No classes yet — you can assign this quiz later.
-                </p>
-              ) : (
-                <div className="grid gap-2">
-                  {classes.map((classOption) => (
-                    <label
-                      key={classOption.id}
-                      className="flex items-center gap-3 rounded-md border p-3 text-sm"
-                    >
-                      <Checkbox
-                        checked={classIds.includes(classOption.id)}
-                        onCheckedChange={() =>
-                          handleToggleCreateClass(classOption.id)
-                        }
-                      />
-                      <span className="flex-1">{classOption.name}</span>
-                    </label>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <QuizQuestionEditor
-              questions={createDraft.questions}
-              onQuestionChange={createDraft.handleQuestionChange}
-              onOptionChange={createDraft.handleOptionChange}
-              onSetCorrectOption={createDraft.handleSetCorrectOption}
-              onAddOption={createDraft.handleAddOption}
-              onRemoveOption={createDraft.handleRemoveOption}
-              onAddQuestion={createDraft.handleAddQuestion}
-              onRemoveQuestion={createDraft.handleRemoveQuestion}
-            />
-
-            <Button type="submit" className="w-full" disabled={isSubmitting}>
-              {isSubmitting ? "Creating..." : "Create Quiz"}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between gap-2">
           <CardTitle>Your Quizzes</CardTitle>
+          <Button type="button" size="sm" onClick={() => setIsCreateOpen(true)}>
+            <PlusIcon className="mr-1 h-3.5 w-3.5" /> New quiz
+          </Button>
         </CardHeader>
         <CardContent>
           {quizzes.length === 0 ? (
@@ -712,6 +655,82 @@ export function TeacherQuizBuilder({
           )}
         </CardContent>
       </Card>
+
+      <Dialog
+        open={isCreateOpen}
+        onOpenChange={(open) => {
+          setIsCreateOpen(open);
+          if (!open) {
+            resetForm();
+          }
+        }}
+      >
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Create Quiz</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleCreateQuiz} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="quiz-title">Title</Label>
+              <Input
+                id="quiz-title"
+                value={title}
+                onChange={(event) => setTitle(event.target.value)}
+                placeholder="Chapter 3 Quiz"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="quiz-description">Description (optional)</Label>
+              <Input
+                id="quiz-description"
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Assign to classes (optional)</Label>
+              {classes.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  No classes yet — you can assign this quiz later.
+                </p>
+              ) : (
+                <div className="grid gap-2">
+                  {classes.map((classOption) => (
+                    <label
+                      key={classOption.id}
+                      className="flex items-center gap-3 rounded-md border p-3 text-sm"
+                    >
+                      <Checkbox
+                        checked={classIds.includes(classOption.id)}
+                        onCheckedChange={() =>
+                          handleToggleCreateClass(classOption.id)
+                        }
+                      />
+                      <span className="flex-1">{classOption.name}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <QuizQuestionEditor
+              questions={createDraft.questions}
+              onQuestionChange={createDraft.handleQuestionChange}
+              onOptionChange={createDraft.handleOptionChange}
+              onSetCorrectOption={createDraft.handleSetCorrectOption}
+              onAddOption={createDraft.handleAddOption}
+              onRemoveOption={createDraft.handleRemoveOption}
+              onAddQuestion={createDraft.handleAddQuestion}
+              onRemoveQuestion={createDraft.handleRemoveQuestion}
+            />
+
+            <Button type="submit" className="w-full" disabled={isSubmitting}>
+              {isSubmitting ? "Creating..." : "Create Quiz"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={manageQuizId !== null}
