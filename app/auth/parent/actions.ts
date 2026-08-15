@@ -1,6 +1,6 @@
 "use server";
 
-import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/server";
 import type {
   ParentEmailCheckResult,
   ParentDashboardData,
@@ -96,9 +96,7 @@ export async function getParentDashboardDataAction(): Promise<
     return { success: false, error: "Not authenticated" };
   }
 
-  // Use service role to get parent record (avoids RLS recursion)
-  const supabaseAdmin = createServiceRoleClient();
-  const { data: parent, error: parentError } = await supabaseAdmin
+  const { data: parent, error: parentError } = await supabase
     .from("family_parents")
     .select("id, name, email, phone, is_primary, family_id")
     .eq("user_id", user.id)
@@ -108,17 +106,16 @@ export async function getParentDashboardDataAction(): Promise<
     return { success: false, error: "Parent record not found" };
   }
 
-  // Use service role to get all parents for the family (to show other parent contacts)
-  const { data: allParents } = await supabaseAdmin
+  const { data: allParents } = await supabase
     .from("family_parents")
     .select("name, email, phone, is_primary")
     .eq("family_id", parent.family_id)
     .order("is_primary", { ascending: false });
 
-  // Use service role for every non-withdrawn child in this family (avoids
-  // RLS recursion) - hidden by default, matching the teacher dashboard's
-  // "hidden unless toggled" withdrawn-student behavior.
-  const { data: studentRows, error: studentsError } = await supabaseAdmin
+  // Every non-withdrawn child in this family - hidden by default, matching
+  // the teacher dashboard's "hidden unless toggled" withdrawn-student
+  // behavior.
+  const { data: studentRows, error: studentsError } = await supabase
     .from("students")
     .select(
       `
@@ -142,8 +139,7 @@ export async function getParentDashboardDataAction(): Promise<
 
   const children: ParentDashboardChild[] = await Promise.all(
     studentRows.map(async (student) => {
-      // Use service role for class assignments (avoids RLS recursion)
-      const { data: classAssignments } = await supabaseAdmin
+      const { data: classAssignments } = await supabase
         .from("student_class_assignments")
         .select(
           `
@@ -161,25 +157,23 @@ export async function getParentDashboardDataAction(): Promise<
           ?.map((a) => a.class_id)
           .filter(Boolean) || [];
 
-      // Use service role for schedules (avoids RLS recursion)
       let schedules: ClassScheduleSlot[] = [];
       if (classIds.length > 0) {
-        const { data } = await supabaseAdmin
+        const { data } = await supabase
           .from("class_schedule_slots")
           .select("class_id, day, time")
           .in("class_id", classIds);
         schedules = (data as ClassScheduleSlot[] | null) || [];
       }
 
-      // Use service role for attendance (avoids RLS recursion)
-      const { data: attendance } = await supabaseAdmin
+      const { data: attendance } = await supabase
         .from("attendance_records")
         .select("class_id, attendance_date, status")
         .eq("student_id", student.id)
         .order("attendance_date", { ascending: false })
         .limit(50);
 
-      // Use service role for quizzes + this child's attempts (avoids RLS recursion)
+      // Quizzes + this child's attempts.
       let quizzes: QuizSummary[] = [];
       if (classIds.length > 0) {
         const classNameById = new Map(
@@ -188,7 +182,7 @@ export async function getParentDashboardDataAction(): Promise<
           ).map((a) => [a.class_id, a.classes.name]),
         );
 
-        const { data: assignmentRows } = await supabaseAdmin
+        const { data: assignmentRows } = await supabase
           .from("quiz_assignments")
           .select("quiz_id, class_id")
           .in("class_id", classIds);
@@ -206,13 +200,13 @@ export async function getParentDashboardDataAction(): Promise<
         if (quizIds.length > 0) {
           const [{ data: quizRows }, { data: attempts }, { data: questions }] =
             await Promise.all([
-              supabaseAdmin.from("quizzes").select("id, title").in("id", quizIds),
-              supabaseAdmin
+              supabase.from("quizzes").select("id, title").in("id", quizIds),
+              supabase
                 .from("quiz_attempts")
                 .select("quiz_id, score, submitted_at")
                 .eq("student_id", student.id)
                 .in("quiz_id", quizIds),
-              supabaseAdmin
+              supabase
                 .from("quiz_questions")
                 .select("quiz_id, points")
                 .in("quiz_id", quizIds),
