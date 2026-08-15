@@ -6,6 +6,7 @@ import { PlusIcon, XIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { MathText } from "@/components/math-text";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import type { QuizQuestionInput, QuizQuestionType } from "@/lib/types/database";
 
@@ -287,6 +288,11 @@ export function QuizQuestionEditor({
             }
             placeholder="Question text"
           />
+          {question.questionText.includes("$") && (
+            <p className="text-xs text-muted-foreground">
+              <MathText text={question.questionText} />
+            </p>
+          )}
           <div className="grid grid-cols-2 gap-2">
             <select
               aria-label="Question type"
@@ -335,34 +341,41 @@ export function QuizQuestionEditor({
               }
             >
               {question.options.map((option, optionIndex) => (
-                <div key={optionIndex} className="flex items-center gap-2">
-                  <RadioGroupItem
-                    value={optionIndex.toString()}
-                    id={`q${index}-opt${optionIndex}`}
-                    disabled={readOnly}
-                    aria-label={`Mark option ${optionIndex + 1} correct`}
-                  />
-                  <Input
-                    value={option.optionText}
-                    disabled={readOnly}
-                    onChange={(event) =>
-                      onOptionChange(index, optionIndex, {
-                        optionText: event.target.value,
-                      })
-                    }
-                    placeholder={`Option ${optionIndex + 1}`}
-                  />
-                  {!readOnly && question.options.length > 2 && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => onRemoveOption(index, optionIndex)}
-                      aria-label={`Remove option ${optionIndex + 1}`}
-                    >
-                      <XIcon className="h-3.5 w-3.5" />
-                    </Button>
+                <div key={optionIndex} className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem
+                      value={optionIndex.toString()}
+                      id={`q${index}-opt${optionIndex}`}
+                      disabled={readOnly}
+                      aria-label={`Mark option ${optionIndex + 1} correct`}
+                    />
+                    <Input
+                      value={option.optionText}
+                      disabled={readOnly}
+                      onChange={(event) =>
+                        onOptionChange(index, optionIndex, {
+                          optionText: event.target.value,
+                        })
+                      }
+                      placeholder={`Option ${optionIndex + 1}`}
+                    />
+                    {!readOnly && question.options.length > 2 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => onRemoveOption(index, optionIndex)}
+                        aria-label={`Remove option ${optionIndex + 1}`}
+                      >
+                        <XIcon className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                  </div>
+                  {option.optionText.includes("$") && (
+                    <p className="pl-6 text-xs text-muted-foreground">
+                      <MathText text={option.optionText} />
+                    </p>
                   )}
                 </div>
               ))}

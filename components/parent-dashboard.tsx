@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { MathText } from "@/components/math-text";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import type { QuizSummary } from "@/lib/types/database";
@@ -363,7 +364,9 @@ export function ParentDashboard(props: ParentDashboardProps) {
                   className="flex items-center justify-between rounded-md border bg-muted/50 px-3 py-2"
                 >
                   <div>
-                    <p className="text-sm font-medium">{quiz.title}</p>
+                    <p className="text-sm font-medium">
+                      <MathText text={quiz.title} />
+                    </p>
                     <p className="text-xs text-muted-foreground">
                       {quiz.className}
                     </p>

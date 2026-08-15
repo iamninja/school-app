@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { MathText } from "@/components/math-text";
 import { QuizReviewAnswers } from "@/components/quiz-review-answers";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import type {
@@ -132,7 +133,9 @@ export function StudentQuizPanel({
     return (
       <Card>
         <CardHeader>
-          <CardTitle>{view.quiz.title}</CardTitle>
+          <CardTitle>
+            <MathText text={view.quiz.title} />
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
           {view.quiz.questions.map((question, index) => (
@@ -141,7 +144,7 @@ export function StudentQuizPanel({
               className="space-y-3 rounded-lg border p-3"
             >
               <p className="text-sm font-medium">
-                {index + 1}. {question.questionText}
+                {index + 1}. <MathText text={question.questionText} />
               </p>
               {question.questionType === "short_answer" ? (
                 <Input
@@ -172,7 +175,7 @@ export function StudentQuizPanel({
                         htmlFor={`answer-${option.id}`}
                         className="text-sm font-normal"
                       >
-                        {option.optionText}
+                        <MathText text={option.optionText} />
                       </Label>
                     </div>
                   ))}
@@ -204,7 +207,9 @@ export function StudentQuizPanel({
     return (
       <Card>
         <CardHeader>
-          <CardTitle>{view.review.quizTitle} — Review</CardTitle>
+          <CardTitle>
+            <MathText text={view.review.quizTitle} /> — Review
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-2xl font-bold">
@@ -237,7 +242,9 @@ export function StudentQuizPanel({
                 className="flex items-center justify-between rounded-md border px-3 py-2"
               >
                 <div>
-                  <p className="text-sm font-medium">{quiz.title}</p>
+                  <p className="text-sm font-medium">
+                    <MathText text={quiz.title} />
+                  </p>
                   <p className="text-xs text-muted-foreground">
                     {quiz.className}
                   </p>

@@ -105,6 +105,48 @@ describe("TeacherQuizBuilder", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("shows and hides a live LaTeX preview under the question text as it's typed", async () => {
+    const user = userEvent.setup();
+    render(<TeacherQuizBuilder classes={classes} initialQuizzes={[]} />);
+    await openCreateDialog(user);
+
+    // The dialog portals its content to document.body, outside the
+    // container render() returns, so query the document directly.
+    const questionInput = screen.getByPlaceholderText(/question text/i);
+    expect(document.querySelector(".katex")).toBeNull();
+
+    await user.type(questionInput, "Solve $x^2$");
+    await waitFor(() => {
+      expect(document.querySelector(".katex")).not.toBeNull();
+    });
+
+    await user.clear(questionInput);
+    await waitFor(() => {
+      expect(document.querySelector(".katex")).toBeNull();
+    });
+  });
+
+  it("shows a live LaTeX preview under the quiz title and description as they're typed", async () => {
+    const user = userEvent.setup();
+    render(<TeacherQuizBuilder classes={classes} initialQuizzes={[]} />);
+    await openCreateDialog(user);
+
+    expect(document.querySelector(".katex")).toBeNull();
+
+    await user.type(screen.getByLabelText(/^title$/i), "Unit $x^2$ Review");
+    await waitFor(() => {
+      expect(document.querySelectorAll(".katex").length).toBe(1);
+    });
+
+    await user.type(
+      screen.getByLabelText(/description/i),
+      "Covers $\\sqrt{x}$",
+    );
+    await waitFor(() => {
+      expect(document.querySelectorAll(".katex").length).toBe(2);
+    });
+  });
+
   it("shows a toast when submitting without a title", async () => {
     const user = userEvent.setup();
     const createQuizAction = vi.mocked(quizActions.createQuizAction);
@@ -295,6 +337,17 @@ describe("TeacherQuizBuilder", () => {
         }),
       );
     });
+  });
+
+  it("renders LaTeX in a quiz title in the Your Quizzes list", () => {
+    const { container } = render(
+      <TeacherQuizBuilder
+        classes={classes}
+        initialQuizzes={[{ ...baseQuiz, title: "Solving $x^2 = 4$" }]}
+      />,
+    );
+
+    expect(container.querySelector(".katex")).not.toBeNull();
   });
 
   it("shows per-student results when a quiz is selected", async () => {
@@ -720,5 +773,76 @@ describe("TeacherQuizBuilder", () => {
       expect(screen.getByText("Awaiting review")).toBeInTheDocument();
       expect(screen.queryByText(/\d \/ \d/)).not.toBeInTheDocument();
     });
+  });
+
+  it("renders LaTeX for teacher-authored option text in the breakdown, but never for a student's own short answer", async () => {
+    const user = userEvent.setup();
+    const getQuizQuestionBreakdownAction = vi.mocked(
+      quizActions.getQuizQuestionBreakdownAction,
+    );
+
+    getQuizQuestionBreakdownAction.mockResolvedValue({
+      quizId: "quiz-1",
+      quizTitle: "Chapter 3 Quiz",
+      questions: [
+        {
+          questionId: "q1",
+          questionText: "Area of a circle?",
+          questionType: "multiple_choice",
+          points: 1,
+          optionBreakdown: [
+            {
+              optionId: "opt-1",
+              optionText: "$\\pi r^2$",
+              isCorrect: true,
+              count: 1,
+            },
+          ],
+          studentAnswers: [
+            {
+              studentId: "student-1",
+              studentName: "Ava Chen",
+              selectedOptionText: "$\\pi r^2$",
+              textAnswer: null,
+              isCorrect: true,
+            },
+          ],
+        },
+        {
+          questionId: "q2",
+          questionText: "Explain your reasoning",
+          questionType: "short_answer",
+          points: 1,
+          optionBreakdown: [],
+          studentAnswers: [
+            {
+              studentId: "student-2",
+              studentName: "Maya Carter",
+              selectedOptionText: null,
+              textAnswer: "I used $2 worth of pi",
+              isCorrect: null,
+            },
+          ],
+        },
+      ],
+    });
+
+    const { container } = render(
+      <TeacherQuizBuilder classes={classes} initialQuizzes={[baseQuiz]} />,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: /question breakdown/i }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/i used \$2 worth of pi/i)).toBeInTheDocument();
+    });
+
+    // Two .katex nodes for the teacher-authored option text: one in the
+    // distribution row, one in Ava's per-student answer row. Maya's own
+    // short-answer text is never run through the renderer even though it
+    // contains a literal "$".
+    expect(container.querySelectorAll(".katex").length).toBe(2);
   });
 });

@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { MathText } from "@/components/math-text";
 import { QuizReviewAnswers } from "@/components/quiz-review-answers";
 import {
   createBlankQuestion,
@@ -390,7 +391,8 @@ export function TeacherQuizBuilder({
         <Card>
           <CardHeader>
             <CardTitle>
-              {breakdown?.quizTitle ?? "Loading..."} — Question breakdown
+              <MathText text={breakdown?.quizTitle ?? "Loading..."} /> —
+              Question breakdown
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -412,7 +414,7 @@ export function TeacherQuizBuilder({
                   >
                     <div className="flex items-start justify-between gap-2">
                       <p className="text-sm font-semibold">
-                        {index + 1}. {question.questionText}
+                        {index + 1}. <MathText text={question.questionText} />
                       </p>
                       <Badge variant="outline">
                         {question.points} pt{question.points === 1 ? "" : "s"}
@@ -437,7 +439,9 @@ export function TeacherQuizBuilder({
                                     : "")
                                 }
                               >
-                                <span>{option.optionText}</span>
+                                <span>
+                                  <MathText text={option.optionText} />
+                                </span>
                                 <Badge
                                   variant={
                                     option.isCorrect ? "default" : "secondary"
@@ -462,9 +466,11 @@ export function TeacherQuizBuilder({
                               <span>{answer.studentName}</span>
                               <span className="flex items-center gap-2">
                                 <span className="text-muted-foreground">
-                                  {answer.selectedOptionText ??
-                                    answer.textAnswer ??
-                                    "(no answer)"}
+                                  {answer.selectedOptionText ? (
+                                    <MathText text={answer.selectedOptionText} />
+                                  ) : (
+                                    answer.textAnswer || "(no answer)"
+                                  )}
                                 </span>
                                 {answer.isCorrect === true && (
                                   <Badge>Correct</Badge>
@@ -512,7 +518,9 @@ export function TeacherQuizBuilder({
         </Button>
         <Card>
           <CardHeader>
-            <CardTitle>{results?.quizTitle ?? "Loading..."}</CardTitle>
+            <CardTitle>
+              <MathText text={results?.quizTitle ?? "Loading..."} />
+            </CardTitle>
           </CardHeader>
           <CardContent>
             {isLoadingResults ? (
@@ -596,7 +604,9 @@ export function TeacherQuizBuilder({
                     className="flex w-full items-center justify-between text-left"
                   >
                     <div>
-                      <p className="text-sm font-medium">{quiz.title}</p>
+                      <p className="text-sm font-medium">
+                        <MathText text={quiz.title} />
+                      </p>
                       <p className="text-xs text-muted-foreground">
                         {quiz.assignedClasses.length > 0
                           ? quiz.assignedClasses.map((c) => c.name).join(", ")
@@ -678,6 +688,11 @@ export function TeacherQuizBuilder({
                 onChange={(event) => setTitle(event.target.value)}
                 placeholder="Chapter 3 Quiz"
               />
+              {title.includes("$") && (
+                <p className="text-xs text-muted-foreground">
+                  <MathText text={title} />
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="quiz-description">Description (optional)</Label>
@@ -686,6 +701,11 @@ export function TeacherQuizBuilder({
                 value={description}
                 onChange={(event) => setDescription(event.target.value)}
               />
+              {description.includes("$") && (
+                <p className="text-xs text-muted-foreground">
+                  <MathText text={description} />
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -738,7 +758,9 @@ export function TeacherQuizBuilder({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Manage classes — {managedQuiz?.title}</DialogTitle>
+            <DialogTitle>
+              Manage classes — <MathText text={managedQuiz?.title ?? ""} />
+            </DialogTitle>
           </DialogHeader>
           <div className="grid gap-2">
             {classes.map((classOption) => {
@@ -786,6 +808,11 @@ export function TeacherQuizBuilder({
                   value={editTitle}
                   onChange={(event) => setEditTitle(event.target.value)}
                 />
+                {editTitle.includes("$") && (
+                  <p className="text-xs text-muted-foreground">
+                    <MathText text={editTitle} />
+                  </p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="edit-quiz-description">Description</Label>
@@ -794,6 +821,11 @@ export function TeacherQuizBuilder({
                   value={editDescription}
                   onChange={(event) => setEditDescription(event.target.value)}
                 />
+                {editDescription.includes("$") && (
+                  <p className="text-xs text-muted-foreground">
+                    <MathText text={editDescription} />
+                  </p>
+                )}
               </div>
 
               {editLocked && (

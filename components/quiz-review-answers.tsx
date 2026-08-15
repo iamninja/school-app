@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/badge";
+import { MathText } from "@/components/math-text";
 import type { QuizAttemptAnswerReview } from "@/lib/types/database";
 
 /**
@@ -25,7 +26,7 @@ export function QuizReviewAnswers({
           }
         >
           <p className="text-sm font-medium">
-            {index + 1}. {answer.questionText}
+            {index + 1}. <MathText text={answer.questionText} />
           </p>
           {answer.questionType === "short_answer" ? (
             <div className="mt-2 space-y-1 text-sm">
@@ -34,9 +35,18 @@ export function QuizReviewAnswers({
             </div>
           ) : (
             <div className="mt-2 space-y-1 text-sm">
-              <p>Selected: {answer.selectedOptionText ?? "(no answer)"}</p>
+              <p>
+                Selected:{" "}
+                {answer.selectedOptionText ? (
+                  <MathText text={answer.selectedOptionText} />
+                ) : (
+                  "(no answer)"
+                )}
+              </p>
               {!answer.isCorrect && answer.correctOptionText && (
-                <p>Correct answer: {answer.correctOptionText}</p>
+                <p>
+                  Correct answer: <MathText text={answer.correctOptionText} />
+                </p>
               )}
               <Badge variant={answer.isCorrect ? "default" : "destructive"}>
                 {answer.isCorrect ? "Correct" : "Incorrect"}

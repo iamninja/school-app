@@ -67,6 +67,15 @@ describe("StudentQuizPanel", () => {
     ).toBeInTheDocument();
   });
 
+  it("renders LaTeX in a quiz title in the quiz list", () => {
+    const { container } = render(
+      <StudentQuizPanel
+        quizzes={[{ ...quizzes[0], title: "Solving $x^2 = 4$" }]}
+      />,
+    );
+    expect(container.querySelector(".katex")).not.toBeNull();
+  });
+
   it("shows a Review button with score for a completed quiz", () => {
     render(
       <StudentQuizPanel
@@ -100,6 +109,38 @@ describe("StudentQuizPanel", () => {
       expect(screen.getByText(/2 \+ 2 = \?/)).toBeInTheDocument();
       expect(screen.getByRole("radio", { name: "4" })).toBeInTheDocument();
       expect(screen.getByRole("radio", { name: "5" })).toBeInTheDocument();
+    });
+  });
+
+  it("renders LaTeX math in a question when taking a quiz", async () => {
+    const user = userEvent.setup();
+    const getQuizForTakingAction = vi.mocked(
+      quizActions.getQuizForTakingAction,
+    );
+    getQuizForTakingAction.mockResolvedValue({
+      id: "quiz-1",
+      title: "Chapter 3 Quiz",
+      description: null,
+      questions: [
+        {
+          id: "q1",
+          questionText: "Solve $x^2 = 4$ for x",
+          questionType: "multiple_choice",
+          orderIndex: 0,
+          points: 1,
+          options: [
+            { id: "opt-1", optionText: "$x = 2$", orderIndex: 0 },
+            { id: "opt-2", optionText: "$x = 3$", orderIndex: 1 },
+          ],
+        },
+      ],
+    });
+
+    const { container } = render(<StudentQuizPanel quizzes={quizzes} />);
+    await user.click(screen.getByRole("button", { name: /take quiz/i }));
+
+    await waitFor(() => {
+      expect(container.querySelectorAll(".katex").length).toBeGreaterThan(0);
     });
   });
 
@@ -315,7 +356,7 @@ describe("StudentQuizPanel", () => {
           questionType: "short_answer",
           selectedOptionId: null,
           selectedOptionText: null,
-          textAnswer: "Because the numbers add up",
+          textAnswer: "Because $4 minus $2 leaves $2 left over",
           correctOptionId: null,
           correctOptionText: null,
           isCorrect: null,
@@ -325,7 +366,7 @@ describe("StudentQuizPanel", () => {
       ],
     });
 
-    render(
+    const { container } = render(
       <StudentQuizPanel
         quizzes={[
           {
@@ -342,9 +383,12 @@ describe("StudentQuizPanel", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(/because the numbers add up/i),
+        screen.getByText(/because \$4 minus \$2 leaves \$2 left over/i),
       ).toBeInTheDocument();
       expect(screen.getByText(/awaiting review/i)).toBeInTheDocument();
+      // The student's own free-text answer must never be run through the
+      // math renderer, even though it contains literal "$" characters.
+      expect(container.querySelector(".katex")).toBeNull();
     });
   });
 });

@@ -191,6 +191,27 @@ describe("ParentDashboard", () => {
     expect(screen.getByText(/not taken yet/i)).toBeInTheDocument();
   });
 
+  it("renders LaTeX in a quiz title", () => {
+    const { container } = render(
+      <ParentDashboard
+        {...baseProps}
+        quizzes={[
+          {
+            id: "quiz-1",
+            title: "Solving $x^2 = 4$",
+            className: "Algebra II",
+            completed: false,
+            score: null,
+            maxScore: 5,
+            submittedAt: null,
+          },
+        ]}
+      />,
+    );
+
+    expect(container.querySelector(".katex")).not.toBeNull();
+  });
+
   it("shows a comma-joined class list for a quiz assigned to more than one of the child's classes", () => {
     render(
       <ParentDashboard
