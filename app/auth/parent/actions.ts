@@ -254,25 +254,39 @@ export async function getParentDashboardDataAction(): Promise<
   // Use service role for quizzes + this child's attempts (avoids RLS recursion)
   let quizzes: QuizSummary[] = [];
   if (classIds.length > 0) {
-    const { data: quizRows } = await supabaseAdmin
-      .from("quizzes")
-      .select("id, title, class_id, classes:class_id (name)")
+    const classNameById = new Map(
+      (classAssignments as StudentClassAssignmentWithClass[] | null ?? []).map(
+        (a) => [a.class_id, a.classes.name],
+      ),
+    );
+
+    const { data: assignmentRows } = await supabaseAdmin
+      .from("quiz_assignments")
+      .select("quiz_id, class_id")
       .in("class_id", classIds);
 
-    const quizIds = (quizRows ?? []).map((quiz) => quiz.id);
+    const quizIds = [...new Set((assignmentRows ?? []).map((a) => a.quiz_id))];
+    const classNamesByQuiz = new Map<string, string[]>();
+    for (const row of assignmentRows ?? []) {
+      const list = classNamesByQuiz.get(row.quiz_id) ?? [];
+      list.push(classNameById.get(row.class_id) ?? "");
+      classNamesByQuiz.set(row.quiz_id, list);
+    }
 
     if (quizIds.length > 0) {
-      const [{ data: attempts }, { data: questions }] = await Promise.all([
-        supabaseAdmin
-          .from("quiz_attempts")
-          .select("quiz_id, score, submitted_at")
-          .eq("student_id", student.id)
-          .in("quiz_id", quizIds),
-        supabaseAdmin
-          .from("quiz_questions")
-          .select("quiz_id, points")
-          .in("quiz_id", quizIds),
-      ]);
+      const [{ data: quizRows }, { data: attempts }, { data: questions }] =
+        await Promise.all([
+          supabaseAdmin.from("quizzes").select("id, title").in("id", quizIds),
+          supabaseAdmin
+            .from("quiz_attempts")
+            .select("quiz_id, score, submitted_at")
+            .eq("student_id", student.id)
+            .in("quiz_id", quizIds),
+          supabaseAdmin
+            .from("quiz_questions")
+            .select("quiz_id, points")
+            .in("quiz_id", quizIds),
+        ]);
 
       const attemptByQuiz = new Map(
         (attempts ?? []).map((attempt) => [attempt.quiz_id, attempt]),
@@ -286,14 +300,12 @@ export async function getParentDashboardDataAction(): Promise<
       }
 
       quizzes = (quizRows ?? []).map((quiz) => {
-        const quizClass = quiz.classes as unknown as { name: string } | null;
         const attempt = attemptByQuiz.get(quiz.id);
 
         return {
           id: quiz.id,
           title: quiz.title,
-          classId: quiz.class_id,
-          className: quizClass?.name ?? "",
+          className: (classNamesByQuiz.get(quiz.id) ?? []).join(", "),
           completed: Boolean(attempt),
           score: attempt?.score ?? null,
           maxScore: maxScoreByQuiz.get(quiz.id) ?? 0,

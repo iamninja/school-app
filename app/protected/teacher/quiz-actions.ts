@@ -3,46 +3,48 @@
 import { createClient } from "@/lib/supabase/server";
 import type {
   CreateQuizInput,
+  QuizForEditing,
+  QuizQuestionInput,
   TeacherQuizListItem,
   QuizResults,
   QuizResultRow,
   QuizAttemptReview,
   QuizAttemptAnswerReview,
   QuizQuestionType,
+  UpdateQuizInput,
 } from "@/lib/types/database";
 
-export async function createQuizAction(
-  data: CreateQuizInput,
-): Promise<TeacherQuizListItem> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
-  if (!user) {
-    throw new Error("Not authenticated");
-  }
-
-  const { data: quiz, error: quizError } = await supabase
+async function requireOwnedQuiz(
+  supabase: SupabaseServerClient,
+  quizId: string,
+  teacherId: string,
+) {
+  const { data: quiz, error } = await supabase
     .from("quizzes")
-    .insert({
-      teacher_id: user.id,
-      class_id: data.classId,
-      title: data.title,
-      description: data.description || null,
-    })
-    .select("id, class_id, title, description, created_at")
+    .select("id, title, description, created_at")
+    .eq("id", quizId)
+    .eq("teacher_id", teacherId)
     .single();
 
-  if (quizError) {
-    throw quizError;
+  if (error || !quiz) {
+    throw new Error("Quiz not found");
   }
 
-  for (const [index, question] of data.questions.entries()) {
+  return quiz;
+}
+
+async function insertQuestions(
+  supabase: SupabaseServerClient,
+  quizId: string,
+  questions: QuizQuestionInput[],
+) {
+  for (const [index, question] of questions.entries()) {
     const { data: insertedQuestion, error: questionError } = await supabase
       .from("quiz_questions")
       .insert({
-        quiz_id: quiz.id,
+        quiz_id: quizId,
         question_text: question.questionText,
         question_type: question.questionType,
         order_index: index,
@@ -72,22 +74,308 @@ export async function createQuizAction(
       }
     }
   }
+}
 
-  const { data: classRow } = await supabase
-    .from("classes")
-    .select("name")
-    .eq("id", data.classId)
-    .single();
+async function getQuizAttemptCount(
+  supabase: SupabaseServerClient,
+  quizId: string,
+): Promise<number> {
+  const { count } = await supabase
+    .from("quiz_attempts")
+    .select("id", { count: "exact", head: true })
+    .eq("quiz_id", quizId);
+
+  return count ?? 0;
+}
+
+async function buildQuizListItem(
+  supabase: SupabaseServerClient,
+  quiz: { id: string; title: string; description: string | null; created_at?: string },
+): Promise<TeacherQuizListItem> {
+  const [{ data: assignments }, { count: questionCount }, attemptCount] =
+    await Promise.all([
+      supabase
+        .from("quiz_assignments")
+        .select("class_id, classes:class_id (id, name)")
+        .eq("quiz_id", quiz.id),
+      supabase
+        .from("quiz_questions")
+        .select("id", { count: "exact", head: true })
+        .eq("quiz_id", quiz.id),
+      getQuizAttemptCount(supabase, quiz.id),
+    ]);
+
+  const assignedClasses = (assignments ?? []).map((assignment) => {
+    const classRow = assignment.classes as unknown as {
+      id: string;
+      name: string;
+    } | null;
+    return { id: classRow?.id ?? assignment.class_id, name: classRow?.name ?? "" };
+  });
 
   return {
     id: quiz.id,
-    classId: quiz.class_id,
-    className: classRow?.name ?? "",
     title: quiz.title,
     description: quiz.description,
-    questionCount: data.questions.length,
+    assignedClasses,
+    questionCount: questionCount ?? 0,
+    hasAttempts: attemptCount > 0,
     createdAt: quiz.created_at,
   };
+}
+
+export async function createQuizAction(
+  data: CreateQuizInput,
+): Promise<TeacherQuizListItem> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error("Not authenticated");
+  }
+
+  const { data: quiz, error: quizError } = await supabase
+    .from("quizzes")
+    .insert({
+      teacher_id: user.id,
+      title: data.title,
+      description: data.description || null,
+    })
+    .select("id, title, description, created_at")
+    .single();
+
+  if (quizError) {
+    throw quizError;
+  }
+
+  await insertQuestions(supabase, quiz.id, data.questions);
+
+  if (data.classIds && data.classIds.length > 0) {
+    const { error: assignError } = await supabase
+      .from("quiz_assignments")
+      .insert(
+        data.classIds.map((classId) => ({
+          quiz_id: quiz.id,
+          class_id: classId,
+        })),
+      );
+
+    if (assignError) {
+      throw assignError;
+    }
+  }
+
+  return buildQuizListItem(supabase, quiz);
+}
+
+export async function assignQuizToClassAction(
+  quizId: string,
+  classId: string,
+): Promise<void> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error("Not authenticated");
+  }
+
+  await requireOwnedQuiz(supabase, quizId, user.id);
+
+  const { error } = await supabase
+    .from("quiz_assignments")
+    .upsert(
+      { quiz_id: quizId, class_id: classId },
+      { onConflict: "quiz_id,class_id", ignoreDuplicates: true },
+    );
+
+  if (error) {
+    throw error;
+  }
+}
+
+export async function unassignQuizFromClassAction(
+  quizId: string,
+  classId: string,
+): Promise<void> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error("Not authenticated");
+  }
+
+  await requireOwnedQuiz(supabase, quizId, user.id);
+
+  const { error } = await supabase
+    .from("quiz_assignments")
+    .delete()
+    .eq("quiz_id", quizId)
+    .eq("class_id", classId);
+
+  if (error) {
+    throw error;
+  }
+}
+
+export async function getQuizForEditingAction(
+  quizId: string,
+): Promise<QuizForEditing> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error("Not authenticated");
+  }
+
+  const quiz = await requireOwnedQuiz(supabase, quizId, user.id);
+
+  const [{ data: questionRows }, { data: assignments }, attemptCount] =
+    await Promise.all([
+      supabase
+        .from("quiz_questions")
+        .select("id, question_text, question_type, points, order_index")
+        .eq("quiz_id", quizId)
+        .order("order_index", { ascending: true }),
+      supabase
+        .from("quiz_assignments")
+        .select("class_id")
+        .eq("quiz_id", quizId),
+      getQuizAttemptCount(supabase, quizId),
+    ]);
+
+  const questionIds = (questionRows ?? []).map((question) => question.id);
+
+  const { data: options } =
+    questionIds.length > 0
+      ? await supabase
+          .from("quiz_question_options")
+          .select("id, question_id, option_text, is_correct, order_index")
+          .in("question_id", questionIds)
+          .order("order_index", { ascending: true })
+      : { data: [] as never[] };
+
+  const optionsByQuestion = new Map<
+    string,
+    { option_text: string; is_correct: boolean }[]
+  >();
+  for (const option of options ?? []) {
+    const list = optionsByQuestion.get(option.question_id) ?? [];
+    list.push({ option_text: option.option_text, is_correct: option.is_correct });
+    optionsByQuestion.set(option.question_id, list);
+  }
+
+  const questions: QuizQuestionInput[] = (questionRows ?? []).map(
+    (question) => ({
+      questionText: question.question_text,
+      questionType: question.question_type as QuizQuestionType,
+      points: question.points,
+      options: (optionsByQuestion.get(question.id) ?? []).map((option) => ({
+        optionText: option.option_text,
+        isCorrect: option.is_correct,
+      })),
+    }),
+  );
+
+  return {
+    id: quiz.id,
+    title: quiz.title,
+    description: quiz.description,
+    locked: attemptCount > 0,
+    assignedClassIds: (assignments ?? []).map((a) => a.class_id),
+    questions,
+  };
+}
+
+export async function updateQuizAction(
+  data: UpdateQuizInput,
+): Promise<TeacherQuizListItem> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error("Not authenticated");
+  }
+
+  const quiz = await requireOwnedQuiz(supabase, data.quizId, user.id);
+
+  const { data: updatedQuiz, error: updateError } = await supabase
+    .from("quizzes")
+    .update({
+      title: data.title,
+      description: data.description || null,
+    })
+    .eq("id", quiz.id)
+    .select("id, title, description, created_at")
+    .single();
+
+  if (updateError) {
+    throw updateError;
+  }
+
+  if (data.questions) {
+    const attemptCount = await getQuizAttemptCount(supabase, quiz.id);
+    if (attemptCount > 0) {
+      throw new Error(
+        "This quiz already has student submissions, so its questions can't be edited. Create a new quiz to change the content.",
+      );
+    }
+
+    const { error: deleteError } = await supabase
+      .from("quiz_questions")
+      .delete()
+      .eq("quiz_id", quiz.id);
+
+    if (deleteError) {
+      throw deleteError;
+    }
+
+    await insertQuestions(supabase, quiz.id, data.questions);
+  }
+
+  return buildQuizListItem(supabase, updatedQuiz);
+}
+
+export async function duplicateQuizAction(
+  quizId: string,
+): Promise<TeacherQuizListItem> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error("Not authenticated");
+  }
+
+  const source = await getQuizForEditingAction(quizId);
+
+  const { data: newQuiz, error: quizError } = await supabase
+    .from("quizzes")
+    .insert({
+      teacher_id: user.id,
+      title: `${source.title} (copy)`,
+      description: source.description,
+    })
+    .select("id, title, description, created_at")
+    .single();
+
+  if (quizError) {
+    throw quizError;
+  }
+
+  await insertQuestions(supabase, newQuiz.id, source.questions);
+
+  return buildQuizListItem(supabase, newQuiz);
 }
 
 export async function getQuizResultsAction(
@@ -104,7 +392,7 @@ export async function getQuizResultsAction(
 
   const { data: quiz, error: quizError } = await supabase
     .from("quizzes")
-    .select("id, title, class_id")
+    .select("id, title")
     .eq("id", quizId)
     .eq("teacher_id", user.id)
     .single();
@@ -125,17 +413,35 @@ export async function getQuizResultsAction(
   const maxScore = (questions ?? []).reduce((sum, q) => sum + q.points, 0);
 
   const { data: assignments, error: assignmentsError } = await supabase
-    .from("student_class_assignments")
-    .select("student_id")
-    .eq("class_id", quiz.class_id);
+    .from("quiz_assignments")
+    .select("class_id")
+    .eq("quiz_id", quizId);
 
   if (assignmentsError) {
     throw assignmentsError;
   }
 
-  const studentIds = (assignments ?? []).map(
-    (assignment) => assignment.student_id,
-  );
+  const assignedClassIds = [
+    ...new Set((assignments ?? []).map((assignment) => assignment.class_id)),
+  ];
+
+  const { data: classAssignments, error: classAssignmentsError } =
+    assignedClassIds.length > 0
+      ? await supabase
+          .from("student_class_assignments")
+          .select("student_id")
+          .in("class_id", assignedClassIds)
+      : { data: [] as { student_id: string }[], error: null };
+
+  if (classAssignmentsError) {
+    throw classAssignmentsError;
+  }
+
+  const studentIds = [
+    ...new Set(
+      (classAssignments ?? []).map((assignment) => assignment.student_id),
+    ),
+  ];
 
   // Fetched separately rather than embedded via a join - PostgREST's embed
   // cardinality inference isn't reliable enough here to trust silently; a
@@ -184,12 +490,12 @@ export async function getQuizResultsAction(
     }
   }
 
-  const results: QuizResultRow[] = (assignments ?? []).map((assignment) => {
-    const student = studentById.get(assignment.student_id);
-    const attempt = attemptByStudent.get(assignment.student_id);
+  const results: QuizResultRow[] = studentIds.map((studentId) => {
+    const student = studentById.get(studentId);
+    const attempt = attemptByStudent.get(studentId);
 
     return {
-      studentId: assignment.student_id,
+      studentId,
       studentName: student
         ? `${student.first_name} ${student.last_name}`
         : "Unknown student",

@@ -63,10 +63,16 @@ export interface AttendanceRecord {
 export interface Quiz {
   id: string;
   teacher_id: string;
-  class_id: string;
   title: string;
   description: string | null;
   created_at?: string;
+}
+
+export interface QuizAssignment {
+  id: string;
+  quiz_id: string;
+  class_id: string;
+  assigned_at: string;
 }
 
 export type QuizQuestionType = "multiple_choice" | "true_false" | "short_answer";
@@ -171,11 +177,11 @@ export interface QuizAttemptReview {
 }
 
 // Quiz summary shown on student/parent dashboards - covers both
-// not-yet-taken and completed quizzes.
+// not-yet-taken and completed quizzes. className is a comma-joined list
+// when a quiz is assigned to more than one of the viewer's own classes.
 export interface QuizSummary {
   id: string;
   title: string;
-  classId: string;
   className: string;
   completed: boolean;
   score: number | null;
@@ -197,19 +203,37 @@ export interface QuizQuestionInput {
 }
 
 export interface CreateQuizInput {
-  classId: string;
+  classIds?: string[];
   title: string;
   description?: string;
   questions: QuizQuestionInput[];
 }
 
+// questions omitted means "don't touch questions" - the server rejects a
+// present questions array once the quiz already has student attempts.
+export interface UpdateQuizInput {
+  quizId: string;
+  title: string;
+  description?: string;
+  questions?: QuizQuestionInput[];
+}
+
+export interface QuizForEditing {
+  id: string;
+  title: string;
+  description: string | null;
+  locked: boolean;
+  assignedClassIds: string[];
+  questions: QuizQuestionInput[];
+}
+
 export interface TeacherQuizListItem {
   id: string;
-  classId: string;
-  className: string;
+  assignedClasses: { id: string; name: string }[];
   title: string;
   description: string | null;
   questionCount: number;
+  hasAttempts: boolean;
   createdAt?: string;
 }
 

@@ -235,28 +235,42 @@ export async function getStudentDashboardDataAction(): Promise<
     .order("attendance_date", { ascending: false })
     .limit(50);
 
-  // Get quizzes for assigned classes, plus this student's own attempts
+  // Get quizzes assigned to this student's classes, plus their own attempts
   let quizzes: QuizSummary[] = [];
   if (classIds.length > 0) {
-    const { data: quizRows } = await supabase
-      .from("quizzes")
-      .select("id, title, class_id, classes:class_id (name)")
+    const classNameById = new Map(
+      (classAssignments as StudentClassAssignmentWithClass[] | null ?? []).map(
+        (a) => [a.class_id, a.classes.name],
+      ),
+    );
+
+    const { data: assignmentRows } = await supabase
+      .from("quiz_assignments")
+      .select("quiz_id, class_id")
       .in("class_id", classIds);
 
-    const quizIds = (quizRows ?? []).map((quiz) => quiz.id);
+    const quizIds = [...new Set((assignmentRows ?? []).map((a) => a.quiz_id))];
+    const classNamesByQuiz = new Map<string, string[]>();
+    for (const row of assignmentRows ?? []) {
+      const list = classNamesByQuiz.get(row.quiz_id) ?? [];
+      list.push(classNameById.get(row.class_id) ?? "");
+      classNamesByQuiz.set(row.quiz_id, list);
+    }
 
     if (quizIds.length > 0) {
-      const [{ data: attempts }, { data: questions }] = await Promise.all([
-        supabase
-          .from("quiz_attempts")
-          .select("quiz_id, score, submitted_at")
-          .eq("student_id", student.id)
-          .in("quiz_id", quizIds),
-        supabase.from("quiz_questions").select("quiz_id, points").in(
-          "quiz_id",
-          quizIds,
-        ),
-      ]);
+      const [{ data: quizRows }, { data: attempts }, { data: questions }] =
+        await Promise.all([
+          supabase.from("quizzes").select("id, title").in("id", quizIds),
+          supabase
+            .from("quiz_attempts")
+            .select("quiz_id, score, submitted_at")
+            .eq("student_id", student.id)
+            .in("quiz_id", quizIds),
+          supabase.from("quiz_questions").select("quiz_id, points").in(
+            "quiz_id",
+            quizIds,
+          ),
+        ]);
 
       const attemptByQuiz = new Map(
         (attempts ?? []).map((attempt) => [attempt.quiz_id, attempt]),
@@ -270,14 +284,12 @@ export async function getStudentDashboardDataAction(): Promise<
       }
 
       quizzes = (quizRows ?? []).map((quiz) => {
-        const quizClass = quiz.classes as unknown as { name: string } | null;
         const attempt = attemptByQuiz.get(quiz.id);
 
         return {
           id: quiz.id,
           title: quiz.title,
-          classId: quiz.class_id,
-          className: quizClass?.name ?? "",
+          className: (classNamesByQuiz.get(quiz.id) ?? []).join(", "),
           completed: Boolean(attempt),
           score: attempt?.score ?? null,
           maxScore: maxScoreByQuiz.get(quiz.id) ?? 0,

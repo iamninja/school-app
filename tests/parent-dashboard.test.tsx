@@ -51,7 +51,6 @@ const baseProps = {
   quizzes: [] as {
     id: string;
     title: string;
-    classId: string;
     className: string;
     completed: boolean;
     score: number | null;
@@ -167,7 +166,6 @@ describe("ParentDashboard", () => {
           {
             id: "quiz-1",
             title: "Chapter 3 Quiz",
-            classId: "class-1",
             className: "Algebra II",
             completed: true,
             score: 4,
@@ -177,7 +175,6 @@ describe("ParentDashboard", () => {
           {
             id: "quiz-2",
             title: "Pop Quiz",
-            classId: "class-2",
             className: "Biology",
             completed: false,
             score: null,
@@ -192,5 +189,27 @@ describe("ParentDashboard", () => {
     expect(screen.getByText("4 / 5")).toBeInTheDocument();
     expect(screen.getByText("Pop Quiz")).toBeInTheDocument();
     expect(screen.getByText(/not taken yet/i)).toBeInTheDocument();
+  });
+
+  it("shows a comma-joined class list for a quiz assigned to more than one of the child's classes", () => {
+    render(
+      <ParentDashboard
+        {...baseProps}
+        quizzes={[
+          {
+            id: "quiz-1",
+            title: "Shared Quiz",
+            className: "Algebra II, Geometry",
+            completed: false,
+            score: null,
+            maxScore: 5,
+            submittedAt: null,
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("Shared Quiz")).toBeInTheDocument();
+    expect(screen.getByText("Algebra II, Geometry")).toBeInTheDocument();
   });
 });

@@ -2,12 +2,17 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { PlusIcon, XIcon } from "lucide-react";
+import { CopyIcon, PencilIcon, UsersIcon } from "lucide-react";
 
 import {
+  assignQuizToClassAction,
   createQuizAction,
+  duplicateQuizAction,
+  getQuizForEditingAction,
   getQuizResultsAction,
   getStudentQuizAttemptAction,
+  unassignQuizFromClassAction,
+  updateQuizAction,
 } from "@/app/protected/teacher/quiz-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,47 +22,32 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { QuizReviewAnswers } from "@/components/quiz-review-answers";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
+  createBlankQuestion,
+  draftsToQuestionInputs,
+  questionInputsToDrafts,
+  useQuestionDrafts,
+  validateQuestionDrafts,
+  QuizQuestionEditor,
+} from "@/components/quiz-question-editor";
 import type {
   QuizAttemptReview,
-  QuizQuestionType,
   QuizResults,
   TeacherQuizListItem,
 } from "@/lib/types/database";
 
 type ClassOption = { id: string; name: string };
-
-type OptionDraft = { optionText: string; isCorrect: boolean };
-
-type QuestionDraft = {
-  questionText: string;
-  questionType: QuizQuestionType;
-  points: string;
-  options: OptionDraft[];
-  trueFalseAnswer: "true" | "false";
-};
-
-const QUESTION_TYPE_LABELS: Record<QuizQuestionType, string> = {
-  multiple_choice: "Multiple choice",
-  true_false: "True / False",
-  short_answer: "Short answer",
-};
-
-function createBlankQuestion(): QuestionDraft {
-  return {
-    questionText: "",
-    questionType: "multiple_choice",
-    points: "1",
-    options: [
-      { optionText: "", isCorrect: true },
-      { optionText: "", isCorrect: false },
-    ],
-    trueFalseAnswer: "true",
-  };
-}
 
 export function TeacherQuizBuilder({
   classes,
@@ -68,12 +58,10 @@ export function TeacherQuizBuilder({
 }) {
   const [quizzes, setQuizzes] =
     React.useState<TeacherQuizListItem[]>(initialQuizzes);
-  const [classId, setClassId] = React.useState(classes[0]?.id ?? "");
+  const [classIds, setClassIds] = React.useState<string[]>([]);
   const [title, setTitle] = React.useState("");
   const [description, setDescription] = React.useState("");
-  const [questions, setQuestions] = React.useState<QuestionDraft[]>([
-    createBlankQuestion(),
-  ]);
+  const createDraft = useQuestionDrafts();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [selectedQuizId, setSelectedQuizId] = React.useState<string | null>(
     null,
@@ -88,184 +76,58 @@ export function TeacherQuizBuilder({
     React.useState<QuizAttemptReview | null>(null);
   const [isLoadingAttempt, setIsLoadingAttempt] = React.useState(false);
 
-  const handleQuestionChange = (
-    index: number,
-    patch: Partial<QuestionDraft>,
-  ) => {
-    setQuestions((prev) =>
-      prev.map((question, i) =>
-        i === index ? { ...question, ...patch } : question,
-      ),
-    );
-  };
+  const [manageQuizId, setManageQuizId] = React.useState<string | null>(null);
+  const [isTogglingAssignment, setIsTogglingAssignment] =
+    React.useState(false);
 
-  const handleOptionChange = (
-    questionIndex: number,
-    optionIndex: number,
-    patch: Partial<OptionDraft>,
-  ) => {
-    setQuestions((prev) =>
-      prev.map((question, i) => {
-        if (i !== questionIndex) return question;
-        return {
-          ...question,
-          options: question.options.map((option, oi) =>
-            oi === optionIndex ? { ...option, ...patch } : option,
-          ),
-        };
-      }),
-    );
-  };
+  const [editQuizId, setEditQuizId] = React.useState<string | null>(null);
+  const [editTitle, setEditTitle] = React.useState("");
+  const [editDescription, setEditDescription] = React.useState("");
+  const [editLocked, setEditLocked] = React.useState(false);
+  const [isLoadingEdit, setIsLoadingEdit] = React.useState(false);
+  const [isSavingEdit, setIsSavingEdit] = React.useState(false);
+  const editDraft = useQuestionDrafts();
 
-  const handleSetCorrectOption = (
-    questionIndex: number,
-    optionIndex: number,
-  ) => {
-    setQuestions((prev) =>
-      prev.map((question, i) => {
-        if (i !== questionIndex) return question;
-        return {
-          ...question,
-          options: question.options.map((option, oi) => ({
-            ...option,
-            isCorrect: oi === optionIndex,
-          })),
-        };
-      }),
-    );
-  };
-
-  const handleAddOption = (questionIndex: number) => {
-    setQuestions((prev) =>
-      prev.map((question, i) =>
-        i === questionIndex
-          ? {
-              ...question,
-              options: [
-                ...question.options,
-                { optionText: "", isCorrect: false },
-              ],
-            }
-          : question,
-      ),
-    );
-  };
-
-  const handleRemoveOption = (questionIndex: number, optionIndex: number) => {
-    setQuestions((prev) =>
-      prev.map((question, i) => {
-        if (i !== questionIndex) return question;
-        const options = question.options.filter((_, oi) => oi !== optionIndex);
-        if (options.length > 0 && !options.some((option) => option.isCorrect)) {
-          options[0] = { ...options[0], isCorrect: true };
-        }
-        return { ...question, options };
-      }),
-    );
-  };
-
-  const handleAddQuestion = () => {
-    setQuestions((prev) => [...prev, createBlankQuestion()]);
-  };
-
-  const handleRemoveQuestion = (index: number) => {
-    setQuestions((prev) => prev.filter((_, i) => i !== index));
-  };
+  const [duplicatingQuizId, setDuplicatingQuizId] = React.useState<
+    string | null
+  >(null);
 
   const resetForm = () => {
     setTitle("");
     setDescription("");
-    setQuestions([createBlankQuestion()]);
+    setClassIds([]);
+    createDraft.setQuestions([createBlankQuestion()]);
+  };
+
+  const handleToggleCreateClass = (classId: string) => {
+    setClassIds((prev) =>
+      prev.includes(classId)
+        ? prev.filter((id) => id !== classId)
+        : [...prev, classId],
+    );
   };
 
   const handleCreateQuiz = async (event: React.FormEvent) => {
     event.preventDefault();
 
-    if (!classId) {
-      toast.error("Select a class for this quiz");
-      return;
-    }
     if (!title.trim()) {
       toast.error("Give the quiz a title");
       return;
     }
-    if (questions.length === 0) {
-      toast.error("Add at least one question");
-      return;
-    }
 
-    for (const [index, question] of questions.entries()) {
-      if (!question.questionText.trim()) {
-        toast.error(`Question ${index + 1} needs text`);
-        return;
-      }
-      if (question.questionType === "multiple_choice") {
-        const filled = question.options.filter((option) =>
-          option.optionText.trim(),
-        );
-        if (filled.length < 2) {
-          toast.error(`Question ${index + 1} needs at least 2 options`);
-          return;
-        }
-        if (
-          !question.options.some(
-            (option) => option.isCorrect && option.optionText.trim(),
-          )
-        ) {
-          toast.error(`Question ${index + 1} needs a correct answer selected`);
-          return;
-        }
-      }
+    const validationError = validateQuestionDrafts(createDraft.questions);
+    if (validationError) {
+      toast.error(validationError);
+      return;
     }
 
     setIsSubmitting(true);
     try {
       const created = await createQuizAction({
-        classId,
+        classIds,
         title: title.trim(),
         description: description.trim() || undefined,
-        questions: questions.map((question) => {
-          const points = Number.parseInt(question.points, 10) || 1;
-
-          if (question.questionType === "true_false") {
-            return {
-              questionText: question.questionText.trim(),
-              questionType: "true_false" as const,
-              points,
-              options: [
-                {
-                  optionText: "True",
-                  isCorrect: question.trueFalseAnswer === "true",
-                },
-                {
-                  optionText: "False",
-                  isCorrect: question.trueFalseAnswer === "false",
-                },
-              ],
-            };
-          }
-
-          if (question.questionType === "short_answer") {
-            return {
-              questionText: question.questionText.trim(),
-              questionType: "short_answer" as const,
-              points,
-              options: [],
-            };
-          }
-
-          return {
-            questionText: question.questionText.trim(),
-            questionType: "multiple_choice" as const,
-            points,
-            options: question.options
-              .filter((option) => option.optionText.trim())
-              .map((option) => ({
-                optionText: option.optionText.trim(),
-                isCorrect: option.isCorrect,
-              })),
-          };
-        }),
+        questions: draftsToQuestionInputs(createDraft.questions),
       });
 
       setQuizzes((prev) => [created, ...prev]);
@@ -318,6 +180,128 @@ export function TeacherQuizBuilder({
       );
     } finally {
       setIsLoadingAttempt(false);
+    }
+  };
+
+  const managedQuiz = quizzes.find((quiz) => quiz.id === manageQuizId) ?? null;
+
+  const handleToggleAssignment = async (
+    classId: string,
+    isAssigned: boolean,
+  ) => {
+    if (!manageQuizId) return;
+    setIsTogglingAssignment(true);
+    try {
+      if (isAssigned) {
+        await unassignQuizFromClassAction(manageQuizId, classId);
+      } else {
+        await assignQuizToClassAction(manageQuizId, classId);
+      }
+      setQuizzes((prev) =>
+        prev.map((quiz) => {
+          if (quiz.id !== manageQuizId) return quiz;
+          if (isAssigned) {
+            return {
+              ...quiz,
+              assignedClasses: quiz.assignedClasses.filter(
+                (c) => c.id !== classId,
+              ),
+            };
+          }
+          const classOption = classes.find((c) => c.id === classId);
+          return {
+            ...quiz,
+            assignedClasses: [
+              ...quiz.assignedClasses,
+              { id: classId, name: classOption?.name ?? "" },
+            ],
+          };
+        }),
+      );
+    } catch (error: unknown) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to update assignment",
+      );
+    } finally {
+      setIsTogglingAssignment(false);
+    }
+  };
+
+  const openEditDialog = async (quizId: string) => {
+    setEditQuizId(quizId);
+    setIsLoadingEdit(true);
+    try {
+      const data = await getQuizForEditingAction(quizId);
+      setEditTitle(data.title);
+      setEditDescription(data.description ?? "");
+      setEditLocked(data.locked);
+      editDraft.setQuestions(questionInputsToDrafts(data.questions));
+    } catch (error: unknown) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to load quiz",
+      );
+      setEditQuizId(null);
+    } finally {
+      setIsLoadingEdit(false);
+    }
+  };
+
+  const closeEditDialog = () => {
+    setEditQuizId(null);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editQuizId) return;
+    if (!editTitle.trim()) {
+      toast.error("Give the quiz a title");
+      return;
+    }
+
+    if (!editLocked) {
+      const validationError = validateQuestionDrafts(editDraft.questions);
+      if (validationError) {
+        toast.error(validationError);
+        return;
+      }
+    }
+
+    setIsSavingEdit(true);
+    try {
+      const updated = await updateQuizAction({
+        quizId: editQuizId,
+        title: editTitle.trim(),
+        description: editDescription.trim() || undefined,
+        questions: editLocked
+          ? undefined
+          : draftsToQuestionInputs(editDraft.questions),
+      });
+      setQuizzes((prev) =>
+        prev.map((quiz) => (quiz.id === updated.id ? updated : quiz)),
+      );
+      toast.success("Quiz updated");
+      closeEditDialog();
+    } catch (error: unknown) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to update quiz",
+      );
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const handleDuplicate = async (quizId: string) => {
+    setDuplicatingQuizId(quizId);
+    try {
+      const copy = await duplicateQuizAction(quizId);
+      setQuizzes((prev) => [copy, ...prev]);
+      toast.success("Quiz copied — edit the copy to make changes");
+      closeEditDialog();
+    } catch (error: unknown) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to copy quiz",
+      );
+    } finally {
+      setDuplicatingQuizId(null);
     }
   };
 
@@ -381,7 +365,7 @@ export function TeacherQuizBuilder({
               </p>
             ) : results && results.results.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                No students assigned to this class yet.
+                No students assigned to this quiz&apos;s classes yet.
               </p>
             ) : (
               <div className="space-y-2">
@@ -441,22 +425,6 @@ export function TeacherQuizBuilder({
         <CardContent>
           <form onSubmit={handleCreateQuiz} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="quiz-class">Class</Label>
-              <select
-                id="quiz-class"
-                value={classId}
-                onChange={(event) => setClassId(event.target.value)}
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-              >
-                <option value="">Select class</option>
-                {classes.map((classOption) => (
-                  <option key={classOption.id} value={classOption.id}>
-                    {classOption.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-2">
               <Label htmlFor="quiz-title">Title</Label>
               <Input
                 id="quiz-title"
@@ -474,185 +442,42 @@ export function TeacherQuizBuilder({
               />
             </div>
 
-            <div className="space-y-4">
-              {questions.map((question, index) => (
-                <div key={index} className="space-y-3 rounded-lg border p-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="text-sm font-semibold">
-                      Question {index + 1}
-                    </p>
-                    {questions.length > 1 && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6"
-                        onClick={() => handleRemoveQuestion(index)}
-                        aria-label={`Remove question ${index + 1}`}
-                      >
-                        <XIcon className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
-                  </div>
-                  <Input
-                    value={question.questionText}
-                    onChange={(event) =>
-                      handleQuestionChange(index, {
-                        questionText: event.target.value,
-                      })
-                    }
-                    placeholder="Question text"
-                  />
-                  <div className="grid grid-cols-2 gap-2">
-                    <select
-                      aria-label="Question type"
-                      value={question.questionType}
-                      onChange={(event) => {
-                        const nextType = event.target
-                          .value as QuizQuestionType;
-                        handleQuestionChange(index, {
-                          questionType: nextType,
-                          options:
-                            nextType === "multiple_choice"
-                              ? [
-                                  { optionText: "", isCorrect: true },
-                                  { optionText: "", isCorrect: false },
-                                ]
-                              : question.options,
-                        });
-                      }}
-                      className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            <div className="space-y-2">
+              <Label>Assign to classes (optional)</Label>
+              {classes.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  No classes yet — you can assign this quiz later.
+                </p>
+              ) : (
+                <div className="grid gap-2">
+                  {classes.map((classOption) => (
+                    <label
+                      key={classOption.id}
+                      className="flex items-center gap-3 rounded-md border p-3 text-sm"
                     >
-                      {Object.entries(QUESTION_TYPE_LABELS).map(
-                        ([value, label]) => (
-                          <option key={value} value={value}>
-                            {label}
-                          </option>
-                        ),
-                      )}
-                    </select>
-                    <Input
-                      type="number"
-                      min={1}
-                      value={question.points}
-                      onChange={(event) =>
-                        handleQuestionChange(index, {
-                          points: event.target.value,
-                        })
-                      }
-                      placeholder="Points"
-                    />
-                  </div>
-
-                  {question.questionType === "multiple_choice" && (
-                    <RadioGroup
-                      value={question.options
-                        .findIndex((option) => option.isCorrect)
-                        .toString()}
-                      onValueChange={(value) =>
-                        handleSetCorrectOption(index, Number.parseInt(value, 10))
-                      }
-                    >
-                      {question.options.map((option, optionIndex) => (
-                        <div
-                          key={optionIndex}
-                          className="flex items-center gap-2"
-                        >
-                          <RadioGroupItem
-                            value={optionIndex.toString()}
-                            id={`q${index}-opt${optionIndex}`}
-                            aria-label={`Mark option ${optionIndex + 1} correct`}
-                          />
-                          <Input
-                            value={option.optionText}
-                            onChange={(event) =>
-                              handleOptionChange(index, optionIndex, {
-                                optionText: event.target.value,
-                              })
-                            }
-                            placeholder={`Option ${optionIndex + 1}`}
-                          />
-                          {question.options.length > 2 && (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8"
-                              onClick={() =>
-                                handleRemoveOption(index, optionIndex)
-                              }
-                              aria-label={`Remove option ${optionIndex + 1}`}
-                            >
-                              <XIcon className="h-3.5 w-3.5" />
-                            </Button>
-                          )}
-                        </div>
-                      ))}
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleAddOption(index)}
-                      >
-                        <PlusIcon className="mr-1 h-3.5 w-3.5" /> Add option
-                      </Button>
-                    </RadioGroup>
-                  )}
-
-                  {question.questionType === "true_false" && (
-                    <RadioGroup
-                      value={question.trueFalseAnswer}
-                      onValueChange={(value) =>
-                        handleQuestionChange(index, {
-                          trueFalseAnswer: value as "true" | "false",
-                        })
-                      }
-                      className="flex items-center gap-4"
-                    >
-                      <div className="flex items-center gap-2">
-                        <RadioGroupItem
-                          value="true"
-                          id={`tf-true-${index}`}
-                        />
-                        <Label
-                          htmlFor={`tf-true-${index}`}
-                          className="text-sm font-normal"
-                        >
-                          True
-                        </Label>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <RadioGroupItem
-                          value="false"
-                          id={`tf-false-${index}`}
-                        />
-                        <Label
-                          htmlFor={`tf-false-${index}`}
-                          className="text-sm font-normal"
-                        >
-                          False
-                        </Label>
-                      </div>
-                    </RadioGroup>
-                  )}
-
-                  {question.questionType === "short_answer" && (
-                    <p className="text-xs text-muted-foreground">
-                      Students will type a free-text answer. Grading it is
-                      not part of this version yet.
-                    </p>
-                  )}
+                      <Checkbox
+                        checked={classIds.includes(classOption.id)}
+                        onCheckedChange={() =>
+                          handleToggleCreateClass(classOption.id)
+                        }
+                      />
+                      <span className="flex-1">{classOption.name}</span>
+                    </label>
+                  ))}
                 </div>
-              ))}
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleAddQuestion}
-                className="w-full"
-              >
-                <PlusIcon className="mr-1 h-4 w-4" /> Add question
-              </Button>
+              )}
             </div>
+
+            <QuizQuestionEditor
+              questions={createDraft.questions}
+              onQuestionChange={createDraft.handleQuestionChange}
+              onOptionChange={createDraft.handleOptionChange}
+              onSetCorrectOption={createDraft.handleSetCorrectOption}
+              onAddOption={createDraft.handleAddOption}
+              onRemoveOption={createDraft.handleRemoveOption}
+              onAddQuestion={createDraft.handleAddQuestion}
+              onRemoveQuestion={createDraft.handleRemoveQuestion}
+            />
 
             <Button type="submit" className="w-full" disabled={isSubmitting}>
               {isSubmitting ? "Creating..." : "Create Quiz"}
@@ -673,27 +498,172 @@ export function TeacherQuizBuilder({
           ) : (
             <div className="space-y-2">
               {quizzes.map((quiz) => (
-                <button
-                  key={quiz.id}
-                  type="button"
-                  onClick={() => handleSelectQuiz(quiz.id)}
-                  className="flex w-full items-center justify-between rounded-md border px-3 py-2 text-left hover:bg-muted/50"
-                >
-                  <div>
-                    <p className="text-sm font-medium">{quiz.title}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {quiz.className}
-                    </p>
+                <div key={quiz.id} className="space-y-2 rounded-md border p-3">
+                  <button
+                    type="button"
+                    onClick={() => handleSelectQuiz(quiz.id)}
+                    className="flex w-full items-center justify-between text-left"
+                  >
+                    <div>
+                      <p className="text-sm font-medium">{quiz.title}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {quiz.assignedClasses.length > 0
+                          ? quiz.assignedClasses.map((c) => c.name).join(", ")
+                          : "Unassigned"}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {quiz.hasAttempts && (
+                        <Badge variant="secondary">Locked</Badge>
+                      )}
+                      <Badge variant="outline">
+                        {quiz.questionCount} questions
+                      </Badge>
+                    </div>
+                  </button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setManageQuizId(quiz.id)}
+                    >
+                      <UsersIcon className="mr-1 h-3.5 w-3.5" /> Manage classes
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => openEditDialog(quiz.id)}
+                    >
+                      <PencilIcon className="mr-1 h-3.5 w-3.5" /> Edit
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={duplicatingQuizId === quiz.id}
+                      onClick={() => handleDuplicate(quiz.id)}
+                    >
+                      <CopyIcon className="mr-1 h-3.5 w-3.5" />
+                      {duplicatingQuizId === quiz.id ? "Copying..." : "Copy"}
+                    </Button>
                   </div>
-                  <Badge variant="outline">
-                    {quiz.questionCount} questions
-                  </Badge>
-                </button>
+                </div>
               ))}
             </div>
           )}
         </CardContent>
       </Card>
+
+      <Dialog
+        open={manageQuizId !== null}
+        onOpenChange={(open) => !open && setManageQuizId(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Manage classes — {managedQuiz?.title}</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-2">
+            {classes.map((classOption) => {
+              const isAssigned =
+                managedQuiz?.assignedClasses.some(
+                  (c) => c.id === classOption.id,
+                ) ?? false;
+              return (
+                <label
+                  key={classOption.id}
+                  className="flex items-center gap-3 rounded-md border p-3 text-sm"
+                >
+                  <Checkbox
+                    checked={isAssigned}
+                    disabled={isTogglingAssignment}
+                    onCheckedChange={() =>
+                      handleToggleAssignment(classOption.id, isAssigned)
+                    }
+                  />
+                  <span className="flex-1">{classOption.name}</span>
+                </label>
+              );
+            })}
+          </div>
+          <DialogFooter showCloseButton />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={editQuizId !== null}
+        onOpenChange={(open) => !open && closeEditDialog()}
+      >
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit quiz</DialogTitle>
+          </DialogHeader>
+          {isLoadingEdit ? (
+            <p className="text-sm text-muted-foreground">Loading...</p>
+          ) : (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-quiz-title">Title</Label>
+                <Input
+                  id="edit-quiz-title"
+                  value={editTitle}
+                  onChange={(event) => setEditTitle(event.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-quiz-description">Description</Label>
+                <Input
+                  id="edit-quiz-description"
+                  value={editDescription}
+                  onChange={(event) => setEditDescription(event.target.value)}
+                />
+              </div>
+
+              {editLocked && (
+                <p className="text-xs text-muted-foreground">
+                  This quiz already has student submissions, so its questions
+                  are locked. Use Copy to create an editable version.
+                </p>
+              )}
+
+              <QuizQuestionEditor
+                questions={editDraft.questions}
+                onQuestionChange={editDraft.handleQuestionChange}
+                onOptionChange={editDraft.handleOptionChange}
+                onSetCorrectOption={editDraft.handleSetCorrectOption}
+                onAddOption={editDraft.handleAddOption}
+                onRemoveOption={editDraft.handleRemoveOption}
+                onAddQuestion={editDraft.handleAddQuestion}
+                onRemoveQuestion={editDraft.handleRemoveQuestion}
+                readOnly={editLocked}
+              />
+
+              <div className="flex gap-2">
+                {editLocked && editQuizId && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={duplicatingQuizId === editQuizId}
+                    onClick={() => handleDuplicate(editQuizId)}
+                  >
+                    <CopyIcon className="mr-1 h-3.5 w-3.5" />
+                    {duplicatingQuizId === editQuizId ? "Copying..." : "Copy to edit"}
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  onClick={handleSaveEdit}
+                  disabled={isSavingEdit}
+                  className="flex-1"
+                >
+                  {isSavingEdit ? "Saving..." : "Save changes"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

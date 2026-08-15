@@ -43,7 +43,7 @@ export default async function TeacherPage() {
       .order("attendance_date", { ascending: false }),
     supabase
       .from("quizzes")
-      .select("id, class_id, title, description, created_at, classes:class_id (name)")
+      .select("id, title, description, created_at")
       .eq("teacher_id", user.id)
       .order("created_at", { ascending: false }),
   ]);
@@ -104,11 +104,25 @@ export default async function TeacherPage() {
 
   const quizIds = (quizzes ?? []).map((quiz) => quiz.id);
   const questionCountByQuiz = new Map<string, number>();
+  const assignedClassesByQuiz = new Map<
+    string,
+    { id: string; name: string }[]
+  >();
+  const quizzesWithAttempts = new Set<string>();
   if (quizIds.length > 0) {
-    const { data: questionRows } = await supabase
-      .from("quiz_questions")
-      .select("quiz_id")
-      .in("quiz_id", quizIds);
+    const classNameById = new Map(
+      (classes ?? []).map((classRow) => [classRow.id, classRow.name]),
+    );
+
+    const [{ data: questionRows }, { data: assignmentRows }, { data: attemptRows }] =
+      await Promise.all([
+        supabase.from("quiz_questions").select("quiz_id").in("quiz_id", quizIds),
+        supabase
+          .from("quiz_assignments")
+          .select("quiz_id, class_id")
+          .in("quiz_id", quizIds),
+        supabase.from("quiz_attempts").select("quiz_id").in("quiz_id", quizIds),
+      ]);
 
     for (const row of questionRows ?? []) {
       questionCountByQuiz.set(
@@ -116,20 +130,27 @@ export default async function TeacherPage() {
         (questionCountByQuiz.get(row.quiz_id) ?? 0) + 1,
       );
     }
+
+    for (const row of assignmentRows ?? []) {
+      const list = assignedClassesByQuiz.get(row.quiz_id) ?? [];
+      list.push({ id: row.class_id, name: classNameById.get(row.class_id) ?? "" });
+      assignedClassesByQuiz.set(row.quiz_id, list);
+    }
+
+    for (const row of attemptRows ?? []) {
+      quizzesWithAttempts.add(row.quiz_id);
+    }
   }
 
-  const initialQuizzes = (quizzes ?? []).map((quiz) => {
-    const quizClass = quiz.classes as unknown as { name: string } | null;
-    return {
-      id: quiz.id,
-      classId: quiz.class_id,
-      className: quizClass?.name ?? "",
-      title: quiz.title,
-      description: quiz.description,
-      questionCount: questionCountByQuiz.get(quiz.id) ?? 0,
-      createdAt: quiz.created_at,
-    };
-  });
+  const initialQuizzes = (quizzes ?? []).map((quiz) => ({
+    id: quiz.id,
+    title: quiz.title,
+    description: quiz.description,
+    assignedClasses: assignedClassesByQuiz.get(quiz.id) ?? [],
+    questionCount: questionCountByQuiz.get(quiz.id) ?? 0,
+    hasAttempts: quizzesWithAttempts.has(quiz.id),
+    createdAt: quiz.created_at,
+  }));
 
   return (
     <TeacherDashboard

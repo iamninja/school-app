@@ -22,7 +22,6 @@ const quizzes = [
   {
     id: "quiz-1",
     title: "Chapter 3 Quiz",
-    classId: "class-1",
     className: "Algebra II",
     completed: false,
     score: null,
