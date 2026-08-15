@@ -43,7 +43,7 @@ export default async function TeacherPage() {
       .order("attendance_date", { ascending: false }),
     supabase
       .from("quizzes")
-      .select("id, title, description, created_at")
+      .select("id, title, description, time_limit_minutes, created_at")
       .eq("teacher_id", user.id)
       .order("created_at", { ascending: false }),
   ]);
@@ -146,6 +146,7 @@ export default async function TeacherPage() {
     id: quiz.id,
     title: quiz.title,
     description: quiz.description,
+    timeLimitMinutes: quiz.time_limit_minutes,
     assignedClasses: assignedClassesByQuiz.get(quiz.id) ?? [],
     questionCount: questionCountByQuiz.get(quiz.id) ?? 0,
     hasAttempts: quizzesWithAttempts.has(quiz.id),

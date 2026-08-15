@@ -8,6 +8,7 @@ import {
   getQuizReviewAction,
   submitQuizAttemptAction,
 } from "@/app/student-dashboard/quiz-actions";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -32,6 +33,12 @@ type ViewState =
   | { mode: "taking"; quiz: QuizForTaking }
   | { mode: "review"; review: QuizAttemptReview };
 
+function formatRemainingTime(totalSeconds: number): string {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
 export function StudentQuizPanel({
   quizzes: initialQuizzes,
 }: {
@@ -44,6 +51,9 @@ export function StudentQuizPanel({
     Record<string, QuizAnswerInput>
   >({});
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [remainingSeconds, setRemainingSeconds] = React.useState<
+    number | null
+  >(null);
 
   const handleTakeQuiz = async (quizId: string) => {
     setIsLoading(true);
@@ -84,19 +94,25 @@ export function StudentQuizPanel({
     }));
   };
 
-  const handleSubmitQuiz = async () => {
+  const handleSubmitQuiz = async (options?: { auto?: boolean }) => {
     if (view.mode !== "taking") {
       return;
     }
 
-    const unanswered = view.quiz.questions.filter((question) => {
-      const answer = answers[question.id];
-      return !answer || (!answer.selectedOptionId && !answer.textAnswer?.trim());
-    });
+    const auto = options?.auto ?? false;
 
-    if (unanswered.length > 0) {
-      toast.error(`Please answer all questions (${unanswered.length} left)`);
-      return;
+    if (!auto) {
+      const unanswered = view.quiz.questions.filter((question) => {
+        const answer = answers[question.id];
+        return (
+          !answer || (!answer.selectedOptionId && !answer.textAnswer?.trim())
+        );
+      });
+
+      if (unanswered.length > 0) {
+        toast.error(`Please answer all questions (${unanswered.length} left)`);
+        return;
+      }
     }
 
     setIsSubmitting(true);
@@ -119,7 +135,9 @@ export function StudentQuizPanel({
         ),
       );
       setView({ mode: "review", review });
-      toast.success("Quiz submitted");
+      toast.success(
+        auto ? "Time's up — quiz submitted automatically" : "Quiz submitted",
+      );
     } catch (error: unknown) {
       toast.error(
         error instanceof Error ? error.message : "Failed to submit quiz",
@@ -129,13 +147,61 @@ export function StudentQuizPanel({
     }
   };
 
+  // Keeps a ref to the latest handleSubmitQuiz closure (fresh `answers`
+  // included) so the countdown effect below can trigger an auto-submit
+  // without needing to restart the interval every time an answer changes.
+  const handleSubmitQuizRef = React.useRef(handleSubmitQuiz);
+  React.useEffect(() => {
+    handleSubmitQuizRef.current = handleSubmitQuiz;
+  });
+
+  React.useEffect(() => {
+    if (
+      view.mode !== "taking" ||
+      view.quiz.timeLimitMinutes === null ||
+      !view.quiz.startedAt
+    ) {
+      // Resets the countdown when leaving a timed quiz or entering an
+      // untimed one - there's no external subscription to unsubscribe from
+      // here, just a derived value that needs to stop showing stale time.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setRemainingSeconds(null);
+      return;
+    }
+
+    const deadline =
+      Date.parse(view.quiz.startedAt) + view.quiz.timeLimitMinutes * 60_000;
+    let hasAutoSubmitted = false;
+
+    const tick = () => {
+      const secondsLeft = Math.max(
+        0,
+        Math.round((deadline - Date.now()) / 1000),
+      );
+      setRemainingSeconds(secondsLeft);
+      if (secondsLeft <= 0 && !hasAutoSubmitted) {
+        hasAutoSubmitted = true;
+        handleSubmitQuizRef.current({ auto: true });
+      }
+    };
+
+    tick();
+    const intervalId = setInterval(tick, 1000);
+    return () => clearInterval(intervalId);
+  }, [view]);
+
   if (view.mode === "taking") {
     return (
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between gap-2">
           <CardTitle>
             <MathText text={view.quiz.title} />
           </CardTitle>
+          {remainingSeconds !== null && (
+            <Badge variant={remainingSeconds <= 60 ? "destructive" : "outline"}>
+              {formatRemainingTime(remainingSeconds)}
+            </Badge>
+          )}
         </CardHeader>
         <CardContent className="space-y-6">
           {view.quiz.questions.map((question, index) => (
@@ -191,7 +257,7 @@ export function StudentQuizPanel({
               Cancel
             </Button>
             <Button
-              onClick={handleSubmitQuiz}
+              onClick={() => handleSubmitQuiz()}
               disabled={isSubmitting}
               className="flex-1"
             >

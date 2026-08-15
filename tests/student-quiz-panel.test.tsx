@@ -34,6 +34,8 @@ const sampleQuizForTaking = {
   id: "quiz-1",
   title: "Chapter 3 Quiz",
   description: null,
+  timeLimitMinutes: null,
+  startedAt: null,
   questions: [
     {
       id: "q1",
@@ -121,6 +123,8 @@ describe("StudentQuizPanel", () => {
       id: "quiz-1",
       title: "Chapter 3 Quiz",
       description: null,
+      timeLimitMinutes: null,
+      startedAt: null,
       questions: [
         {
           id: "q1",
@@ -279,6 +283,8 @@ describe("StudentQuizPanel", () => {
       id: "quiz-1",
       title: "Chapter 3 Quiz",
       description: null,
+      timeLimitMinutes: null,
+      startedAt: null,
       questions: [
         {
           id: "q1",
@@ -315,6 +321,8 @@ describe("StudentQuizPanel", () => {
       id: "quiz-1",
       title: "Chapter 3 Quiz",
       description: null,
+      timeLimitMinutes: null,
+      startedAt: null,
       questions: [
         {
           id: "q1",
@@ -390,5 +398,59 @@ describe("StudentQuizPanel", () => {
       // math renderer, even though it contains literal "$" characters.
       expect(container.querySelector(".katex")).toBeNull();
     });
+  });
+
+  it("shows a countdown for a quiz with a time limit", async () => {
+    const user = userEvent.setup();
+    const getQuizForTakingAction = vi.mocked(
+      quizActions.getQuizForTakingAction,
+    );
+    getQuizForTakingAction.mockResolvedValue({
+      ...sampleQuizForTaking,
+      timeLimitMinutes: 1,
+      startedAt: new Date(Date.now() - 55_000).toISOString(),
+    });
+
+    render(<StudentQuizPanel quizzes={quizzes} />);
+    await user.click(screen.getByRole("button", { name: /take quiz/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/^0:0[0-9]$/)).toBeInTheDocument();
+    });
+  });
+
+  it("auto-submits with a time's-up message once the time limit has elapsed", async () => {
+    const user = userEvent.setup();
+    const getQuizForTakingAction = vi.mocked(
+      quizActions.getQuizForTakingAction,
+    );
+    const submitQuizAttemptAction = vi.mocked(
+      quizActions.submitQuizAttemptAction,
+    );
+
+    getQuizForTakingAction.mockResolvedValue({
+      ...sampleQuizForTaking,
+      timeLimitMinutes: 1,
+      startedAt: new Date(Date.now() - 2 * 60_000).toISOString(),
+    });
+    submitQuizAttemptAction.mockResolvedValue({
+      attemptId: "attempt-1",
+      quizId: "quiz-1",
+      quizTitle: "Chapter 3 Quiz",
+      score: 0,
+      maxScore: 1,
+      submittedAt: "2026-01-02T00:00:00Z",
+      answers: [],
+    });
+
+    render(<StudentQuizPanel quizzes={quizzes} />);
+    await user.click(screen.getByRole("button", { name: /take quiz/i }));
+
+    await waitFor(() => {
+      expect(submitQuizAttemptAction).toHaveBeenCalledWith("quiz-1", []);
+    });
+    expect(toast.success).toHaveBeenCalledWith(
+      "Time's up — quiz submitted automatically",
+    );
   });
 });

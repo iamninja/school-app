@@ -71,6 +71,7 @@ export function TeacherQuizBuilder({
   const [classIds, setClassIds] = React.useState<string[]>([]);
   const [title, setTitle] = React.useState("");
   const [description, setDescription] = React.useState("");
+  const [timeLimitMinutes, setTimeLimitMinutes] = React.useState("");
   const createDraft = useQuestionDrafts();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [selectedQuizId, setSelectedQuizId] = React.useState<string | null>(
@@ -93,6 +94,7 @@ export function TeacherQuizBuilder({
   const [editQuizId, setEditQuizId] = React.useState<string | null>(null);
   const [editTitle, setEditTitle] = React.useState("");
   const [editDescription, setEditDescription] = React.useState("");
+  const [editTimeLimitMinutes, setEditTimeLimitMinutes] = React.useState("");
   const [editLocked, setEditLocked] = React.useState(false);
   const [isLoadingEdit, setIsLoadingEdit] = React.useState(false);
   const [isSavingEdit, setIsSavingEdit] = React.useState(false);
@@ -112,6 +114,7 @@ export function TeacherQuizBuilder({
   const resetForm = () => {
     setTitle("");
     setDescription("");
+    setTimeLimitMinutes("");
     setClassIds([]);
     createDraft.setQuestions([createBlankQuestion()]);
   };
@@ -144,6 +147,9 @@ export function TeacherQuizBuilder({
         classIds,
         title: title.trim(),
         description: description.trim() || undefined,
+        timeLimitMinutes: timeLimitMinutes.trim()
+          ? Number.parseInt(timeLimitMinutes, 10)
+          : undefined,
         questions: draftsToQuestionInputs(createDraft.questions),
       });
 
@@ -252,6 +258,9 @@ export function TeacherQuizBuilder({
       const data = await getQuizForEditingAction(quizId);
       setEditTitle(data.title);
       setEditDescription(data.description ?? "");
+      setEditTimeLimitMinutes(
+        data.timeLimitMinutes !== null ? String(data.timeLimitMinutes) : "",
+      );
       setEditLocked(data.locked);
       editDraft.setQuestions(questionInputsToDrafts(data.questions));
     } catch (error: unknown) {
@@ -289,6 +298,9 @@ export function TeacherQuizBuilder({
         quizId: editQuizId,
         title: editTitle.trim(),
         description: editDescription.trim() || undefined,
+        timeLimitMinutes: editTimeLimitMinutes.trim()
+          ? Number.parseInt(editTimeLimitMinutes, 10)
+          : undefined,
         questions: editLocked
           ? undefined
           : draftsToQuestionInputs(editDraft.questions),
@@ -617,6 +629,11 @@ export function TeacherQuizBuilder({
                       {quiz.hasAttempts && (
                         <Badge variant="secondary">Locked</Badge>
                       )}
+                      {quiz.timeLimitMinutes !== null && (
+                        <Badge variant="outline">
+                          ⏱ {quiz.timeLimitMinutes} min
+                        </Badge>
+                      )}
                       <Badge variant="outline">
                         {quiz.questionCount} questions
                       </Badge>
@@ -706,6 +723,19 @@ export function TeacherQuizBuilder({
                   <MathText text={description} />
                 </p>
               )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="quiz-time-limit">
+                Time limit in minutes (optional)
+              </Label>
+              <Input
+                id="quiz-time-limit"
+                type="number"
+                min={1}
+                value={timeLimitMinutes}
+                onChange={(event) => setTimeLimitMinutes(event.target.value)}
+                placeholder="No time limit"
+              />
             </div>
 
             <div className="space-y-2">
@@ -826,6 +856,21 @@ export function TeacherQuizBuilder({
                     <MathText text={editDescription} />
                   </p>
                 )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-quiz-time-limit">
+                  Time limit in minutes (optional)
+                </Label>
+                <Input
+                  id="edit-quiz-time-limit"
+                  type="number"
+                  min={1}
+                  value={editTimeLimitMinutes}
+                  onChange={(event) =>
+                    setEditTimeLimitMinutes(event.target.value)
+                  }
+                  placeholder="No time limit"
+                />
               </div>
 
               {editLocked && (

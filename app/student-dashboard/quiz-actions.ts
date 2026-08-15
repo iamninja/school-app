@@ -58,12 +58,29 @@ export async function getQuizForTakingAction(
 
   const { data: quiz, error: quizError } = await supabase
     .from("quizzes")
-    .select("id, title, description")
+    .select("id, title, description, time_limit_minutes")
     .eq("id", quizId)
     .single();
 
   if (quizError || !quiz) {
     throw new Error("Quiz not found");
+  }
+
+  let startedAt: string | null = null;
+  if (quiz.time_limit_minutes !== null) {
+    await supabase.from("quiz_attempt_starts").upsert(
+      { quiz_id: quizId, student_id: studentId },
+      { onConflict: "quiz_id,student_id", ignoreDuplicates: true },
+    );
+
+    const { data: startRow } = await supabase
+      .from("quiz_attempt_starts")
+      .select("started_at")
+      .eq("quiz_id", quizId)
+      .eq("student_id", studentId)
+      .single();
+
+    startedAt = startRow?.started_at ?? null;
   }
 
   const { data: questions, error: questionsError } = await supabase
@@ -119,6 +136,8 @@ export async function getQuizForTakingAction(
     id: quiz.id,
     title: quiz.title,
     description: quiz.description,
+    timeLimitMinutes: quiz.time_limit_minutes,
+    startedAt,
     questions: mappedQuestions,
   };
 }
@@ -283,6 +302,14 @@ export async function submitQuizAttemptAction(
   if (answersError) {
     throw answersError;
   }
+
+  // Tidy cleanup, not load-bearing - the quiz_attempts unique constraint
+  // already prevents a second attempt regardless of this row's presence.
+  await supabase
+    .from("quiz_attempt_starts")
+    .delete()
+    .eq("quiz_id", quizId)
+    .eq("student_id", studentId);
 
   const maxScore = (questions ?? []).reduce(
     (sum, question) => sum + question.points,

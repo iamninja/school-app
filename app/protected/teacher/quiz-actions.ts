@@ -25,7 +25,7 @@ async function requireOwnedQuiz(
 ) {
   const { data: quiz, error } = await supabase
     .from("quizzes")
-    .select("id, title, description, created_at")
+    .select("id, title, description, time_limit_minutes, created_at")
     .eq("id", quizId)
     .eq("teacher_id", teacherId)
     .single();
@@ -92,7 +92,13 @@ async function getQuizAttemptCount(
 
 async function buildQuizListItem(
   supabase: SupabaseServerClient,
-  quiz: { id: string; title: string; description: string | null; created_at?: string },
+  quiz: {
+    id: string;
+    title: string;
+    description: string | null;
+    time_limit_minutes: number | null;
+    created_at?: string;
+  },
 ): Promise<TeacherQuizListItem> {
   const [{ data: assignments }, { count: questionCount }, attemptCount] =
     await Promise.all([
@@ -119,6 +125,7 @@ async function buildQuizListItem(
     id: quiz.id,
     title: quiz.title,
     description: quiz.description,
+    timeLimitMinutes: quiz.time_limit_minutes,
     assignedClasses,
     questionCount: questionCount ?? 0,
     hasAttempts: attemptCount > 0,
@@ -144,8 +151,9 @@ export async function createQuizAction(
       teacher_id: user.id,
       title: data.title,
       description: data.description || null,
+      time_limit_minutes: data.timeLimitMinutes ?? null,
     })
-    .select("id, title, description, created_at")
+    .select("id, title, description, time_limit_minutes, created_at")
     .single();
 
   if (quizError) {
@@ -290,6 +298,7 @@ export async function getQuizForEditingAction(
     id: quiz.id,
     title: quiz.title,
     description: quiz.description,
+    timeLimitMinutes: quiz.time_limit_minutes,
     locked: attemptCount > 0,
     assignedClassIds: (assignments ?? []).map((a) => a.class_id),
     questions,
@@ -315,9 +324,10 @@ export async function updateQuizAction(
     .update({
       title: data.title,
       description: data.description || null,
+      time_limit_minutes: data.timeLimitMinutes ?? null,
     })
     .eq("id", quiz.id)
-    .select("id, title, description, created_at")
+    .select("id, title, description, time_limit_minutes, created_at")
     .single();
 
   if (updateError) {
@@ -367,8 +377,9 @@ export async function duplicateQuizAction(
       teacher_id: user.id,
       title: `${source.title} (copy)`,
       description: source.description,
+      time_limit_minutes: source.timeLimitMinutes,
     })
-    .select("id, title, description, created_at")
+    .select("id, title, description, time_limit_minutes, created_at")
     .single();
 
   if (quizError) {

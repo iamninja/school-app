@@ -34,6 +34,7 @@ const baseQuiz = {
   assignedClasses: [{ id: "class-1", name: "Algebra II" }],
   title: "Chapter 3 Quiz",
   description: null,
+  timeLimitMinutes: null,
   questionCount: 1,
   hasAttempts: false,
   createdAt: "2026-01-01T00:00:00Z",
@@ -163,6 +164,43 @@ describe("TeacherQuizBuilder", () => {
     expect(createQuizAction).not.toHaveBeenCalled();
   });
 
+  it("creates a quiz with a time limit and shows the badge in the list", async () => {
+    const user = userEvent.setup();
+    const createQuizAction = vi.mocked(quizActions.createQuizAction);
+    createQuizAction.mockResolvedValue({
+      ...baseQuiz,
+      id: "quiz-1",
+      timeLimitMinutes: 15,
+    });
+
+    render(<TeacherQuizBuilder classes={classes} initialQuizzes={[]} />);
+    await openCreateDialog(user);
+
+    await user.type(screen.getByLabelText(/^title$/i), "Chapter 3 Quiz");
+    await user.type(screen.getByPlaceholderText(/question text/i), "2+2=?");
+    await user.type(screen.getByPlaceholderText(/option 1/i), "4");
+    await user.type(screen.getByPlaceholderText(/option 2/i), "5");
+    await user.type(screen.getByLabelText(/time limit/i), "15");
+    await user.click(screen.getByRole("button", { name: /create quiz/i }));
+
+    await waitFor(() => {
+      expect(createQuizAction).toHaveBeenCalledWith(
+        expect.objectContaining({ timeLimitMinutes: 15 }),
+      );
+      expect(screen.getByText("⏱ 15 min")).toBeInTheDocument();
+    });
+  });
+
+  it("omits the time limit badge for a quiz with no time limit set", () => {
+    render(
+      <TeacherQuizBuilder
+        classes={classes}
+        initialQuizzes={[{ ...baseQuiz, timeLimitMinutes: null }]}
+      />,
+    );
+    expect(screen.queryByText(/⏱/)).not.toBeInTheDocument();
+  });
+
   it("creates a quiz with no classes assigned", async () => {
     const user = userEvent.setup();
     const createQuizAction = vi.mocked(quizActions.createQuizAction);
@@ -171,6 +209,7 @@ describe("TeacherQuizBuilder", () => {
       assignedClasses: [],
       title: "Chapter 3 Quiz",
       description: null,
+      timeLimitMinutes: null,
       questionCount: 1,
       hasAttempts: false,
       createdAt: "2026-01-01T00:00:00Z",
@@ -219,6 +258,7 @@ describe("TeacherQuizBuilder", () => {
       ],
       title: "Chapter 3 Quiz",
       description: null,
+      timeLimitMinutes: null,
       questionCount: 1,
       hasAttempts: false,
       createdAt: "2026-01-01T00:00:00Z",
@@ -253,6 +293,7 @@ describe("TeacherQuizBuilder", () => {
       assignedClasses: [],
       title: "True/False Quiz",
       description: null,
+      timeLimitMinutes: null,
       questionCount: 1,
       hasAttempts: false,
       createdAt: "2026-01-01T00:00:00Z",
@@ -299,6 +340,7 @@ describe("TeacherQuizBuilder", () => {
       assignedClasses: [],
       title: "Short Answer Quiz",
       description: null,
+      timeLimitMinutes: null,
       questionCount: 1,
       hasAttempts: false,
       createdAt: "2026-01-01T00:00:00Z",
@@ -521,6 +563,7 @@ describe("TeacherQuizBuilder", () => {
       id: "quiz-1",
       title: "Chapter 3 Quiz",
       description: null,
+      timeLimitMinutes: null,
       locked: false,
       assignedClassIds: ["class-1"],
       questions: [
@@ -574,6 +617,63 @@ describe("TeacherQuizBuilder", () => {
     });
   });
 
+  it("edits a quiz's time limit", async () => {
+    const user = userEvent.setup();
+    const getQuizForEditingAction = vi.mocked(
+      quizActions.getQuizForEditingAction,
+    );
+    const updateQuizAction = vi.mocked(quizActions.updateQuizAction);
+
+    getQuizForEditingAction.mockResolvedValue({
+      id: "quiz-1",
+      title: "Chapter 3 Quiz",
+      description: null,
+      timeLimitMinutes: null,
+      locked: false,
+      assignedClassIds: ["class-1"],
+      questions: [
+        {
+          questionText: "2+2=?",
+          questionType: "multiple_choice",
+          points: 1,
+          options: [
+            { optionText: "4", isCorrect: true },
+            { optionText: "5", isCorrect: false },
+          ],
+        },
+      ],
+    });
+    updateQuizAction.mockResolvedValue({
+      ...baseQuiz,
+      timeLimitMinutes: 20,
+    });
+
+    render(
+      <TeacherQuizBuilder classes={classes} initialQuizzes={[baseQuiz]} />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /^edit$/i }));
+
+    const dialog = await screen.findByRole("dialog");
+    await waitFor(() => {
+      expect(
+        within(dialog).getByDisplayValue("Chapter 3 Quiz"),
+      ).toBeInTheDocument();
+    });
+
+    await user.type(within(dialog).getByLabelText(/time limit/i), "20");
+    await user.click(
+      within(dialog).getByRole("button", { name: /save changes/i }),
+    );
+
+    await waitFor(() => {
+      expect(updateQuizAction).toHaveBeenCalledWith(
+        expect.objectContaining({ quizId: "quiz-1", timeLimitMinutes: 20 }),
+      );
+      expect(screen.getByText("⏱ 20 min")).toBeInTheDocument();
+    });
+  });
+
   it("locks the question editor for a quiz with attempts, but keeps title/description editable", async () => {
     const user = userEvent.setup();
     const getQuizForEditingAction = vi.mocked(
@@ -587,6 +687,7 @@ describe("TeacherQuizBuilder", () => {
       id: "quiz-1",
       title: "Chapter 3 Quiz",
       description: null,
+      timeLimitMinutes: null,
       locked: true,
       assignedClassIds: ["class-1"],
       questions: [
@@ -645,6 +746,7 @@ describe("TeacherQuizBuilder", () => {
       assignedClasses: [],
       title: "Chapter 3 Quiz (copy)",
       description: null,
+      timeLimitMinutes: null,
       questionCount: 1,
       hasAttempts: false,
       createdAt: "2026-01-03T00:00:00Z",

@@ -65,6 +65,7 @@ export interface Quiz {
   teacher_id: string;
   title: string;
   description: string | null;
+  timeLimitMinutes: number | null;
   created_at?: string;
 }
 
@@ -142,6 +143,8 @@ export interface QuizForTaking {
   id: string;
   title: string;
   description: string | null;
+  timeLimitMinutes: number | null;
+  startedAt: string | null;
   questions: QuizQuestionForTaking[];
 }
 
@@ -206,6 +209,7 @@ export interface CreateQuizInput {
   classIds?: string[];
   title: string;
   description?: string;
+  timeLimitMinutes?: number;
   questions: QuizQuestionInput[];
 }
 
@@ -215,6 +219,7 @@ export interface UpdateQuizInput {
   quizId: string;
   title: string;
   description?: string;
+  timeLimitMinutes?: number;
   questions?: QuizQuestionInput[];
 }
 
@@ -222,6 +227,7 @@ export interface QuizForEditing {
   id: string;
   title: string;
   description: string | null;
+  timeLimitMinutes: number | null;
   locked: boolean;
   assignedClassIds: string[];
   questions: QuizQuestionInput[];
@@ -232,6 +238,7 @@ export interface TeacherQuizListItem {
   assignedClasses: { id: string; name: string }[];
   title: string;
   description: string | null;
+  timeLimitMinutes: number | null;
   questionCount: number;
   hasAttempts: boolean;
   createdAt?: string;
