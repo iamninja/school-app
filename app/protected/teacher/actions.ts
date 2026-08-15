@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { requireTeacher } from "@/lib/auth/require-teacher";
+import { ExpectedError } from "@/lib/expected-error";
 
 export async function createClassAction(data: {
   name: string;
@@ -211,7 +212,7 @@ export async function createStudentAction(data: CreateStudentInput) {
       // 23505 = unique_violation on family_parents_email_unique - the
       // teacher likely meant "Existing family" for this parent's email.
       if (parentError.code === "23505") {
-        throw new Error(
+        throw new ExpectedError(
           'This parent email is already registered to another family. Use "Existing family" instead.'
         );
       }

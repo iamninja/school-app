@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { requireTeacher } from "@/lib/auth/require-teacher";
+import { ExpectedError } from "@/lib/expected-error";
 import type {
   CreateQuizInput,
   QuizForEditing,
@@ -348,7 +349,7 @@ export async function updateQuizAction(
   if (data.questions) {
     const attemptCount = await getQuizAttemptCount(supabase, quiz.id);
     if (attemptCount > 0) {
-      throw new Error(
+      throw new ExpectedError(
         "This quiz already has student submissions, so its questions can't be edited. Create a new quiz to change the content.",
       );
     }

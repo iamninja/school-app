@@ -8,6 +8,7 @@ A management app for a tutoring center — classes, schedules, attendance, and q
 - [Supabase](https://supabase.com) for auth, database, and row-level security
 - [Tailwind CSS](https://tailwindcss.com) and [shadcn/ui](https://ui.shadcn.com/) for styling and components
 - [KaTeX](https://katex.org/) for rendering math notation in quizzes
+- [Sentry](https://sentry.io/) for error tracking
 - [Vitest](https://vitest.dev/) and [Testing Library](https://testing-library.com/) for tests
 
 ## Local development
