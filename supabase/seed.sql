@@ -1,5 +1,10 @@
--- Replace the teacher UUID below with the auth.users.id for your account.
--- You can find it with: select id, email from auth.users;
+-- Seeds a working local dev teacher (dev-teacher@example.test /
+-- local-dev-password) plus sample classes/students/families - works out
+-- of the box against a fresh `supabase start`/`db reset`, no manual setup
+-- needed. If you'd rather seed against your own real account instead,
+-- replace the UUID below with your auth.users.id (select id, email from
+-- auth.users) - the bootstrap step is gated to only fire for the default
+-- placeholder, so a real account's UUID here is left untouched.
 
 do $$
 declare
@@ -20,6 +25,36 @@ declare
   family_lina uuid;
   family_mateo uuid;
 begin
+  -- Bootstrap the default placeholder teacher's auth.users/auth.identities
+  -- rows (needed for the FK on students.teacher_id/etc. to resolve, and
+  -- for the auth.identities row to actually be able to log in) plus a
+  -- public.teachers row so requireTeacher() passes. Only fires for the
+  -- unmodified default UUID - if you've replaced it with your own real
+  -- account's id, this whole block is a no-op and your account is left
+  -- alone.
+  if v_teacher_id = '8ba10a07-5dfe-45c5-b07e-c6b9e462011a'::uuid then
+    insert into auth.users (
+      instance_id, id, aud, role, email, encrypted_password,
+      email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+      created_at, updated_at, confirmation_token, email_change,
+      email_change_token_new, recovery_token
+    ) values (
+      '00000000-0000-0000-0000-000000000000', v_teacher_id, 'authenticated', 'authenticated',
+      'dev-teacher@example.test', extensions.crypt('local-dev-password', extensions.gen_salt('bf')),
+      now(), '{"provider":"email","providers":["email"]}', '{}', now(), now(), '', '', '', ''
+    ) on conflict (id) do nothing;
+
+    insert into auth.identities (
+      id, user_id, provider_id, identity_data, provider, last_sign_in_at, created_at, updated_at
+    ) values (
+      gen_random_uuid(), v_teacher_id, v_teacher_id::text,
+      format('{"sub":"%s","email":"%s"}', v_teacher_id::text, 'dev-teacher@example.test')::jsonb,
+      'email', now(), now(), now()
+    ) on conflict do nothing;
+
+    insert into public.teachers (user_id) values (v_teacher_id) on conflict (user_id) do nothing;
+  end if;
+
   insert into public.classes (teacher_id, name, hours_per_week)
   values
     (v_teacher_id, 'Math 101', 3),

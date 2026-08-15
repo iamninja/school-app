@@ -65,6 +65,9 @@ schema_paths = []
 
 [db.seed]
 # If enabled, seeds the database after migrations during a db reset.
+# seed.sql bootstraps its own auth.users/auth.identities row for the
+# default placeholder teacher, so this is safe against a fresh reset -
+# see the comment at the top of seed.sql.
 enabled = true
 # Specifies an ordered list of seed files to load during db reset.
 # Supports glob patterns relative to supabase directory: "./seeds/*.sql"

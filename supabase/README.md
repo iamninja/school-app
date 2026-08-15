@@ -38,5 +38,17 @@ a step or running a dev-only script by accident.
   `SECURITY DEFINER` helper functions instead of direct RLS policies).
 - **`diagnostics/`** — manual, read-only scripts a human runs directly in the
   SQL editor to check RLS/policy state. Not migrations, not auto-applied.
-- **`seed.sql`** — fake dev data (test students/parents/classes). Auto-run by
-  `supabase db reset` for local dev; never pushed to a real project.
+- **`seed.sql`** — fake dev data (test students/parents/classes) plus a
+  working local dev teacher login (`dev-teacher@example.test` /
+  `local-dev-password`). Auto-runs on `supabase db reset` for local dev
+  (`[db.seed] enabled = true`) — bootstraps its own `auth.users`/
+  `auth.identities` row for the default placeholder teacher UUID, so it
+  works out of the box against a fresh reset. Protected by
+  `tests/rls/local-stack-reset.test.ts` (`npm run test:seed`).
+
+## Local development / RLS integration tests
+
+`supabase start` runs a full local stack (Postgres, Auth, PostgREST) via
+Docker, separate from the linked remote project — used by `tests/rls/`
+(see `tests/rls/README.md`) to exercise real RLS policies instead of
+mocking them. Not part of `npm test`.
