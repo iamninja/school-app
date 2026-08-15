@@ -33,10 +33,13 @@ A management app for a tutoring center — classes, schedules, attendance, and q
 ## Other commands
 
 ```bash
-npm run lint    # eslint
-npm test        # vitest
-npm run build   # production build
+npm run lint      # eslint
+npm test          # vitest (component/UI tests)
+npm run test:unit # vitest, server-action unit tests (separate config - see tests/teacher-actions.test.ts)
+npm run build     # production build
 ```
+
+`npm run test:rls`/`npm run test:seed` also exist for local-only integration tests against a real Supabase stack — see `tests/rls/README.md`.
 
 ## Roles
 

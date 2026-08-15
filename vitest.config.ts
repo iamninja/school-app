@@ -12,8 +12,17 @@ export default defineConfig({
     // tests/rls/** needs a running local Supabase stack (`supabase start`)
     // and is run separately via `npm run test:rls` (see vitest.rls.config.ts)
     // - excluded here so the default suite never depends on Docker/local
-    // services being up.
-    exclude: [...defaultExclude, "tests/rls/**"],
+    // services being up. teacher-actions/teacher-quiz-actions mock
+    // @/lib/supabase/server at the module level, which raced with this
+    // file's isolate: false (confirmed flaky - a later file's vi.mock can
+    // lose to an earlier file's cached module under a shared worker) - run
+    // separately via `npm run test:unit` (see vitest.unit.config.ts).
+    exclude: [
+      ...defaultExclude,
+      "tests/rls/**",
+      "tests/teacher-actions.test.ts",
+      "tests/teacher-quiz-actions.test.ts",
+    ],
     // isolate: false lets files sharing a worker reuse the same jsdom
     // environment and module graph (React/Radix/KaTeX etc.) instead of
     // reinitializing per file - measured as the dominant cost over actual

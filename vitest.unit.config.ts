@@ -1,0 +1,24 @@
+import path from "path";
+import { defineConfig } from "vitest/config";
+
+// Server-action unit tests (tests/teacher-actions.test.ts,
+// tests/teacher-quiz-actions.test.ts) mock @/lib/supabase/server at the
+// module level - found this genuinely races with vitest.config.ts's
+// isolate: false (files sharing a worker share a module cache, so
+// whether a later file's vi.mock actually wins depends on load order -
+// confirmed flaky, 1 failure in 3 runs of the shared suite). These don't
+// need jsdom or the shared-module-graph speedup isolate: false exists
+// for (no React rendering here), so they get their own default-isolated
+// config instead of forcing the shared pool to accommodate them.
+export default defineConfig({
+  test: {
+    globals: true,
+    environment: "node",
+    include: ["tests/teacher-actions.test.ts", "tests/teacher-quiz-actions.test.ts"],
+  },
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "."),
+    },
+  },
+});
