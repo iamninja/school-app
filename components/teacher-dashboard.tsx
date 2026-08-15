@@ -806,7 +806,11 @@ export function TeacherDashboard({
         </TabsList>
 
         <TabsContent value="schedule" className="mt-6">
-          <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+          <DndContext
+            id="teacher-schedule"
+            sensors={sensors}
+            onDragEnd={handleDragEnd}
+          >
             <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
               <Card className="order-1">
                 <CardHeader>
