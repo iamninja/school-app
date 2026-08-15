@@ -13,7 +13,13 @@ A management app for a tutoring center — classes, schedules, attendance, and q
 ## Local development
 
 1. Create a `.env.local` file (see `.env.example`) with your Supabase project's URL, publishable key, and service role key.
-2. Apply the SQL migrations in `supabase/` against your Supabase project, in the order they were added (each file documents what it does and is safe to re-run).
+2. Link the Supabase CLI to your project and push the tracked migrations (see `supabase/README.md` for the full schema workflow):
+
+   ```bash
+   npx supabase link --project-ref <your-project-ref>
+   npm run db:push
+   ```
+
 3. Install dependencies and start the dev server:
 
    ```bash
