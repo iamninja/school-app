@@ -8,7 +8,6 @@ import {
   getQuizReviewAction,
   submitQuizAttemptAction,
 } from "@/app/student-dashboard/quiz-actions";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -18,6 +17,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { QuizReviewAnswers } from "@/components/quiz-review-answers";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import type {
   QuizAnswerInput,
@@ -210,37 +210,7 @@ export function StudentQuizPanel({
           <p className="text-2xl font-bold">
             {view.review.score} / {view.review.maxScore}
           </p>
-          <div className="space-y-3">
-            {view.review.answers.map((answer, index) => (
-              <div
-                key={answer.questionId}
-                className={
-                  "rounded-lg border p-3 " +
-                  (answer.isCorrect === true
-                    ? "border-green-200 bg-green-50 text-green-950 dark:border-green-900 dark:bg-green-950 dark:text-green-50"
-                    : answer.isCorrect === false
-                      ? "border-red-200 bg-red-50 text-red-950 dark:border-red-900 dark:bg-red-950 dark:text-red-50"
-                      : "")
-                }
-              >
-                <p className="text-sm font-medium">
-                  {index + 1}. {answer.questionText}
-                </p>
-                {answer.questionType === "short_answer" ? (
-                  <div className="mt-2 space-y-1 text-sm">
-                    <p>Your answer: {answer.textAnswer || "(no answer)"}</p>
-                    <Badge variant="outline">Awaiting review</Badge>
-                  </div>
-                ) : (
-                  <div className="mt-2 text-sm">
-                    <Badge variant={answer.isCorrect ? "default" : "destructive"}>
-                      {answer.isCorrect ? "Correct" : "Incorrect"}
-                    </Badge>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+          <QuizReviewAnswers answers={view.review.answers} />
           <Button variant="outline" onClick={() => setView({ mode: "list" })}>
             Back to quizzes
           </Button>

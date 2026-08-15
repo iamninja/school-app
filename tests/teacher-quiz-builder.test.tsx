@@ -8,6 +8,7 @@ import * as quizActions from "@/app/protected/teacher/quiz-actions";
 vi.mock("@/app/protected/teacher/quiz-actions", () => ({
   createQuizAction: vi.fn(),
   getQuizResultsAction: vi.fn(),
+  getStudentQuizAttemptAction: vi.fn(),
 }));
 
 vi.mock("sonner", () => ({
@@ -166,7 +167,9 @@ describe("TeacherQuizBuilder", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Maya Carter")).toBeInTheDocument();
-      expect(screen.getByText("4 / 5")).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /4 \/ 5.*view answers/i }),
+      ).toBeInTheDocument();
     });
 
     await user.click(
@@ -175,5 +178,96 @@ describe("TeacherQuizBuilder", () => {
     expect(
       screen.getByRole("button", { name: /create quiz/i }),
     ).toBeInTheDocument();
+  });
+
+  it("shows a student's answers when View answers is clicked", async () => {
+    const user = userEvent.setup();
+    const getQuizResultsAction = vi.mocked(quizActions.getQuizResultsAction);
+    const getStudentQuizAttemptAction = vi.mocked(
+      quizActions.getStudentQuizAttemptAction,
+    );
+
+    getQuizResultsAction.mockResolvedValue({
+      quizId: "quiz-1",
+      quizTitle: "Chapter 3 Quiz",
+      results: [
+        {
+          studentId: "student-1",
+          studentName: "Maya Carter",
+          completed: true,
+          score: 1,
+          maxScore: 1,
+          submittedAt: "2026-01-02T00:00:00Z",
+          pendingShortAnswerCount: 0,
+        },
+      ],
+    });
+
+    getStudentQuizAttemptAction.mockResolvedValue({
+      attemptId: "attempt-1",
+      quizId: "quiz-1",
+      quizTitle: "Chapter 3 Quiz",
+      score: 1,
+      maxScore: 1,
+      submittedAt: "2026-01-02T00:00:00Z",
+      answers: [
+        {
+          questionId: "q1",
+          questionText: "2 + 2 = ?",
+          questionType: "multiple_choice",
+          selectedOptionId: "opt-1",
+          selectedOptionText: "4",
+          textAnswer: null,
+          correctOptionId: "opt-1",
+          correctOptionText: "4",
+          isCorrect: true,
+          pointsAwarded: 1,
+          pointsPossible: 1,
+        },
+      ],
+    });
+
+    render(
+      <TeacherQuizBuilder
+        classes={classes}
+        initialQuizzes={[
+          {
+            id: "quiz-1",
+            classId: "class-1",
+            className: "Algebra II",
+            title: "Chapter 3 Quiz",
+            description: null,
+            questionCount: 1,
+            createdAt: "2026-01-01T00:00:00Z",
+          },
+        ]}
+      />,
+    );
+
+    await user.click(screen.getByText("Chapter 3 Quiz"));
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /1 \/ 1.*view answers/i }),
+      ).toBeInTheDocument();
+    });
+
+    await user.click(
+      screen.getByRole("button", { name: /1 \/ 1.*view answers/i }),
+    );
+
+    await waitFor(() => {
+      expect(getStudentQuizAttemptAction).toHaveBeenCalledWith(
+        "quiz-1",
+        "student-1",
+      );
+      expect(screen.getByText(/maya carter.*answers/i)).toBeInTheDocument();
+      expect(screen.getByText(/2 \+ 2 = \?/)).toBeInTheDocument();
+      expect(screen.getByText("Selected: 4")).toBeInTheDocument();
+    });
+
+    await user.click(
+      screen.getByRole("button", { name: /back to results/i }),
+    );
+    expect(screen.getByText("Maya Carter")).toBeInTheDocument();
   });
 });

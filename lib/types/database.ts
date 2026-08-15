@@ -151,8 +151,10 @@ export interface QuizAttemptAnswerReview {
   questionText: string;
   questionType: QuizQuestionType;
   selectedOptionId: string | null;
+  selectedOptionText: string | null;
   textAnswer: string | null;
   correctOptionId: string | null;
+  correctOptionText: string | null;
   isCorrect: boolean | null;
   pointsAwarded: number | null;
   pointsPossible: number;

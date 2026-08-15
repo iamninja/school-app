@@ -6,6 +6,9 @@ import type {
   TeacherQuizListItem,
   QuizResults,
   QuizResultRow,
+  QuizAttemptReview,
+  QuizAttemptAnswerReview,
+  QuizQuestionType,
 } from "@/lib/types/database";
 
 export async function createQuizAction(
@@ -204,5 +207,126 @@ export async function getQuizResultsAction(
     quizId: quiz.id,
     quizTitle: quiz.title,
     results,
+  };
+}
+
+/**
+ * A specific student's answers for a quiz, for the teacher to review -
+ * same shape as the student's own review (getQuizReviewAction), scoped by
+ * teacher ownership of the quiz instead of the caller being that student.
+ */
+export async function getStudentQuizAttemptAction(
+  quizId: string,
+  studentId: string,
+): Promise<QuizAttemptReview> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error("Not authenticated");
+  }
+
+  const { data: quiz, error: quizError } = await supabase
+    .from("quizzes")
+    .select("id, title")
+    .eq("id", quizId)
+    .eq("teacher_id", user.id)
+    .single();
+
+  if (quizError || !quiz) {
+    throw new Error("Quiz not found");
+  }
+
+  const { data: attempt, error: attemptError } = await supabase
+    .from("quiz_attempts")
+    .select("id, score, submitted_at")
+    .eq("quiz_id", quizId)
+    .eq("student_id", studentId)
+    .single();
+
+  if (attemptError || !attempt) {
+    throw new Error("No submission found for this student");
+  }
+
+  const { data: answers, error: answersError } = await supabase
+    .from("quiz_attempt_answers")
+    .select(
+      "question_id, selected_option_id, text_answer, is_correct, points_awarded",
+    )
+    .eq("attempt_id", attempt.id);
+
+  if (answersError) {
+    throw answersError;
+  }
+
+  const questionIds = (answers ?? []).map((answer) => answer.question_id);
+
+  const [{ data: questionRows }, { data: options }] = await Promise.all([
+    questionIds.length > 0
+      ? supabase
+          .from("quiz_questions")
+          .select("id, question_text, question_type, points")
+          .in("id", questionIds)
+      : Promise.resolve({ data: [] as never[] }),
+    questionIds.length > 0
+      ? supabase
+          .from("quiz_question_options")
+          .select("id, question_id, option_text, is_correct")
+          .in("question_id", questionIds)
+      : Promise.resolve({ data: [] as never[] }),
+  ]);
+
+  const questionById = new Map(
+    (questionRows ?? []).map((question) => [question.id, question]),
+  );
+  const optionById = new Map(
+    (options ?? []).map((option) => [option.id, option]),
+  );
+  const correctOptionByQuestion = new Map(
+    (options ?? [])
+      .filter((option) => option.is_correct)
+      .map((option) => [option.question_id, option]),
+  );
+
+  const maxScore = (questionRows ?? []).reduce(
+    (sum, question) => sum + question.points,
+    0,
+  );
+
+  const reviewAnswers: QuizAttemptAnswerReview[] = (answers ?? []).map(
+    (answer) => {
+      const question = questionById.get(answer.question_id);
+      const correctOption = correctOptionByQuestion.get(answer.question_id);
+      const selectedOption = answer.selected_option_id
+        ? optionById.get(answer.selected_option_id)
+        : undefined;
+
+      return {
+        questionId: answer.question_id,
+        questionText: question?.question_text ?? "",
+        questionType:
+          (question?.question_type as QuizQuestionType) ?? "short_answer",
+        selectedOptionId: answer.selected_option_id,
+        selectedOptionText: selectedOption?.option_text ?? null,
+        textAnswer: answer.text_answer,
+        correctOptionId: correctOption?.id ?? null,
+        correctOptionText: correctOption?.option_text ?? null,
+        isCorrect: answer.is_correct,
+        pointsAwarded: answer.points_awarded,
+        pointsPossible: question?.points ?? 0,
+      };
+    },
+  );
+
+  return {
+    attemptId: attempt.id,
+    quizId: quiz.id,
+    quizTitle: quiz.title,
+    score: attempt.score,
+    maxScore,
+    submittedAt: attempt.submitted_at,
+    answers: reviewAnswers,
   };
 }

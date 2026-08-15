@@ -7,6 +7,7 @@ import { PlusIcon, XIcon } from "lucide-react";
 import {
   createQuizAction,
   getQuizResultsAction,
+  getStudentQuizAttemptAction,
 } from "@/app/protected/teacher/quiz-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,8 +19,10 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { QuizReviewAnswers } from "@/components/quiz-review-answers";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import type {
+  QuizAttemptReview,
   QuizQuestionType,
   QuizResults,
   TeacherQuizListItem,
@@ -77,6 +80,13 @@ export function TeacherQuizBuilder({
   );
   const [results, setResults] = React.useState<QuizResults | null>(null);
   const [isLoadingResults, setIsLoadingResults] = React.useState(false);
+  const [viewingStudent, setViewingStudent] = React.useState<{
+    studentId: string;
+    studentName: string;
+  } | null>(null);
+  const [studentReview, setStudentReview] =
+    React.useState<QuizAttemptReview | null>(null);
+  const [isLoadingAttempt, setIsLoadingAttempt] = React.useState(false);
 
   const handleQuestionChange = (
     index: number,
@@ -286,6 +296,67 @@ export function TeacherQuizBuilder({
     }
   };
 
+  const handleViewStudentAnswers = async (
+    studentId: string,
+    studentName: string,
+  ) => {
+    if (!selectedQuizId) {
+      return;
+    }
+    setViewingStudent({ studentId, studentName });
+    setIsLoadingAttempt(true);
+    setStudentReview(null);
+    try {
+      const review = await getStudentQuizAttemptAction(
+        selectedQuizId,
+        studentId,
+      );
+      setStudentReview(review);
+    } catch (error: unknown) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to load answers",
+      );
+    } finally {
+      setIsLoadingAttempt(false);
+    }
+  };
+
+  if (viewingStudent) {
+    return (
+      <div className="space-y-4">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            setViewingStudent(null);
+            setStudentReview(null);
+          }}
+        >
+          Back to results
+        </Button>
+        <Card>
+          <CardHeader>
+            <CardTitle>{viewingStudent.studentName}&apos;s answers</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {isLoadingAttempt ? (
+              <p className="text-sm text-muted-foreground">
+                Loading answers...
+              </p>
+            ) : studentReview ? (
+              <>
+                <p className="text-2xl font-bold">
+                  {studentReview.score} / {studentReview.maxScore}
+                </p>
+                <QuizReviewAnswers answers={studentReview.answers} />
+              </>
+            ) : null}
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   if (selectedQuizId) {
     return (
       <div className="space-y-4">
@@ -335,9 +406,18 @@ export function TeacherQuizBuilder({
                         </Badge>
                       )}
                       {row.completed ? (
-                        <Badge>
-                          {row.score} / {row.maxScore}
-                        </Badge>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            handleViewStudentAnswers(
+                              row.studentId,
+                              row.studentName,
+                            )
+                          }
+                        >
+                          {row.score} / {row.maxScore} · View answers
+                        </Button>
                       ) : (
                         <Badge variant="outline">Not started</Badge>
                       )}

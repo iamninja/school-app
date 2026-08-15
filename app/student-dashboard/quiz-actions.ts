@@ -165,7 +165,7 @@ export async function submitQuizAttemptAction(
   const questionIds = (questions ?? []).map((question) => question.id);
   const { data: options, error: optionsError } = await supabase
     .from("quiz_question_options")
-    .select("id, question_id, is_correct")
+    .select("id, question_id, option_text, is_correct")
     .in("question_id", questionIds);
 
   if (optionsError) {
@@ -174,7 +174,7 @@ export async function submitQuizAttemptAction(
 
   const optionsByQuestion = new Map<
     string,
-    { id: string; question_id: string; is_correct: boolean }[]
+    { id: string; question_id: string; option_text: string; is_correct: boolean }[]
   >();
   for (const option of options ?? []) {
     const list = optionsByQuestion.get(option.question_id) ?? [];
@@ -214,8 +214,10 @@ export async function submitQuizAttemptAction(
         questionText: question.question_text,
         questionType: "short_answer",
         selectedOptionId: null,
+        selectedOptionText: null,
         textAnswer: submitted?.textAnswer ?? null,
         correctOptionId: null,
+        correctOptionText: null,
         isCorrect: null,
         pointsAwarded: null,
         pointsPossible: question.points,
@@ -224,6 +226,9 @@ export async function submitQuizAttemptAction(
     }
 
     const selectedOptionId = submitted?.selectedOptionId ?? null;
+    const selectedOption = questionOptions.find(
+      (option) => option.id === selectedOptionId,
+    );
     const isCorrect =
       selectedOptionId !== null && selectedOptionId === correctOption?.id;
     const pointsAwarded = isCorrect ? question.points : 0;
@@ -242,8 +247,10 @@ export async function submitQuizAttemptAction(
       questionType:
         question.question_type as QuizQuestionForTaking["questionType"],
       selectedOptionId,
+      selectedOptionText: selectedOption?.option_text ?? null,
       textAnswer: null,
       correctOptionId: correctOption?.id ?? null,
+      correctOptionText: correctOption?.option_text ?? null,
       isCorrect,
       pointsAwarded,
       pointsPossible: question.points,
@@ -360,7 +367,7 @@ export async function getQuizReviewAction(
     questionIds.length > 0
       ? supabase
           .from("quiz_question_options")
-          .select("id, question_id, is_correct")
+          .select("id, question_id, option_text, is_correct")
           .in("question_id", questionIds)
       : Promise.resolve({ data: [] as never[] }),
   ]);
@@ -368,10 +375,13 @@ export async function getQuizReviewAction(
   const questionById = new Map(
     (questionRows ?? []).map((question) => [question.id, question]),
   );
+  const optionById = new Map(
+    (options ?? []).map((option) => [option.id, option]),
+  );
   const correctOptionByQuestion = new Map(
     (options ?? [])
       .filter((option) => option.is_correct)
-      .map((option) => [option.question_id, option.id]),
+      .map((option) => [option.question_id, option]),
   );
 
   const maxScore = (questionRows ?? []).reduce(
@@ -382,6 +392,10 @@ export async function getQuizReviewAction(
   const reviewAnswers: QuizAttemptAnswerReview[] = (answers ?? []).map(
     (answer) => {
       const question = questionById.get(answer.question_id);
+      const correctOption = correctOptionByQuestion.get(answer.question_id);
+      const selectedOption = answer.selected_option_id
+        ? optionById.get(answer.selected_option_id)
+        : undefined;
 
       return {
         questionId: answer.question_id,
@@ -390,8 +404,10 @@ export async function getQuizReviewAction(
           (question?.question_type as QuizQuestionForTaking["questionType"]) ??
           "short_answer",
         selectedOptionId: answer.selected_option_id,
+        selectedOptionText: selectedOption?.option_text ?? null,
         textAnswer: answer.text_answer,
-        correctOptionId: correctOptionByQuestion.get(answer.question_id) ?? null,
+        correctOptionId: correctOption?.id ?? null,
+        correctOptionText: correctOption?.option_text ?? null,
         isCorrect: answer.is_correct,
         pointsAwarded: answer.points_awarded,
         pointsPossible: question?.points ?? 0,
