@@ -20,6 +20,11 @@ export async function createFixtures() {
   const parentA2 = await createUser(admin, "rls-parent-a2@example.test");
   const parentB1 = await createUser(admin, "rls-parent-b1@example.test");
 
+  await admin.from("teachers").insert([
+    { user_id: teacherA.id },
+    { user_id: teacherB.id },
+  ]);
+
   const familyA = await insertOne(admin, "families", { teacher_id: teacherA.id });
   const familyB = await insertOne(admin, "families", { teacher_id: teacherB.id });
 
@@ -122,6 +127,10 @@ export async function cleanupFixtures(fixtures: Fixtures) {
     .from("families")
     .delete()
     .in("id", [fixtures.familyA.id, fixtures.familyB.id]);
+  await admin
+    .from("teachers")
+    .delete()
+    .in("user_id", [fixtures.teacherA.id, fixtures.teacherB.id]);
 
   for (const user of [
     fixtures.teacherA,
