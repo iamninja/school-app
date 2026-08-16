@@ -14,10 +14,15 @@ import { CSS } from "@dnd-kit/utilities";
 import { format } from "date-fns";
 import {
   ArchiveIcon,
-  CalendarIcon,
+  CalendarDaysIcon,
+  ClipboardCheckIcon,
+  FileTextIcon,
+  LayersIcon,
   PencilIcon,
   PlusIcon,
   RotateCcwIcon,
+  SearchIcon,
+  UsersIcon,
   XIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -55,22 +60,79 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { LogoutButton } from "@/components/logout-button";
 import { TeacherQuizBuilder } from "@/components/teacher-quiz-builder";
+import { ThemeSwitcher } from "@/components/theme-switcher";
 import type { TeacherQuizListItem } from "@/lib/types/database";
 
-const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"] as const;
+const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const TIME_SLOTS = Array.from({ length: 9 }, (_, index) => {
-  const hour = 15 + index;
-  return `${hour.toString().padStart(2, "0")}:00`;
-});
+// One row per schedule grid row: `time` is the Mon-Fri slot time (and the
+// row's own key/label); `satTime` is the real Saturday clock time for that
+// same row. There's no school on Saturday, so cram classes can start in the
+// morning — satTime isn't just a display offset, it's the actual value
+// stored for Saturday slots, so the two columns don't move in lockstep
+// (e.g. the 14:30 row pairs with 8:00, not a uniform 6h gap like the rest).
+const SCHEDULE_ROWS = [
+  { time: "14:30", satTime: "08:00" },
+  { time: "15:15", satTime: "09:00" },
+  { time: "16:00", satTime: "10:00" },
+  { time: "17:00", satTime: "11:00" },
+  { time: "18:00", satTime: "12:00" },
+  { time: "19:00", satTime: "13:00" },
+  { time: "20:00", satTime: "14:00" },
+  { time: "21:00", satTime: "15:00" },
+  { time: "22:00", satTime: "16:00" },
+  { time: "23:00", satTime: "17:00" },
+];
+const SECTIONS = [
+  {
+    value: "schedule",
+    label: "Schedule",
+    description: "Drag classes onto the weekly grid",
+    icon: CalendarDaysIcon,
+  },
+  {
+    value: "classes",
+    label: "Classes",
+    description: "Create, edit, and archive classes",
+    icon: LayersIcon,
+  },
+  {
+    value: "students",
+    label: "Students",
+    description: "Roster, families, and tuition",
+    icon: UsersIcon,
+  },
+  {
+    value: "attendance",
+    label: "Attendance",
+    description: "Mark presence per class and date",
+    icon: ClipboardCheckIcon,
+  },
+  {
+    value: "quizzes",
+    label: "Quizzes",
+    description: "Build and assign quizzes",
+    icon: FileTextIcon,
+  },
+] as const;
+
 const COLOR_CLASSES = [
-  "border-sky-200/70 bg-sky-500/10 text-sky-700",
-  "border-emerald-200/70 bg-emerald-500/10 text-emerald-700",
-  "border-amber-200/70 bg-amber-500/10 text-amber-700",
-  "border-violet-200/70 bg-violet-500/10 text-violet-700",
-  "border-rose-200/70 bg-rose-500/10 text-rose-700",
+  "border-amber-500/30 bg-amber-400/15 text-amber-800 dark:text-amber-300",
+  "border-teal-500/30 bg-teal-500/10 text-teal-800 dark:text-teal-300",
+  "border-violet-500/30 bg-violet-500/10 text-violet-800 dark:text-violet-300",
+  "border-rose-500/30 bg-rose-500/10 text-rose-800 dark:text-rose-300",
+  "border-sky-500/30 bg-sky-500/10 text-sky-800 dark:text-sky-300",
 ];
 
 type ClassItem = {
@@ -268,11 +330,13 @@ function ScheduleCell({
   classItem,
   label,
   onClear,
+  tinted = false,
 }: {
   slotId: string;
   classItem?: ClassItem;
   label: string;
   onClear: (slotId: string) => void;
+  tinted?: boolean;
 }) {
   const { isOver, setNodeRef } = useDroppable({
     id: `slot:${slotId}`,
@@ -282,8 +346,8 @@ function ScheduleCell({
     <div
       ref={setNodeRef}
       className={
-        "min-h-[64px] border-l border-dashed p-2 transition " +
-        (isOver ? "bg-muted/60" : "bg-background")
+        "min-h-[64px] border-l border-dashed border-border/70 p-2 transition " +
+        (isOver ? "bg-brand/10" : tinted ? "bg-accent/30" : "bg-card")
       }
     >
       {classItem ? (
@@ -294,7 +358,9 @@ function ScheduleCell({
           onClear={onClear}
         />
       ) : (
-        <div className="text-[11px] text-muted-foreground">Drop class here</div>
+        <div className="text-[11px] text-muted-foreground/60">
+          Drop class here
+        </div>
       )}
     </div>
   );
@@ -312,7 +378,20 @@ export function TeacherDashboard({
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
   );
+  const [section, setSection] = React.useState<string>("schedule");
+  const [isAddStudentOpen, setIsAddStudentOpen] = React.useState(false);
+  const [studentQuery, setStudentQuery] = React.useState("");
   const [isCreateClassOpen, setIsCreateClassOpen] = React.useState(false);
+
+  // Radix portals (dialogs, popovers, dropdowns) mount on <body>, outside
+  // this component's subtree - tag the body so they pick up the console
+  // theme tokens too.
+  React.useEffect(() => {
+    document.body.classList.add("theme-console");
+    return () => {
+      document.body.classList.remove("theme-console");
+    };
+  }, []);
   const [editClassId, setEditClassId] = React.useState<string | null>(null);
   const [classFormName, setClassFormName] = React.useState("");
   const [classFormHours, setClassFormHours] = React.useState("2");
@@ -327,8 +406,9 @@ export function TeacherDashboard({
   const [schedule, setSchedule] = React.useState<ScheduleState>(() => {
     const initial: ScheduleState = {};
     DAYS.forEach((day) => {
-      TIME_SLOTS.forEach((time) => {
-        initial[createSlotId(day, time)] = null;
+      SCHEDULE_ROWS.forEach((row) => {
+        const cellTime = day === "Sat" ? row.satTime : row.time;
+        initial[createSlotId(day, cellTime)] = null;
       });
     });
     initialSlots.forEach((slot) => {
@@ -762,6 +842,7 @@ export function TeacherDashboard({
     });
     setStudentFormErrors({});
     setShowSecondParent(false);
+    setIsAddStudentOpen(false);
   };
 
   const handleWithdrawStudent = async (studentId: string) => {
@@ -903,144 +984,222 @@ export function TeacherDashboard({
     setAttendanceStatusByStudent({});
   };
 
+  const activeSection =
+    SECTIONS.find((item) => item.value === section) ?? SECTIONS[0];
+
+  const visibleStudents = React.useMemo(() => {
+    const query = studentQuery.trim().toLowerCase();
+    return students.filter((student) => {
+      if (!showWithdrawn && student.withdrawnAt) {
+        return false;
+      }
+      if (!query) {
+        return true;
+      }
+      const haystack = [
+        student.firstName,
+        student.lastName,
+        student.email,
+        student.parentName,
+        student.parentTwoName ?? "",
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [students, showWithdrawn, studentQuery]);
+
   return (
-    <div className="flex w-full flex-col gap-6">
-      <div className="flex items-start justify-between gap-4">
-        <div className="space-y-2">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <CalendarIcon className="h-4 w-4" />
-            Teacher dashboard
-          </div>
-          <h1 className="text-2xl font-semibold">
-            Plan classes and weekly schedule
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Manage classes in the Classes tab, then drag them into the weekly
-            calendar to build a schedule.
-          </p>
-        </div>
-      </div>
-
-      {loadErrors.length > 0 ? (
-        <Alert>
-          <AlertTitle>Supabase load error</AlertTitle>
-          <AlertDescription>
-            <div className="space-y-2">
-              <p className="text-sm">
-                We could not fetch your data. Check the schema and RLS policies,
-                then reload.
-              </p>
-              <ul className="list-disc space-y-1 pl-4 text-xs">
-                {loadErrors.map((error) => (
-                  <li key={error}>{error}</li>
-                ))}
-              </ul>
+    <div className="theme-console flex min-h-svh w-full bg-background text-foreground">
+      <Tabs
+        value={section}
+        onValueChange={setSection}
+        orientation="vertical"
+        className="flex w-full flex-row items-stretch gap-0"
+      >
+        <aside className="sticky top-0 z-30 flex h-svh w-14 shrink-0 flex-col border-r border-border bg-card lg:w-60">
+          <div className="flex h-14 shrink-0 items-center justify-center gap-2.5 border-b border-border px-0 lg:justify-start lg:px-4">
+            <div className="grid size-7 shrink-0 place-items-center rounded-md bg-primary text-[13px] font-bold text-primary-foreground">
+              M
             </div>
-          </AlertDescription>
-        </Alert>
-      ) : null}
+            <div className="hidden leading-tight lg:block">
+              <div className="text-sm font-semibold tracking-tight">Modus</div>
+              <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                Console
+              </div>
+            </div>
+          </div>
 
-      <Tabs defaultValue="schedule" className="w-full">
-        <TabsList>
-          <TabsTrigger value="schedule">Schedule</TabsTrigger>
-          <TabsTrigger value="classes">Classes</TabsTrigger>
-          <TabsTrigger value="students">Students</TabsTrigger>
-          <TabsTrigger value="attendance">Attendance</TabsTrigger>
-          <TabsTrigger value="quizzes">Quizzes</TabsTrigger>
-        </TabsList>
+          <TabsList
+            variant="line"
+            className="flex h-auto w-full flex-col items-stretch gap-1 rounded-none bg-transparent p-2"
+          >
+            {SECTIONS.map((item) => (
+              <TabsTrigger
+                key={item.value}
+                value={item.value}
+                title={item.label}
+                className="h-9 w-full flex-none justify-center gap-2.5 rounded-md border-0 px-0 text-[13px] font-medium text-muted-foreground after:hidden hover:bg-accent hover:text-foreground data-[state=active]:bg-accent data-[state=active]:text-foreground data-[state=active]:shadow-none lg:justify-start lg:px-2.5"
+              >
+                <item.icon className="size-4 shrink-0" />
+                <span className="hidden lg:inline">{item.label}</span>
+              </TabsTrigger>
+            ))}
+          </TabsList>
 
-        <TabsContent value="schedule" className="mt-6">
+          <div className="mt-auto hidden shrink-0 border-t border-border px-4 py-3 lg:block">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span
+                className="size-1.5 rounded-full bg-brand"
+                aria-hidden="true"
+              />
+              Signed in as Vagios
+            </div>
+          </div>
+        </aside>
+
+        <div className="flex min-w-0 flex-1 flex-col">
+          <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center justify-between gap-4 border-b border-border bg-background/90 px-4 backdrop-blur lg:px-6">
+            <div className="min-w-0">
+              <h1 className="truncate text-sm font-semibold tracking-tight">
+                {activeSection.label}
+              </h1>
+              <p className="hidden truncate text-xs text-muted-foreground sm:block">
+                {activeSection.description}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <ThemeSwitcher />
+              <LogoutButton />
+            </div>
+          </header>
+
+          <main className="flex-1 space-y-4 p-4 lg:p-6">
+            {loadErrors.length > 0 ? (
+              <Alert>
+                <AlertTitle>Supabase load error</AlertTitle>
+                <AlertDescription>
+                  <div className="space-y-2">
+                    <p className="text-sm">
+                      We could not fetch your data. Check the schema and RLS
+                      policies, then reload.
+                    </p>
+                    <ul className="list-disc space-y-1 pl-4 text-xs">
+                      {loadErrors.map((error) => (
+                        <li key={error}>{error}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </AlertDescription>
+              </Alert>
+            ) : null}
+
+        <TabsContent value="schedule" className="mt-0 space-y-4">
           <DndContext
             id="teacher-schedule"
             sensors={sensors}
             onDragEnd={handleDragEnd}
           >
-            <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
-              <Card className="order-1">
-                <CardHeader>
-                  <CardTitle>Unscheduled classes</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-3">
-                    <div className="flex flex-wrap gap-2">
-                      {activeClasses.length === 0 ? (
-                        <p className="text-xs text-muted-foreground">
-                          No classes yet. Add one in the Classes tab.
-                        </p>
-                      ) : (
-                        activeClasses.map((item) => (
-                          <DraggableClassChip
-                            key={item.id}
-                            classItem={item}
-                            remaining={remainingById.get(item.id) ?? 0}
-                          />
-                        ))
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Remaining slots follow each class based on hours per week.
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="order-2">
-                <CardHeader>
-                  <CardTitle>Weekly schedule</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="overflow-hidden rounded-lg border">
-                    <div className="grid grid-cols-[120px_repeat(5,minmax(0,1fr))] border-b bg-muted/40 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      <div className="px-3 py-2">Time</div>
-                      {DAYS.map((day) => (
-                        <div key={day} className="px-3 py-2">
-                          {day}
-                        </div>
-                      ))}
-                    </div>
-
-                    {TIME_SLOTS.map((time) => (
-                      <div
-                        key={time}
-                        className="grid grid-cols-[120px_repeat(5,minmax(0,1fr))] border-b last:border-b-0"
-                      >
-                        <div className="px-3 py-4 text-xs font-medium text-muted-foreground">
-                          {time}
-                        </div>
-                        {DAYS.map((day) => {
-                          const slotId = createSlotId(day, time);
-                          const classId = schedule[slotId] ?? null;
-                          const classItem = classes.find(
-                            (item) => item.id === classId,
-                          );
-                          const label = `${day} ${time}`;
-
-                          return (
-                            <ScheduleCell
-                              key={slotId}
-                              slotId={slotId}
-                              classItem={classItem}
-                              label={label}
-                              onClear={handleClearSlot}
-                            />
-                          );
-                        })}
-                      </div>
-                    ))}
-                  </div>
-                  <p className="mt-3 text-xs text-muted-foreground">
-                    Drag classes into the schedule.
+            <div className="rounded-lg border border-border bg-card">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2.5">
+                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Class dock
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  Remaining slots follow each class based on hours per week.
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-2 p-3">
+                {activeClasses.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    No classes yet. Add one in the Classes section.
                   </p>
-                </CardContent>
-              </Card>
+                ) : (
+                  activeClasses.map((item) => (
+                    <DraggableClassChip
+                      key={item.id}
+                      classItem={item}
+                      remaining={remainingById.get(item.id) ?? 0}
+                    />
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="overflow-x-auto rounded-lg border border-border bg-card">
+              <div className="min-w-[1080px]">
+                <div className="grid grid-cols-[72px_repeat(6,minmax(0,1fr))_72px] border-b bg-muted/40 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  <div className="px-3 py-2">Time</div>
+                  {DAYS.map((day) => (
+                    <div
+                      key={day}
+                      className={
+                        "px-3 py-2" + (day === "Sat" ? " bg-accent/30" : "")
+                      }
+                    >
+                      {day}
+                    </div>
+                  ))}
+                  <div
+                    className="border-l border-dashed border-border/70 bg-accent/30 px-3 py-2"
+                    title="Real clock time for the Saturday column — no school Saturday, so cram classes can start in the morning"
+                  >
+                    Sat time
+                  </div>
+                </div>
+
+                {SCHEDULE_ROWS.map((row) => (
+                  <div
+                    key={row.time}
+                    className="grid grid-cols-[72px_repeat(6,minmax(0,1fr))_72px] border-b last:border-b-0"
+                  >
+                    <div className="px-3 py-4 text-xs font-medium text-muted-foreground">
+                      {row.time}
+                    </div>
+                    {DAYS.map((day) => {
+                      const cellTime = day === "Sat" ? row.satTime : row.time;
+                      const slotId = createSlotId(day, cellTime);
+                      const classId = schedule[slotId] ?? null;
+                      const classItem = classes.find(
+                        (item) => item.id === classId,
+                      );
+                      const label = `${day} ${cellTime}`;
+
+                      return (
+                        <ScheduleCell
+                          key={slotId}
+                          slotId={slotId}
+                          classItem={classItem}
+                          label={label}
+                          onClear={handleClearSlot}
+                          tinted={day === "Sat"}
+                        />
+                      );
+                    })}
+                    <div className="border-l border-dashed border-border/70 bg-accent/30 px-3 py-4 text-xs font-medium text-muted-foreground">
+                      {row.satTime}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </DndContext>
         </TabsContent>
 
-        <TabsContent value="classes" className="mt-6">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-4">
-              <CardTitle>Classes</CardTitle>
+        <TabsContent value="classes" className="mt-0">
+          <div className="rounded-lg border border-border bg-card">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
+              <div className="text-sm font-semibold">
+                Classes{" "}
+                <span className="font-normal text-muted-foreground">
+                  ·{" "}
+                  {
+                    classes.filter(
+                      (item) => showArchivedClasses || !item.archivedAt,
+                    ).length
+                  }
+                </span>
+              </div>
               <div className="flex items-center gap-4">
                 <label className="flex items-center gap-2 text-xs text-muted-foreground">
                   <Checkbox
@@ -1059,71 +1218,94 @@ export function TeacherDashboard({
                   <PlusIcon className="mr-1 h-3.5 w-3.5" /> Add class
                 </Button>
               </div>
-            </CardHeader>
-            <CardContent>
-              {classes.filter(
-                (item) => showArchivedClasses || !item.archivedAt,
-              ).length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No classes yet. Add one above.
-                </p>
-              ) : (
-                <div className="space-y-2">
+            </div>
+            {classes.filter(
+              (item) => showArchivedClasses || !item.archivedAt,
+            ).length === 0 ? (
+              <p className="px-4 py-8 text-center text-sm text-muted-foreground">
+                No classes yet. Add one above.
+              </p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Class</TableHead>
+                    <TableHead>Hours / week</TableHead>
+                    <TableHead>Scheduled</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {classes
                     .filter((item) => showArchivedClasses || !item.archivedAt)
                     .map((item) => (
-                      <div
-                        key={item.id}
-                        className="flex items-center justify-between gap-3 rounded-md border p-3"
-                      >
-                        <div>
-                          <div className="flex items-center gap-2 text-sm font-semibold">
-                            {item.name}
-                            {item.archivedAt ? (
-                              <Badge variant="secondary">Archived</Badge>
-                            ) : null}
+                      <TableRow key={item.id}>
+                        <TableCell>
+                          <div className="flex items-center gap-2.5">
+                            <span
+                              className={
+                                "inline-block size-2.5 shrink-0 rounded-full border " +
+                                item.color
+                              }
+                              aria-hidden="true"
+                            />
+                            <span className="font-medium">{item.name}</span>
                           </div>
-                          <div className="text-xs text-muted-foreground">
-                            {item.hoursPerWeek} hrs/week
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => openEditClassDialog(item.id)}
-                          >
-                            <PencilIcon className="mr-1 h-3.5 w-3.5" /> Edit
-                          </Button>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {item.hoursPerWeek}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {scheduledCounts.get(item.id) ?? 0} of{" "}
+                          {item.hoursPerWeek} slots
+                        </TableCell>
+                        <TableCell>
                           {item.archivedAt ? (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => void handleRestoreClass(item.id)}
-                            >
-                              <RotateCcwIcon className="mr-1 h-3.5 w-3.5" />{" "}
-                              Restore
-                            </Button>
+                            <Badge variant="secondary">Archived</Badge>
                           ) : (
+                            <Badge variant="outline">Active</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-2">
                             <Button
                               type="button"
                               variant="outline"
                               size="sm"
-                              onClick={() => void handleArchiveClass(item.id)}
+                              onClick={() => openEditClassDialog(item.id)}
                             >
-                              <ArchiveIcon className="mr-1 h-3.5 w-3.5" />{" "}
-                              Archive
+                              <PencilIcon className="mr-1 h-3.5 w-3.5" /> Edit
                             </Button>
-                          )}
-                        </div>
-                      </div>
+                            {item.archivedAt ? (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => void handleRestoreClass(item.id)}
+                              >
+                                <RotateCcwIcon className="mr-1 h-3.5 w-3.5" />{" "}
+                                Restore
+                              </Button>
+                            ) : (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => void handleArchiveClass(item.id)}
+                              >
+                                <ArchiveIcon className="mr-1 h-3.5 w-3.5" />{" "}
+                                Archive
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
                     ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                </TableBody>
+              </Table>
+            )}
+          </div>
 
           <Dialog
             open={isCreateClassOpen}
@@ -1213,7 +1395,7 @@ export function TeacherDashboard({
           </Dialog>
         </TabsContent>
 
-        <TabsContent value="students" className="mt-6">
+        <TabsContent value="students" className="mt-0">
           {selectedStudentId ? (
             <div className="animate-in fade-in slide-in-from-right-8 duration-300">
               {(() => {
@@ -1398,12 +1580,12 @@ export function TeacherDashboard({
               })()}
             </div>
           ) : (
-            <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-              <Card className="order-1">
-                <CardHeader>
-                  <CardTitle>Create student</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
+            <div className="space-y-4">
+              <Dialog open={isAddStudentOpen} onOpenChange={setIsAddStudentOpen}>
+                <DialogContent className="max-h-[85svh] overflow-y-auto sm:max-w-2xl">
+                  <DialogHeader>
+                    <DialogTitle>Add student</DialogTitle>
+                  </DialogHeader>
                   <form className="space-y-4" onSubmit={handleAddStudent}>
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div className="space-y-2">
@@ -1744,54 +1926,127 @@ export function TeacherDashboard({
                       Create student
                     </Button>
                   </form>
-                </CardContent>
-              </Card>
+                </DialogContent>
+              </Dialog>
 
-              <Card className="order-2">
-                <CardHeader className="flex flex-row items-center justify-between gap-4">
-                  <CardTitle>Students</CardTitle>
-                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Checkbox
-                      checked={showWithdrawn}
-                      onCheckedChange={(checked) =>
-                        setShowWithdrawn(checked === true)
-                      }
-                    />
-                    Show withdrawn
-                  </label>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {students.filter((student) => showWithdrawn || !student.withdrawnAt)
-                    .length === 0 ? (
-                    <p className="text-sm text-muted-foreground">
-                      No students yet. Add one on the left.
-                    </p>
-                  ) : (
-                    students
-                      .filter((student) => showWithdrawn || !student.withdrawnAt)
-                      .map((student) => (
-                      <div
-                        key={student.id}
-                        className="cursor-pointer rounded-lg border p-4 transition hover:border-foreground/40"
-                        onClick={() => setSelectedStudentId(student.id)}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <div className="flex items-center gap-2 text-sm font-semibold">
+              <div className="rounded-lg border border-border bg-card">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    <div className="text-sm font-semibold">
+                      Students{" "}
+                      <span className="font-normal text-muted-foreground">
+                        · {visibleStudents.length}
+                      </span>
+                    </div>
+                    <div className="relative">
+                      <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        value={studentQuery}
+                        onChange={(event) =>
+                          setStudentQuery(event.target.value)
+                        }
+                        placeholder="Search students…"
+                        className="h-8 w-48 pl-8 text-sm md:w-64"
+                        aria-label="Search students"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Checkbox
+                        checked={showWithdrawn}
+                        onCheckedChange={(checked) =>
+                          setShowWithdrawn(checked === true)
+                        }
+                      />
+                      Show withdrawn
+                    </label>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => setIsAddStudentOpen(true)}
+                    >
+                      <PlusIcon className="mr-1 h-3.5 w-3.5" /> Add student
+                    </Button>
+                  </div>
+                </div>
+                {visibleStudents.length === 0 ? (
+                  <p className="px-4 py-8 text-center text-sm text-muted-foreground">
+                    {studentQuery.trim()
+                      ? "No students match your search."
+                      : "No students yet. Add one above."}
+                  </p>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Student</TableHead>
+                        <TableHead>Grade</TableHead>
+                        <TableHead>Parent</TableHead>
+                        <TableHead>Classes</TableHead>
+                        <TableHead>Tuition</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {visibleStudents.map((student) => (
+                        <TableRow
+                          key={student.id}
+                          className="cursor-pointer"
+                          onClick={() => setSelectedStudentId(student.id)}
+                        >
+                          <TableCell>
+                            <div className="flex items-center gap-2 font-medium">
                               {student.firstName} {student.lastName}
                               {student.withdrawnAt ? (
                                 <Badge variant="destructive">Withdrawn</Badge>
                               ) : null}
                             </div>
                             <div className="text-xs text-muted-foreground">
-                              Grade {student.gradeLevel || "N/A"} •{" "}
                               {student.email || "No email"}
                             </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Badge variant="secondary">
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {student.gradeLevel || "N/A"}
+                          </TableCell>
+                          <TableCell>
+                            <div>{student.parentName || "Not set"}</div>
+                            <div className="text-xs text-muted-foreground">
+                              {student.parentPhone || "No phone"}
+                            </div>
+                          </TableCell>
+                          <TableCell className="whitespace-normal">
+                            <div className="flex max-w-56 flex-wrap gap-1">
+                              {student.assignedClassIds.length === 0 ? (
+                                <span className="text-xs text-muted-foreground">
+                                  None
+                                </span>
+                              ) : (
+                                student.assignedClassIds.map((classId) => {
+                                  const className =
+                                    classes.find(
+                                      (item) => item.id === classId,
+                                    )?.name ?? "Unknown class";
+                                  return (
+                                    <Badge key={classId} variant="outline">
+                                      {className}
+                                    </Badge>
+                                  );
+                                })
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div>
+                              {student.tuitionAmount
+                                ? `$${student.tuitionAmount}`
+                                : "—"}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
                               {student.tuitionStatus.replace("-", " ")}
-                            </Badge>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right">
                             {student.withdrawnAt ? (
                               <Button
                                 variant="outline"
@@ -1815,47 +2070,21 @@ export function TeacherDashboard({
                                 Withdraw
                               </Button>
                             )}
-                          </div>
-                        </div>
-                        <div className="mt-3 text-xs text-muted-foreground">
-                          Parent: {student.parentName || "Not set"} •{" "}
-                          {student.parentPhone || "No phone"}
-                        </div>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {student.assignedClassIds.length === 0 ? (
-                            <span className="text-xs text-muted-foreground">
-                              No assigned classes
-                            </span>
-                          ) : (
-                            student.assignedClassIds.map((classId) => {
-                              const className =
-                                classes.find((item) => item.id === classId)
-                                  ?.name ?? "Unknown class";
-                              return (
-                                <Badge key={classId} variant="outline">
-                                  {className}
-                                </Badge>
-                              );
-                            })
-                          )}
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </CardContent>
-              </Card>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </div>
             </div>
           )}
         </TabsContent>
 
-        <TabsContent value="attendance" className="mt-6">
-          <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
-            <Card className="order-1">
-              <CardHeader>
-                <CardTitle>Attendance setup</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
+        <TabsContent value="attendance" className="mt-0 space-y-4">
+          <div className="rounded-lg border border-border bg-card">
+            <div className="flex flex-wrap items-end gap-x-6 gap-y-4 px-4 py-3">
+                <div className="w-full space-y-2 sm:w-64">
                   <Label htmlFor="attendance-date">Date</Label>
                   <Popover>
                     <PopoverTrigger asChild>
@@ -1894,7 +2123,7 @@ export function TeacherDashboard({
                     </p>
                   ) : null}
                 </div>
-                <div className="space-y-2">
+                <div className="w-full space-y-2 sm:w-64">
                   <Label htmlFor="attendance-class">Class</Label>
                   <select
                     id="attendance-class"
@@ -1941,46 +2170,62 @@ export function TeacherDashboard({
                     ))}
                   </select>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Pick a class to filter the roster for attendance tracking.
+                <p className="pb-2 text-xs text-muted-foreground">
+                  Pick a class to filter the roster. Attendance is saved
+                  automatically for the selected class and date.
                 </p>
-              </CardContent>
-            </Card>
+            </div>
+          </div>
 
-            <Card className="order-2">
-              <CardHeader>
-                <CardTitle>Attendance roster</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
+          <div className="rounded-lg border border-border bg-card">
+            <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
+              <div className="text-sm font-semibold">
+                Roster{" "}
+                <span className="font-normal text-muted-foreground">
+                  · {attendanceRoster.length}
+                </span>
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {format(attendanceDate, "PPP")}
+              </div>
+            </div>
                 {!attendanceClassId ? (
-                  <p className="text-sm text-muted-foreground">
+                  <p className="px-4 py-8 text-center text-sm text-muted-foreground">
                     Select a class to view its assigned students.
                   </p>
                 ) : attendanceRoster.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
+                  <p className="px-4 py-8 text-center text-sm text-muted-foreground">
                     No students assigned to this class yet.
                   </p>
                 ) : (
-                  <div className="space-y-3">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Student</TableHead>
+                        <TableHead>Grade</TableHead>
+                        <TableHead className="text-right">Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
                     {attendanceRoster.map((student) => {
                       const status =
                         attendanceStatusByStudent[student.id] ?? "";
 
                       return (
-                        <div
-                          key={student.id}
-                          className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between"
-                        >
-                          <div>
-                            <div className="text-sm font-semibold">
+                        <TableRow key={student.id}>
+                          <TableCell>
+                            <div className="font-medium">
                               {student.firstName} {student.lastName}
                             </div>
                             <div className="text-xs text-muted-foreground">
-                              Grade {student.gradeLevel || "N/A"} •{" "}
                               {student.email || "No email"}
                             </div>
-                          </div>
-                          <div className="flex flex-wrap gap-2">
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {student.gradeLevel || "N/A"}
+                          </TableCell>
+                          <TableCell>
+                          <div className="flex flex-wrap justify-end gap-2">
                             <Button
                               type="button"
                               variant={
@@ -2084,25 +2329,24 @@ export function TeacherDashboard({
                               Absent
                             </Button>
                           </div>
-                        </div>
+                          </TableCell>
+                        </TableRow>
                       );
                     })}
-                  </div>
+                    </TableBody>
+                  </Table>
                 )}
-                <div className="text-xs text-muted-foreground">
-                  Attendance is saved automatically for this class and date.
-                </div>
-              </CardContent>
-            </Card>
           </div>
         </TabsContent>
 
-        <TabsContent value="quizzes" className="mt-6">
+        <TabsContent value="quizzes" className="mt-0">
           <TeacherQuizBuilder
             classes={activeClasses.map(({ id, name }) => ({ id, name }))}
             initialQuizzes={initialQuizzes}
           />
         </TabsContent>
+          </main>
+        </div>
       </Tabs>
     </div>
   );
