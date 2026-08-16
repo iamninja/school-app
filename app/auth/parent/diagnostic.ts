@@ -41,16 +41,16 @@ export async function diagnoseParentAccountAction(
     console.error("Error querying family_parents:", parentError);
     return {
       status: "error",
-      message: "Something went wrong checking that email. Please try again.",
+      message: "Κάτι πήγε στραβά κατά τον έλεγχο του email. Δοκιμάστε ξανά.",
     };
   }
 
   if (!parentRecords || parentRecords.length === 0) {
     return {
       status: "not_found",
-      message: "No parent record found in database",
+      message: "Δεν βρέθηκε γονέας στη βάση δεδομένων",
       suggestion:
-        "Ask your child's teacher to add your email as a parent in the system",
+        "Ζητήστε από τον καθηγητή του παιδιού σας να προσθέσει το email σας ως γονέα στο σύστημα",
     };
   }
 
@@ -59,8 +59,8 @@ export async function diagnoseParentAccountAction(
   if (!parentWithUser || !parentWithUser.user_id) {
     return {
       status: "not_registered",
-      message: "Parent record exists but account not created yet",
-      suggestion: "Use the Parent Sign Up page to create your account",
+      message: "Ο γονέας υπάρχει στο σύστημα αλλά ο λογαριασμός δεν έχει δημιουργηθεί ακόμα",
+      suggestion: "Χρησιμοποιήστε τη σελίδα εγγραφής γονέα για να δημιουργήσετε τον λογαριασμό σας",
     };
   }
 
@@ -71,8 +71,8 @@ export async function diagnoseParentAccountAction(
     console.error("Orphaned parent user_id:", parentWithUser.user_id);
     return {
       status: "orphaned",
-      message: "Parent record has user_id but auth user doesn't exist",
-      suggestion: "Contact support - the account is in an invalid state",
+      message: "Ο γονέας έχει user_id αλλά δεν υπάρχει αντίστοιχος λογαριασμός",
+      suggestion: "Επικοινωνήστε μαζί μας - ο λογαριασμός βρίσκεται σε μη έγκυρη κατάσταση",
     };
   }
 
@@ -83,14 +83,14 @@ export async function diagnoseParentAccountAction(
     );
     return {
       status: "mismatch",
-      message: "Email mismatch between parent record and auth user",
-      suggestion: "Contact support - the account is in an invalid state",
+      message: "Ασυμφωνία email μεταξύ του γονέα και του λογαριασμού",
+      suggestion: "Επικοινωνήστε μαζί μας - ο λογαριασμός βρίσκεται σε μη έγκυρη κατάσταση",
     };
   }
 
   return {
     status: "valid",
-    message: "Parent account is properly configured",
-    suggestion: "You should be able to login",
+    message: "Ο λογαριασμός γονέα είναι σωστά διαμορφωμένος",
+    suggestion: "Θα πρέπει να μπορείτε να συνδεθείτε",
   };
 }

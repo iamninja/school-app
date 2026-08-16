@@ -63,7 +63,7 @@ export function StudentQuizPanel({
       setView({ mode: "taking", quiz });
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to load quiz",
+        error instanceof Error ? error.message : "Αποτυχία φόρτωσης τεστ",
       );
     } finally {
       setIsLoading(false);
@@ -77,7 +77,9 @@ export function StudentQuizPanel({
       setView({ mode: "review", review });
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to load review",
+        error instanceof Error
+          ? error.message
+          : "Αποτυχία φόρτωσης ανασκόπησης",
       );
     } finally {
       setIsLoading(false);
@@ -110,7 +112,9 @@ export function StudentQuizPanel({
       });
 
       if (unanswered.length > 0) {
-        toast.error(`Please answer all questions (${unanswered.length} left)`);
+        toast.error(
+          `Παρακαλώ απαντήστε σε όλες τις ερωτήσεις (απομένουν ${unanswered.length})`,
+        );
         return;
       }
     }
@@ -136,11 +140,13 @@ export function StudentQuizPanel({
       );
       setView({ mode: "review", review });
       toast.success(
-        auto ? "Time's up — quiz submitted automatically" : "Quiz submitted",
+        auto
+          ? "Ο χρόνος τελείωσε — το τεστ υποβλήθηκε αυτόματα"
+          : "Το τεστ υποβλήθηκε",
       );
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to submit quiz",
+        error instanceof Error ? error.message : "Αποτυχία υποβολής τεστ",
       );
     } finally {
       setIsSubmitting(false);
@@ -220,7 +226,7 @@ export function StudentQuizPanel({
                       textAnswer: event.target.value,
                     })
                   }
-                  placeholder="Your answer"
+                  placeholder="Η απάντησή σας"
                 />
               ) : (
                 <RadioGroup
@@ -254,14 +260,14 @@ export function StudentQuizPanel({
               variant="outline"
               onClick={() => setView({ mode: "list" })}
             >
-              Cancel
+              Ακύρωση
             </Button>
             <Button
               onClick={() => handleSubmitQuiz()}
               disabled={isSubmitting}
               className="flex-1"
             >
-              {isSubmitting ? "Submitting..." : "Submit Quiz"}
+              {isSubmitting ? "Γίνεται υποβολή..." : "Υποβολή τεστ"}
             </Button>
           </div>
         </CardContent>
@@ -274,16 +280,16 @@ export function StudentQuizPanel({
       <Card>
         <CardHeader>
           <CardTitle>
-            <MathText text={view.review.quizTitle} /> — Review
+            <MathText text={view.review.quizTitle} /> — Ανασκόπηση
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-2xl font-bold">
             {view.review.score} / {view.review.maxScore}
           </p>
-          <QuizReviewAnswers answers={view.review.answers} />
+          <QuizReviewAnswers answers={view.review.answers} locale="el" />
           <Button variant="outline" onClick={() => setView({ mode: "list" })}>
-            Back to quizzes
+            Πίσω στα τεστ
           </Button>
         </CardContent>
       </Card>
@@ -293,12 +299,12 @@ export function StudentQuizPanel({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Quizzes</CardTitle>
+        <CardTitle>Τεστ</CardTitle>
       </CardHeader>
       <CardContent>
         {quizzes.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            No quizzes assigned yet.
+            Δεν έχουν ανατεθεί τεστ ακόμα.
           </p>
         ) : (
           <div className="space-y-2">
@@ -322,7 +328,7 @@ export function StudentQuizPanel({
                     disabled={isLoading}
                     onClick={() => handleViewReview(quiz.id)}
                   >
-                    {quiz.score} / {quiz.maxScore} · Review
+                    {quiz.score} / {quiz.maxScore} · Ανασκόπηση
                   </Button>
                 ) : (
                   <Button
@@ -330,7 +336,7 @@ export function StudentQuizPanel({
                     disabled={isLoading}
                     onClick={() => handleTakeQuiz(quiz.id)}
                   >
-                    Take Quiz
+                    Έναρξη τεστ
                   </Button>
                 )}
               </div>

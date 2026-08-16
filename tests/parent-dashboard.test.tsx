@@ -64,17 +64,17 @@ describe("ParentDashboard", () => {
   it("shows the parent name and student information", () => {
     render(<ParentDashboard {...baseProps} />);
 
-    expect(screen.getByText(/welcome, jane doe/i)).toBeInTheDocument();
+    expect(screen.getByText(/καλωσήρθατε, jane doe/i)).toBeInTheDocument();
     expect(screen.getAllByText("John Smith").length).toBeGreaterThan(0);
     expect(screen.getByText("8th")).toBeInTheDocument();
-    expect(screen.getByText("current")).toBeInTheDocument();
+    expect(screen.getByText("Ενημερωμένος")).toBeInTheDocument();
   });
 
   it("shows a message when the student has no classes", () => {
     render(<ParentDashboard {...baseProps} />);
 
     expect(
-      screen.getByText(/not enrolled in any classes yet/i),
+      screen.getByText(/δεν έχει εγγραφεί σε καμία τάξη/i),
     ).toBeInTheDocument();
   });
 
@@ -92,14 +92,16 @@ describe("ParentDashboard", () => {
     );
 
     expect(screen.getByText("Algebra II")).toBeInTheDocument();
-    expect(screen.getByText(/3 hours per week/i)).toBeInTheDocument();
-    expect(screen.getByText(/mon at 10:00/i)).toBeInTheDocument();
+    expect(screen.getByText(/3 ώρες\/εβδομάδα/i)).toBeInTheDocument();
+    expect(screen.getByText(/δευ στις 10:00/i)).toBeInTheDocument();
   });
 
   it("shows a message when there are no attendance records", () => {
     render(<ParentDashboard {...baseProps} />);
 
-    expect(screen.getByText(/no attendance records yet/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/δεν υπάρχουν καταγραφές παρουσίας/i),
+    ).toBeInTheDocument();
   });
 
   it("computes the attendance rate from present, late, and absent records", () => {
@@ -151,7 +153,7 @@ describe("ParentDashboard", () => {
 
     render(<ParentDashboard {...baseProps} />);
 
-    await user.click(screen.getByRole("button", { name: /sign out/i }));
+    await user.click(screen.getByRole("button", { name: /αποσύνδεση/i }));
 
     expect(signOut).toHaveBeenCalled();
     expect(push).toHaveBeenCalledWith("/");
@@ -160,7 +162,9 @@ describe("ParentDashboard", () => {
   it("shows a message when there are no quizzes assigned", () => {
     render(<ParentDashboard {...baseProps} />);
 
-    expect(screen.getByText(/no quizzes assigned yet/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/δεν έχουν ανατεθεί τεστ/i),
+    ).toBeInTheDocument();
   });
 
   it("lists quizzes with scores and a not-taken-yet state", () => {
@@ -197,7 +201,7 @@ describe("ParentDashboard", () => {
     expect(screen.getByText("Chapter 3 Quiz")).toBeInTheDocument();
     expect(screen.getByText("4 / 5")).toBeInTheDocument();
     expect(screen.getByText("Pop Quiz")).toBeInTheDocument();
-    expect(screen.getByText(/not taken yet/i)).toBeInTheDocument();
+    expect(screen.getByText(/δεν έχει γίνει ακόμα/i)).toBeInTheDocument();
   });
 
   it("renders LaTeX in a quiz title", () => {

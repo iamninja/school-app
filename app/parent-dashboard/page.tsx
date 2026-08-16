@@ -19,12 +19,12 @@ export default async function ParentDashboardPage() {
     return (
       <div className="flex min-h-screen items-center justify-center p-6">
         <div className="text-center space-y-4">
-          <h1 className="text-2xl font-bold">Access Denied</h1>
+          <h1 className="text-2xl font-bold">Δεν επιτρέπεται η πρόσβαση</h1>
           <p className="text-muted-foreground">
-            {result.error || "No parent record found for this account"}
+            {result.error || "Δεν βρέθηκε λογαριασμός γονέα για αυτόν τον χρήστη"}
           </p>
           <a href="/auth/parent-login" className="text-primary hover:underline">
-            Return to login
+            Επιστροφή στη σύνδεση
           </a>
         </div>
       </div>
@@ -35,12 +35,12 @@ export default async function ParentDashboardPage() {
     return (
       <div className="flex min-h-screen items-center justify-center p-6">
         <div className="text-center space-y-4">
-          <h1 className="text-2xl font-bold">Access Denied</h1>
+          <h1 className="text-2xl font-bold">Δεν επιτρέπεται η πρόσβαση</h1>
           <p className="text-muted-foreground">
-            No parent record found for this account
+            Δεν βρέθηκε λογαριασμός γονέα για αυτόν τον χρήστη
           </p>
           <a href="/auth/parent-login" className="text-primary hover:underline">
-            Return to login
+            Επιστροφή στη σύνδεση
           </a>
         </div>
       </div>

@@ -45,7 +45,9 @@ export function ParentLoginForm({
         setError(result.error);
       }
     } catch (error: unknown) {
-      setError(error instanceof Error ? error.message : "An error occurred");
+      setError(
+        error instanceof Error ? error.message : "Παρουσιάστηκε σφάλμα",
+      );
     } finally {
       setIsLoading(false);
     }
@@ -53,7 +55,7 @@ export function ParentLoginForm({
 
   const handleDiagnose = async () => {
     if (!email) {
-      setError("Please enter an email address to diagnose");
+      setError("Παρακαλώ εισάγετε ένα email για διάγνωση");
       return;
     }
 
@@ -68,15 +70,16 @@ export function ParentLoginForm({
     <div className={cn("flex flex-col gap-6", className)} {...props}>
       <Card>
         <CardHeader>
-          <CardTitle className="text-2xl">Parent Login</CardTitle>
+          <CardTitle className="text-2xl">Σύνδεση γονέα</CardTitle>
           <CardDescription>
-            Enter your email and password to access your child&apos;s information
+            Εισάγετε το email και τον κωδικό σας για να δείτε τα στοιχεία του
+            παιδιού σας
           </CardDescription>
         </CardHeader>
         <CardContent>
           {registered && (
             <div className="mb-4 rounded-md bg-green-50 p-3 text-sm text-green-700">
-              Account created successfully! Please login to continue.
+              Ο λογαριασμός δημιουργήθηκε! Συνδεθείτε για να συνεχίσετε.
             </div>
           )}
           <form onSubmit={handleLogin}>
@@ -94,12 +97,12 @@ export function ParentLoginForm({
               </div>
               <div className="grid gap-2">
                 <div className="flex items-center">
-                  <Label htmlFor="password">Password</Label>
+                  <Label htmlFor="password">Κωδικός</Label>
                   <Link
                     href="/auth/forgot-password"
                     className="ml-auto inline-block text-sm underline-offset-4 hover:underline"
                   >
-                    Forgot your password?
+                    Ξεχάσατε τον κωδικό σας;
                   </Link>
                 </div>
                 <Input
@@ -120,17 +123,22 @@ export function ParentLoginForm({
                   onClick={handleDiagnose}
                   disabled={diagnosing}
                 >
-                  {diagnosing ? "Diagnosing..." : "🔍 Diagnose Account Issue"}
+                  {diagnosing
+                    ? "Γίνεται διάγνωση..."
+                    : "🔍 Διάγνωση προβλήματος λογαριασμού"}
                 </Button>
                 {diagnostic && (
                   <div className="mt-4 p-4 rounded-lg border bg-muted/50 space-y-2">
                     <p className="font-semibold">
-                      Status: {diagnostic.status === "valid" && "✅ Valid"}
-                      {diagnostic.status === "not_found" && "❌ Not Found"}
+                      Κατάσταση:{" "}
+                      {diagnostic.status === "valid" && "✅ Έγκυρος"}
+                      {diagnostic.status === "not_found" && "❌ Δεν βρέθηκε"}
                       {diagnostic.status === "not_registered" &&
-                        "⚠️ Not Registered"}
-                      {diagnostic.status === "orphaned" && "❌ Invalid State"}
-                      {diagnostic.status === "mismatch" && "⚠️ Email Mismatch"}
+                        "⚠️ Μη εγγεγραμμένος"}
+                      {diagnostic.status === "orphaned" &&
+                        "❌ Μη έγκυρη κατάσταση"}
+                      {diagnostic.status === "mismatch" &&
+                        "⚠️ Ασυμφωνία email"}
                     </p>
                     <p className="text-sm">{diagnostic.message}</p>
                     {diagnostic.suggestion && (
@@ -142,16 +150,16 @@ export function ParentLoginForm({
                 )}
               </div>
               <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? "Logging in..." : "Login"}
+                {isLoading ? "Σύνδεση..." : "Σύνδεση"}
               </Button>
             </div>
             <div className="mt-4 text-center text-sm">
-              Don&apos;t have an account?{" "}
+              Δεν έχετε λογαριασμό;{" "}
               <Link
                 href="/auth/parent-signup"
                 className="underline underline-offset-4"
               >
-                Sign up
+                Εγγραφή
               </Link>
             </div>
           </form>

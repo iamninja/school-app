@@ -27,13 +27,13 @@ describe("ParentSignUpForm", () => {
   it("requires email verification before showing password fields", async () => {
     render(<ParentSignUpForm />);
 
-    expect(screen.queryByLabelText(/^password$/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^κωδικός$/i)).not.toBeInTheDocument();
     expect(
-      screen.queryByLabelText(/confirm password/i),
+      screen.queryByLabelText(/επιβεβαίωση κωδικού/i),
     ).not.toBeInTheDocument();
 
     expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /verify/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /επαλήθευση/i })).toBeInTheDocument();
   });
 
   it("shows error when email is not found in student_parents table", async () => {
@@ -48,7 +48,7 @@ describe("ParentSignUpForm", () => {
     render(<ParentSignUpForm />);
 
     await user.type(screen.getByLabelText(/email/i), "unknown@example.com");
-    await user.click(screen.getByRole("button", { name: /verify/i }));
+    await user.click(screen.getByRole("button", { name: /επαλήθευση/i }));
 
     await waitFor(() => {
       expect(
@@ -56,7 +56,7 @@ describe("ParentSignUpForm", () => {
       ).toBeInTheDocument();
     });
 
-    expect(screen.queryByLabelText(/^password$/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^κωδικός$/i)).not.toBeInTheDocument();
   });
 
   it("shows error when email is already registered", async () => {
@@ -70,7 +70,7 @@ describe("ParentSignUpForm", () => {
     render(<ParentSignUpForm />);
 
     await user.type(screen.getByLabelText(/email/i), "registered@example.com");
-    await user.click(screen.getByRole("button", { name: /verify/i }));
+    await user.click(screen.getByRole("button", { name: /επαλήθευση/i }));
 
     await waitFor(() => {
       expect(
@@ -92,16 +92,18 @@ describe("ParentSignUpForm", () => {
     render(<ParentSignUpForm />);
 
     await user.type(screen.getByLabelText(/email/i), "jane@example.com");
-    await user.click(screen.getByRole("button", { name: /verify/i }));
+    await user.click(screen.getByRole("button", { name: /επαλήθευση/i }));
 
     await waitFor(() => {
-      expect(screen.getByText(/verified as jane doe/i)).toBeInTheDocument();
+      expect(
+        screen.getByText(/επαληθεύτηκε ως jane doe/i),
+      ).toBeInTheDocument();
     });
 
-    expect(screen.getByLabelText(/^password$/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/confirm password/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^κωδικός$/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/επιβεβαίωση κωδικού/i)).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /create account/i }),
+      screen.getByRole("button", { name: /δημιουργία λογαριασμού/i }),
     ).toBeInTheDocument();
   });
 
@@ -118,18 +120,20 @@ describe("ParentSignUpForm", () => {
     render(<ParentSignUpForm />);
 
     await user.type(screen.getByLabelText(/email/i), "jane@example.com");
-    await user.click(screen.getByRole("button", { name: /verify/i }));
+    await user.click(screen.getByRole("button", { name: /επαλήθευση/i }));
 
     await waitFor(() => {
-      expect(screen.getByLabelText(/^password$/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/^κωδικός$/i)).toBeInTheDocument();
     });
 
-    await user.type(screen.getByLabelText(/^password$/i), "password123");
-    await user.type(screen.getByLabelText(/confirm password/i), "different123");
-    await user.click(screen.getByRole("button", { name: /create account/i }));
+    await user.type(screen.getByLabelText(/^κωδικός$/i), "password123");
+    await user.type(screen.getByLabelText(/επιβεβαίωση κωδικού/i), "different123");
+    await user.click(screen.getByRole("button", { name: /δημιουργία λογαριασμού/i }));
 
     await waitFor(() => {
-      expect(screen.getByText(/passwords do not match/i)).toBeInTheDocument();
+      expect(
+        screen.getByText(/οι κωδικοί δεν ταιριάζουν/i),
+      ).toBeInTheDocument();
     });
   });
 
@@ -146,19 +150,19 @@ describe("ParentSignUpForm", () => {
     render(<ParentSignUpForm />);
 
     await user.type(screen.getByLabelText(/email/i), "jane@example.com");
-    await user.click(screen.getByRole("button", { name: /verify/i }));
+    await user.click(screen.getByRole("button", { name: /επαλήθευση/i }));
 
     await waitFor(() => {
-      expect(screen.getByLabelText(/^password$/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/^κωδικός$/i)).toBeInTheDocument();
     });
 
-    await user.type(screen.getByLabelText(/^password$/i), "short");
-    await user.type(screen.getByLabelText(/confirm password/i), "short");
-    await user.click(screen.getByRole("button", { name: /create account/i }));
+    await user.type(screen.getByLabelText(/^κωδικός$/i), "short");
+    await user.type(screen.getByLabelText(/επιβεβαίωση κωδικού/i), "short");
+    await user.click(screen.getByRole("button", { name: /δημιουργία λογαριασμού/i }));
 
     await waitFor(() => {
       expect(
-        screen.getByText(/password must be at least 6 characters/i),
+        screen.getByText(/ο κωδικός πρέπει να έχει τουλάχιστον 6 χαρακτήρες/i),
       ).toBeInTheDocument();
     });
   });
@@ -180,15 +184,15 @@ describe("ParentSignUpForm", () => {
     render(<ParentSignUpForm />);
 
     await user.type(screen.getByLabelText(/email/i), "jane@example.com");
-    await user.click(screen.getByRole("button", { name: /verify/i }));
+    await user.click(screen.getByRole("button", { name: /επαλήθευση/i }));
 
     await waitFor(() => {
-      expect(screen.getByLabelText(/^password$/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/^κωδικός$/i)).toBeInTheDocument();
     });
 
-    await user.type(screen.getByLabelText(/^password$/i), "password123");
-    await user.type(screen.getByLabelText(/confirm password/i), "password123");
-    await user.click(screen.getByRole("button", { name: /create account/i }));
+    await user.type(screen.getByLabelText(/^κωδικός$/i), "password123");
+    await user.type(screen.getByLabelText(/επιβεβαίωση κωδικού/i), "password123");
+    await user.click(screen.getByRole("button", { name: /δημιουργία λογαριασμού/i }));
 
     await waitFor(() => {
       expect(signUpParentAction).toHaveBeenCalledWith({
@@ -217,15 +221,15 @@ describe("ParentSignUpForm", () => {
     render(<ParentSignUpForm />);
 
     await user.type(screen.getByLabelText(/email/i), "jane@example.com");
-    await user.click(screen.getByRole("button", { name: /verify/i }));
+    await user.click(screen.getByRole("button", { name: /επαλήθευση/i }));
 
     await waitFor(() => {
-      expect(screen.getByLabelText(/^password$/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/^κωδικός$/i)).toBeInTheDocument();
     });
 
-    await user.type(screen.getByLabelText(/^password$/i), "password123");
-    await user.type(screen.getByLabelText(/confirm password/i), "password123");
-    await user.click(screen.getByRole("button", { name: /create account/i }));
+    await user.type(screen.getByLabelText(/^κωδικός$/i), "password123");
+    await user.type(screen.getByLabelText(/επιβεβαίωση κωδικού/i), "password123");
+    await user.click(screen.getByRole("button", { name: /δημιουργία λογαριασμού/i }));
 
     await waitFor(() => {
       expect(
@@ -249,14 +253,14 @@ describe("ParentSignUpForm", () => {
     const emailInput = screen.getByLabelText(/email/i) as HTMLInputElement;
 
     await user.type(emailInput, "jane@example.com");
-    await user.click(screen.getByRole("button", { name: /verify/i }));
+    await user.click(screen.getByRole("button", { name: /επαλήθευση/i }));
 
     await waitFor(() => {
       expect(emailInput).toBeDisabled();
     });
 
     expect(
-      screen.queryByRole("button", { name: /verify/i }),
+      screen.queryByRole("button", { name: /επαλήθευση/i }),
     ).not.toBeInTheDocument();
   });
 });

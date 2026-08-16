@@ -41,7 +41,7 @@ export function ParentSignUpForm({
 
   const handleCheckEmail = async () => {
     if (!email) {
-      setError("Please enter your email");
+      setError("Παρακαλώ εισάγετε το email σας");
       return;
     }
 
@@ -56,11 +56,13 @@ export function ParentSignUpForm({
         setParentName(result.parentName || "");
         setError(null);
       } else {
-        setError(result.error || "Unable to verify email");
+        setError(result.error || "Δεν ήταν δυνατή η επαλήθευση του email");
         setEmailVerified(false);
       }
     } catch (error: unknown) {
-      setError(error instanceof Error ? error.message : "An error occurred");
+      setError(
+        error instanceof Error ? error.message : "Παρουσιάστηκε σφάλμα",
+      );
       setEmailVerified(false);
     } finally {
       setIsCheckingEmail(false);
@@ -69,7 +71,7 @@ export function ParentSignUpForm({
 
   const handleDiagnose = async () => {
     if (!email) {
-      setError("Please enter an email address to diagnose");
+      setError("Παρακαλώ εισάγετε ένα email για διάγνωση");
       return;
     }
 
@@ -86,13 +88,13 @@ export function ParentSignUpForm({
     setError(null);
 
     if (password !== confirmPassword) {
-      setError("Passwords do not match");
+      setError("Οι κωδικοί δεν ταιριάζουν");
       setIsLoading(false);
       return;
     }
 
     if (password.length < 6) {
-      setError("Password must be at least 6 characters");
+      setError("Ο κωδικός πρέπει να έχει τουλάχιστον 6 χαρακτήρες");
       setIsLoading(false);
       return;
     }
@@ -105,7 +107,9 @@ export function ParentSignUpForm({
         router.push("/auth/parent-login?registered=true");
       }
     } catch (error: unknown) {
-      setError(error instanceof Error ? error.message : "An error occurred");
+      setError(
+        error instanceof Error ? error.message : "Παρουσιάστηκε σφάλμα",
+      );
     } finally {
       setIsLoading(false);
     }
@@ -115,10 +119,10 @@ export function ParentSignUpForm({
     <div className={cn("flex flex-col gap-6", className)} {...props}>
       <Card>
         <CardHeader>
-          <CardTitle className="text-2xl">Parent Sign Up</CardTitle>
+          <CardTitle className="text-2xl">Εγγραφή γονέα</CardTitle>
           <CardDescription>
-            Create your parent account using the email provided to your
-            child&apos;s teacher
+            Δημιουργήστε τον λογαριασμό γονέα με το email που δώσατε στον
+            καθηγητή του παιδιού σας
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -146,13 +150,13 @@ export function ParentSignUpForm({
                       onClick={handleCheckEmail}
                       disabled={isCheckingEmail}
                     >
-                      {isCheckingEmail ? "Checking..." : "Verify"}
+                      {isCheckingEmail ? "Έλεγχος..." : "Επαλήθευση"}
                     </Button>
                   )}
                 </div>
                 {emailVerified && parentName && (
                   <p className="text-sm text-green-600">
-                    ✓ Verified as {parentName}
+                    ✓ Επαληθεύτηκε ως {parentName}
                   </p>
                 )}
               </div>
@@ -160,26 +164,28 @@ export function ParentSignUpForm({
               {emailVerified && (
                 <>
                   <div className="grid gap-2">
-                    <Label htmlFor="password">Password</Label>
+                    <Label htmlFor="password">Κωδικός</Label>
                     <Input
                       id="password"
                       type="password"
-                      placeholder="Create a password"
+                      placeholder="Δημιουργήστε έναν κωδικό"
                       required
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       minLength={6}
                     />
                     <p className="text-xs text-muted-foreground">
-                      Must be at least 6 characters
+                      Πρέπει να έχει τουλάχιστον 6 χαρακτήρες
                     </p>
                   </div>
                   <div className="grid gap-2">
-                    <Label htmlFor="confirmPassword">Confirm Password</Label>
+                    <Label htmlFor="confirmPassword">
+                      Επιβεβαίωση κωδικού
+                    </Label>
                     <Input
                       id="confirmPassword"
                       type="password"
-                      placeholder="Confirm your password"
+                      placeholder="Επιβεβαιώστε τον κωδικό σας"
                       required
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
@@ -202,20 +208,21 @@ export function ParentSignUpForm({
                       disabled={diagnosing}
                     >
                       {diagnosing
-                        ? "Diagnosing..."
-                        : "🔍 Diagnose Account Issue"}
+                        ? "Γίνεται διάγνωση..."
+                        : "🔍 Διάγνωση προβλήματος λογαριασμού"}
                     </Button>
                     {diagnostic && (
                       <div className="mt-4 p-4 rounded-lg border bg-muted/50 space-y-2">
                         <p className="font-semibold">
-                          Status: {diagnostic.status === "valid" && "✅ Valid"}
-                          {diagnostic.status === "not_found" && "❌ Not Found"}
+                          Κατάσταση:{" "}
+                          {diagnostic.status === "valid" && "✅ Έγκυρος"}
+                          {diagnostic.status === "not_found" && "❌ Δεν βρέθηκε"}
                           {diagnostic.status === "not_registered" &&
-                            "⚠️ Not Registered"}
+                            "⚠️ Μη εγγεγραμμένος"}
                           {diagnostic.status === "orphaned" &&
-                            "❌ Invalid State"}
+                            "❌ Μη έγκυρη κατάσταση"}
                           {diagnostic.status === "mismatch" &&
-                            "⚠️ Email Mismatch"}
+                            "⚠️ Ασυμφωνία email"}
                         </p>
                         <p className="text-sm">{diagnostic.message}</p>
                         {diagnostic.suggestion && (
@@ -227,18 +234,18 @@ export function ParentSignUpForm({
                     )}
                   </div>
                   <Button type="submit" className="w-full" disabled={isLoading}>
-                    {isLoading ? "Creating account..." : "Create Account"}
+                    {isLoading ? "Δημιουργία λογαριασμού..." : "Δημιουργία λογαριασμού"}
                   </Button>
                 </>
               )}
             </div>
             <div className="mt-4 text-center text-sm">
-              Already have an account?{" "}
+              Έχετε ήδη λογαριασμό;{" "}
               <Link
                 href="/auth/parent-login"
                 className="underline underline-offset-4"
               >
-                Login
+                Σύνδεση
               </Link>
             </div>
           </form>

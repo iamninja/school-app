@@ -58,14 +58,16 @@ describe("StudentQuizPanel", () => {
 
   it("shows a message when there are no quizzes", () => {
     render(<StudentQuizPanel quizzes={[]} />);
-    expect(screen.getByText(/no quizzes assigned yet/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/δεν έχουν ανατεθεί τεστ/i),
+    ).toBeInTheDocument();
   });
 
   it("lists available quizzes with a Take Quiz button", () => {
     render(<StudentQuizPanel quizzes={quizzes} />);
     expect(screen.getByText("Chapter 3 Quiz")).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /take quiz/i }),
+      screen.getByRole("button", { name: /έναρξη τεστ/i }),
     ).toBeInTheDocument();
   });
 
@@ -93,7 +95,7 @@ describe("StudentQuizPanel", () => {
     );
 
     expect(
-      screen.getByRole("button", { name: /1 \/ 1.*review/i }),
+      screen.getByRole("button", { name: /1 \/ 1.*ανασκόπηση/i }),
     ).toBeInTheDocument();
   });
 
@@ -105,7 +107,7 @@ describe("StudentQuizPanel", () => {
     getQuizForTakingAction.mockResolvedValue(sampleQuizForTaking);
 
     render(<StudentQuizPanel quizzes={quizzes} />);
-    await user.click(screen.getByRole("button", { name: /take quiz/i }));
+    await user.click(screen.getByRole("button", { name: /έναρξη τεστ/i }));
 
     await waitFor(() => {
       expect(screen.getByText(/2 \+ 2 = \?/)).toBeInTheDocument();
@@ -141,7 +143,7 @@ describe("StudentQuizPanel", () => {
     });
 
     const { container } = render(<StudentQuizPanel quizzes={quizzes} />);
-    await user.click(screen.getByRole("button", { name: /take quiz/i }));
+    await user.click(screen.getByRole("button", { name: /έναρξη τεστ/i }));
 
     await waitFor(() => {
       expect(container.querySelectorAll(".katex").length).toBeGreaterThan(0);
@@ -183,21 +185,21 @@ describe("StudentQuizPanel", () => {
     });
 
     render(<StudentQuizPanel quizzes={quizzes} />);
-    await user.click(screen.getByRole("button", { name: /take quiz/i }));
+    await user.click(screen.getByRole("button", { name: /έναρξη τεστ/i }));
 
     await waitFor(() => {
       expect(screen.getByRole("radio", { name: "4" })).toBeInTheDocument();
     });
 
     await user.click(screen.getByRole("radio", { name: "4" }));
-    await user.click(screen.getByRole("button", { name: /submit quiz/i }));
+    await user.click(screen.getByRole("button", { name: /υποβολή τεστ/i }));
 
     await waitFor(() => {
       expect(submitQuizAttemptAction).toHaveBeenCalledWith("quiz-1", [
         { questionId: "q1", selectedOptionId: "opt-1" },
       ]);
       expect(screen.getByText("1 / 1")).toBeInTheDocument();
-      expect(screen.getByText(/correct/i)).toBeInTheDocument();
+      expect(screen.getByText(/σωστό/i)).toBeInTheDocument();
     });
   });
 
@@ -212,13 +214,13 @@ describe("StudentQuizPanel", () => {
     getQuizForTakingAction.mockResolvedValue(sampleQuizForTaking);
 
     render(<StudentQuizPanel quizzes={quizzes} />);
-    await user.click(screen.getByRole("button", { name: /take quiz/i }));
+    await user.click(screen.getByRole("button", { name: /έναρξη τεστ/i }));
 
     await waitFor(() => {
       expect(screen.getByRole("radio", { name: "4" })).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /submit quiz/i }));
+    await user.click(screen.getByRole("button", { name: /υποβολή τεστ/i }));
 
     expect(toast.error).toHaveBeenCalled();
     expect(submitQuizAttemptAction).not.toHaveBeenCalled();
@@ -265,7 +267,7 @@ describe("StudentQuizPanel", () => {
     );
 
     await user.click(
-      screen.getByRole("button", { name: /1 \/ 1.*review/i }),
+      screen.getByRole("button", { name: /1 \/ 1.*ανασκόπηση/i }),
     );
 
     await waitFor(() => {
@@ -301,7 +303,7 @@ describe("StudentQuizPanel", () => {
     });
 
     render(<StudentQuizPanel quizzes={quizzes} />);
-    await user.click(screen.getByRole("button", { name: /take quiz/i }));
+    await user.click(screen.getByRole("button", { name: /έναρξη τεστ/i }));
 
     await waitFor(() => {
       expect(screen.getByText(/the sky is green/i)).toBeInTheDocument();
@@ -336,12 +338,12 @@ describe("StudentQuizPanel", () => {
     });
 
     render(<StudentQuizPanel quizzes={quizzes} />);
-    await user.click(screen.getByRole("button", { name: /take quiz/i }));
+    await user.click(screen.getByRole("button", { name: /έναρξη τεστ/i }));
 
     await waitFor(() => {
       expect(screen.getByText(/explain your reasoning/i)).toBeInTheDocument();
       expect(
-        screen.getByPlaceholderText(/your answer/i),
+        screen.getByPlaceholderText(/η απάντησή σας/i),
       ).toBeInTheDocument();
     });
     expect(screen.queryByRole("radio")).not.toBeInTheDocument();
@@ -387,13 +389,15 @@ describe("StudentQuizPanel", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: /0 \/ 1.*review/i }));
+    await user.click(screen.getByRole("button", { name: /0 \/ 1.*ανασκόπηση/i }));
 
     await waitFor(() => {
       expect(
         screen.getByText(/because \$4 minus \$2 leaves \$2 left over/i),
       ).toBeInTheDocument();
-      expect(screen.getByText(/awaiting review/i)).toBeInTheDocument();
+      expect(
+        screen.getByText(/εκκρεμεί βαθμολόγηση/i),
+      ).toBeInTheDocument();
       // The student's own free-text answer must never be run through the
       // math renderer, even though it contains literal "$" characters.
       expect(container.querySelector(".katex")).toBeNull();
@@ -412,7 +416,7 @@ describe("StudentQuizPanel", () => {
     });
 
     render(<StudentQuizPanel quizzes={quizzes} />);
-    await user.click(screen.getByRole("button", { name: /take quiz/i }));
+    await user.click(screen.getByRole("button", { name: /έναρξη τεστ/i }));
 
     await waitFor(() => {
       expect(screen.getByText(/^0:0[0-9]$/)).toBeInTheDocument();
@@ -444,13 +448,13 @@ describe("StudentQuizPanel", () => {
     });
 
     render(<StudentQuizPanel quizzes={quizzes} />);
-    await user.click(screen.getByRole("button", { name: /take quiz/i }));
+    await user.click(screen.getByRole("button", { name: /έναρξη τεστ/i }));
 
     await waitFor(() => {
       expect(submitQuizAttemptAction).toHaveBeenCalledWith("quiz-1", []);
     });
     expect(toast.success).toHaveBeenCalledWith(
-      "Time's up — quiz submitted automatically",
+      "Ο χρόνος τελείωσε — το τεστ υποβλήθηκε αυτόματα",
     );
   });
 });

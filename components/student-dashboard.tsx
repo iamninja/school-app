@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { format } from "date-fns";
+import { el } from "date-fns/locale";
 import { Calendar, GraduationCap, Users, ClockIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +11,11 @@ import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { StudentQuizPanel } from "@/components/student-quiz-panel";
 import type { QuizSummary } from "@/lib/types/database";
+import {
+  ATTENDANCE_STATUS_LABELS_EL,
+  DAY_LABELS_EL,
+  TUITION_STATUS_LABELS_EL,
+} from "@/lib/greek-labels";
 
 type StudentDashboardProps = {
   student: {
@@ -101,36 +107,36 @@ export function StudentDashboard(props: StudentDashboardProps) {
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <GraduationCap className="h-4 w-4" />
-            Student Dashboard
+            Πίνακας μαθητή
           </div>
           <h1 className="text-2xl font-semibold">
-            Welcome, {props.student.firstName}!
+            Καλωσήρθες, {props.student.firstName}!
           </h1>
           <p className="text-sm text-muted-foreground">
-            View your classes, schedule, and attendance records
+            Δείτε τις τάξεις, το πρόγραμμα και τις παρουσίες σας
           </p>
         </div>
         <Button onClick={handleSignOut} variant="outline">
-          Sign Out
+          Αποσύνδεση
         </Button>
       </div>
 
       {/* Student Info Card */}
       <Card>
         <CardHeader>
-          <CardTitle>Personal Information</CardTitle>
+          <CardTitle>Προσωπικά στοιχεία</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="grid gap-3 md:grid-cols-2">
             <div>
-              <p className="text-sm font-medium">Full Name</p>
+              <p className="text-sm font-medium">Ονοματεπώνυμο</p>
               <p className="text-sm text-muted-foreground">
                 {props.student.firstName} {props.student.lastName}
               </p>
             </div>
             {props.student.gradeLevel && (
               <div>
-                <p className="text-sm font-medium">Grade</p>
+                <p className="text-sm font-medium">Τάξη</p>
                 <p className="text-sm text-muted-foreground">
                   {props.student.gradeLevel}
                 </p>
@@ -146,7 +152,7 @@ export function StudentDashboard(props: StudentDashboardProps) {
             )}
             {props.student.tuitionStatus && (
               <div>
-                <p className="text-sm font-medium">Tuition Status</p>
+                <p className="text-sm font-medium">Κατάσταση διδάκτρων</p>
                 <Badge
                   variant={
                     props.student.tuitionStatus === "current"
@@ -156,7 +162,8 @@ export function StudentDashboard(props: StudentDashboardProps) {
                         : "destructive"
                   }
                 >
-                  {props.student.tuitionStatus}
+                  {TUITION_STATUS_LABELS_EL[props.student.tuitionStatus] ??
+                    props.student.tuitionStatus}
                 </Badge>
               </div>
             )}
@@ -165,7 +172,7 @@ export function StudentDashboard(props: StudentDashboardProps) {
           {props.parents.length > 0 && (
             <div className="mt-4 border-t pt-4">
               <p className="text-sm font-medium mb-2">
-                Parent/Guardian Contact
+                Στοιχεία γονέα/κηδεμόνα
               </p>
               <div className="grid gap-3 md:grid-cols-2">
                 {props.parents.map((parent, idx) => (
@@ -199,13 +206,13 @@ export function StudentDashboard(props: StudentDashboardProps) {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Calendar className="h-5 w-5" />
-            My Classes
+            Οι τάξεις μου
           </CardTitle>
         </CardHeader>
         <CardContent>
           {props.classes.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              You are not enrolled in any classes yet.
+              Δεν έχετε εγγραφεί σε καμία τάξη ακόμα.
             </p>
           ) : (
             <div className="space-y-4">
@@ -219,11 +226,11 @@ export function StudentDashboard(props: StudentDashboardProps) {
                       <h3 className="flex items-center gap-2 font-semibold">
                         {classItem.name}
                         {classItem.archivedAt ? (
-                          <Badge variant="secondary">Archived</Badge>
+                          <Badge variant="secondary">Αρχειοθετημένο</Badge>
                         ) : null}
                       </h3>
                       <p className="text-sm text-muted-foreground">
-                        {classItem.hoursPerWeek} hours per week
+                        {classItem.hoursPerWeek} ώρες/εβδομάδα
                       </p>
                     </div>
                   </div>
@@ -232,12 +239,13 @@ export function StudentDashboard(props: StudentDashboardProps) {
                     <div className="space-y-2">
                       <p className="text-sm font-medium flex items-center gap-2">
                         <ClockIcon className="h-4 w-4" />
-                        Schedule
+                        Πρόγραμμα
                       </p>
                       <div className="flex flex-wrap gap-2">
                         {schedulesByClass[classItem.id].map((schedule, idx) => (
                           <Badge key={idx} variant="outline">
-                            {schedule.day} at {schedule.time}
+                            {DAY_LABELS_EL[schedule.day] ?? schedule.day} στις{" "}
+                            {schedule.time}
                           </Badge>
                         ))}
                       </div>
@@ -255,19 +263,19 @@ export function StudentDashboard(props: StudentDashboardProps) {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Users className="h-5 w-5" />
-            Attendance Overview
+            Επισκόπηση παρουσιών
           </CardTitle>
         </CardHeader>
         <CardContent>
           {totalRecords === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No attendance records yet.
+              Δεν υπάρχουν καταγραφές παρουσίας ακόμα.
             </p>
           ) : (
             <div className="space-y-4">
               <div className="flex items-center gap-4">
                 <div className="flex-1 space-y-1">
-                  <p className="text-sm font-medium">Attendance Rate</p>
+                  <p className="text-sm font-medium">Ποσοστό παρουσίας</p>
                   <p className="text-3xl font-bold">{attendanceRate}%</p>
                 </div>
                 <div className="grid grid-cols-3 gap-4 text-center">
@@ -275,19 +283,25 @@ export function StudentDashboard(props: StudentDashboardProps) {
                     <p className="text-2xl font-bold text-green-600">
                       {attendanceStats.present}
                     </p>
-                    <p className="text-xs text-muted-foreground">Present</p>
+                    <p className="text-xs text-muted-foreground">
+                      {ATTENDANCE_STATUS_LABELS_EL.present}
+                    </p>
                   </div>
                   <div>
                     <p className="text-2xl font-bold text-yellow-600">
                       {attendanceStats.late}
                     </p>
-                    <p className="text-xs text-muted-foreground">Late</p>
+                    <p className="text-xs text-muted-foreground">
+                      {ATTENDANCE_STATUS_LABELS_EL.late}
+                    </p>
                   </div>
                   <div>
                     <p className="text-2xl font-bold text-red-600">
                       {attendanceStats.absent}
                     </p>
-                    <p className="text-xs text-muted-foreground">Absent</p>
+                    <p className="text-xs text-muted-foreground">
+                      {ATTENDANCE_STATUS_LABELS_EL.absent}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -295,7 +309,9 @@ export function StudentDashboard(props: StudentDashboardProps) {
               {/* Recent Attendance */}
               {props.attendance.length > 0 && (
                 <div className="border-t pt-4">
-                  <p className="text-sm font-medium mb-3">Recent Records</p>
+                  <p className="text-sm font-medium mb-3">
+                    Πρόσφατες καταγραφές
+                  </p>
                   <div className="space-y-2">
                     {props.attendance.slice(0, 10).map((record, idx) => {
                       const classInfo = props.classes.find(
@@ -308,12 +324,13 @@ export function StudentDashboard(props: StudentDashboardProps) {
                         >
                           <div>
                             <p className="text-sm font-medium">
-                              {classInfo?.name || "Unknown Class"}
+                              {classInfo?.name || "Άγνωστη τάξη"}
                             </p>
                             <p className="text-xs text-muted-foreground">
                               {format(
                                 new Date(record.attendance_date),
-                                "MMMM d, yyyy",
+                                "d MMMM yyyy",
+                                { locale: el },
                               )}
                             </p>
                           </div>
@@ -326,7 +343,8 @@ export function StudentDashboard(props: StudentDashboardProps) {
                                   : "destructive"
                             }
                           >
-                            {record.status}
+                            {ATTENDANCE_STATUS_LABELS_EL[record.status] ??
+                              record.status}
                           </Badge>
                         </div>
                       );

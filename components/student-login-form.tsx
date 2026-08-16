@@ -39,7 +39,9 @@ export function StudentLoginForm({
       }
       // If successful, signInStudentAction will redirect
     } catch (error: unknown) {
-      setError(error instanceof Error ? error.message : "An error occurred");
+      setError(
+        error instanceof Error ? error.message : "Παρουσιάστηκε σφάλμα",
+      );
     } finally {
       setIsLoading(false);
     }
@@ -49,15 +51,16 @@ export function StudentLoginForm({
     <div className={cn("flex flex-col gap-6", className)} {...props}>
       <Card>
         <CardHeader>
-          <CardTitle className="text-2xl">Student Login</CardTitle>
+          <CardTitle className="text-2xl">Σύνδεση μαθητή</CardTitle>
           <CardDescription>
-            Enter your email and password to access your student dashboard
+            Εισάγετε το email και τον κωδικό σας για να δείτε τον πίνακα
+            μαθητή
           </CardDescription>
         </CardHeader>
         <CardContent>
           {registered && (
             <div className="mb-4 rounded-md bg-green-50 p-3 text-sm text-green-700">
-              Account created successfully! Please login to continue.
+              Ο λογαριασμός δημιουργήθηκε! Συνδεθείτε για να συνεχίσετε.
             </div>
           )}
           <form onSubmit={handleLogin}>
@@ -75,12 +78,12 @@ export function StudentLoginForm({
               </div>
               <div className="grid gap-2">
                 <div className="flex items-center">
-                  <Label htmlFor="password">Password</Label>
+                  <Label htmlFor="password">Κωδικός</Label>
                   <Link
                     href="/auth/forgot-password"
                     className="ml-auto inline-block text-sm underline-offset-4 hover:underline"
                   >
-                    Forgot your password?
+                    Ξεχάσατε τον κωδικό σας;
                   </Link>
                 </div>
                 <Input
@@ -93,16 +96,16 @@ export function StudentLoginForm({
               </div>
               {error && <p className="text-sm text-red-500">{error}</p>}
               <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? "Logging in..." : "Login"}
+                {isLoading ? "Σύνδεση..." : "Σύνδεση"}
               </Button>
             </div>
             <div className="mt-4 text-center text-sm">
-              Don&apos;t have an account?{" "}
+              Δεν έχετε λογαριασμό;{" "}
               <Link
                 href="/auth/student-signup"
                 className="underline underline-offset-4"
               >
-                Sign up
+                Εγγραφή
               </Link>
             </div>
           </form>

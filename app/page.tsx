@@ -14,7 +14,7 @@ export default function Home() {
               <Link href={"/"}>Modus</Link>
             </div>
             <Suspense>
-              <AuthButton />
+              <AuthButton locale="el" />
             </Suspense>
           </div>
         </nav>
@@ -22,42 +22,43 @@ export default function Home() {
           <div className="flex flex-col gap-4 items-center text-center pt-8">
             <h1 className="text-4xl font-bold">Modus</h1>
             <p className="text-lg text-muted-foreground max-w-xl">
-              Classes, attendance, and quizzes for your tutoring center, in
-              one place.
+              Τάξεις, παρουσίες και τεστ για το φροντιστήριό σας, σε ένα
+              μέρος.
             </p>
           </div>
           <div className="grid gap-6 md:grid-cols-3">
             <div className="flex flex-col items-start gap-4 rounded-xl border bg-card/40 p-6 shadow-sm">
               <div>
-                <h2 className="text-lg font-semibold">Teacher dashboard</h2>
+                <h2 className="text-lg font-semibold">Καθηγητής</h2>
                 <p className="text-sm text-muted-foreground">
-                  Manage classes, schedules, and students in one place.
+                  Διαχείριση τάξεων, προγράμματος και μαθητών σε ένα μέρος.
                 </p>
               </div>
               <Button asChild>
-                <Link href="/protected/teacher">Open teacher dashboard</Link>
+                <Link href="/protected/teacher">Είσοδος καθηγητή</Link>
               </Button>
             </div>
             <div className="flex flex-col items-start gap-4 rounded-xl border bg-card/40 p-6 shadow-sm">
               <div>
-                <h2 className="text-lg font-semibold">Student portal</h2>
+                <h2 className="text-lg font-semibold">Μαθητές</h2>
                 <p className="text-sm text-muted-foreground">
-                  View your schedule, attendance, and class information.
+                  Δείτε το πρόγραμμα, τις παρουσίες και τις τάξεις σας.
                 </p>
               </div>
               <Button asChild variant="outline">
-                <Link href="/auth/student-login">Login as Student</Link>
+                <Link href="/auth/student-login">Είσοδος μαθητή</Link>
               </Button>
             </div>
             <div className="flex flex-col items-start gap-4 rounded-xl border bg-card/40 p-6 shadow-sm">
               <div>
-                <h2 className="text-lg font-semibold">Parent portal</h2>
+                <h2 className="text-lg font-semibold">Γονείς</h2>
                 <p className="text-sm text-muted-foreground">
-                  View your child&apos;s schedule, attendance, and class details.
+                  Δείτε το πρόγραμμα, τις παρουσίες και τις τάξεις του
+                  παιδιού σας.
                 </p>
               </div>
               <Button asChild variant="outline">
-                <Link href="/auth/parent-login">Login as Parent</Link>
+                <Link href="/auth/parent-login">Είσοδος γονέα</Link>
               </Button>
             </div>
           </div>

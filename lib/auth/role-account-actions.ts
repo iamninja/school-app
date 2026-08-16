@@ -13,7 +13,12 @@ import type { ActionResult } from "@/lib/types/database";
  */
 
 const ALREADY_REGISTERED_ERROR =
-  "This email is already registered. Please login instead.";
+  "Αυτό το email είναι ήδη εγγεγραμμένο. Παρακαλώ συνδεθείτε.";
+
+const ROLE_LABELS_EL: Record<"student" | "parent", string> = {
+  student: "μαθητής",
+  parent: "γονέας",
+};
 
 type EmailLookupResult<TExtra extends object> =
   | ({ exists: true } & TExtra)
@@ -36,7 +41,7 @@ export async function lookupRoleEmail<
     console.error("SUPABASE_SERVICE_ROLE_KEY environment variable is not set");
     return {
       exists: false,
-      error: "Server configuration error. Please contact support.",
+      error: "Σφάλμα διαμόρφωσης διακομιστή. Παρακαλώ επικοινωνήστε μαζί μας.",
     };
   }
 
@@ -90,7 +95,7 @@ export async function createRoleAuthUser(params: {
   }
 
   if (!authData.user) {
-    return { error: "Failed to create user account" };
+    return { error: "Αποτυχία δημιουργίας λογαριασμού" };
   }
 
   const { error: updateError } = await supabaseAdmin
@@ -101,7 +106,9 @@ export async function createRoleAuthUser(params: {
 
   if (updateError) {
     await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
-    return { error: `Failed to link ${params.role} account` };
+    return {
+      error: `Αποτυχία σύνδεσης λογαριασμού ${ROLE_LABELS_EL[params.role]}`,
+    };
   }
 
   return { success: true };
@@ -129,7 +136,7 @@ export async function signInAsRole(params: {
 
   const userId = authData.user?.id;
   if (!userId) {
-    return { error: "Authentication failed" };
+    return { error: "Η ταυτοποίηση απέτυχε" };
   }
 
   const verifyClient = params.useServiceRoleForVerification
@@ -145,7 +152,9 @@ export async function signInAsRole(params: {
   if (verifyError || !record) {
     console.error(`${params.role} verification failed:`, verifyError);
     await supabase.auth.signOut();
-    return { error: `This account is not registered as a ${params.role}` };
+    return {
+      error: `Αυτός ο λογαριασμός δεν είναι εγγεγραμμένος ως ${ROLE_LABELS_EL[params.role]}`,
+    };
   }
 
   return redirect(params.redirectTo);

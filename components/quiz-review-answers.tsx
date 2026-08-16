@@ -2,15 +2,41 @@ import { Badge } from "@/components/ui/badge";
 import { MathText } from "@/components/math-text";
 import type { QuizAttemptAnswerReview } from "@/lib/types/database";
 
+const LABELS = {
+  en: {
+    answer: "Answer:",
+    noAnswer: "(no answer)",
+    awaitingReview: "Awaiting review",
+    selected: "Selected:",
+    correctAnswer: "Correct answer:",
+    correct: "Correct",
+    incorrect: "Incorrect",
+  },
+  el: {
+    answer: "Απάντηση:",
+    noAnswer: "(χωρίς απάντηση)",
+    awaitingReview: "Εκκρεμεί βαθμολόγηση",
+    selected: "Επιλογή:",
+    correctAnswer: "Σωστή απάντηση:",
+    correct: "Σωστό",
+    incorrect: "Λάθος",
+  },
+};
+
 /**
  * Renders a list of graded quiz answers - shared between the student's own
- * review and the teacher's view of a specific student's answers.
+ * review and the teacher's view of a specific student's answers, so the
+ * strings are locale-switched rather than hardcoded to either side.
  */
 export function QuizReviewAnswers({
   answers,
+  locale = "en",
 }: {
   answers: QuizAttemptAnswerReview[];
+  locale?: "en" | "el";
 }) {
+  const labels = LABELS[locale];
+
   return (
     <div className="space-y-3">
       {answers.map((answer, index) => (
@@ -30,26 +56,29 @@ export function QuizReviewAnswers({
           </p>
           {answer.questionType === "short_answer" ? (
             <div className="mt-2 space-y-1 text-sm">
-              <p>Answer: {answer.textAnswer || "(no answer)"}</p>
-              <Badge variant="outline">Awaiting review</Badge>
+              <p>
+                {labels.answer} {answer.textAnswer || labels.noAnswer}
+              </p>
+              <Badge variant="outline">{labels.awaitingReview}</Badge>
             </div>
           ) : (
             <div className="mt-2 space-y-1 text-sm">
               <p>
-                Selected:{" "}
+                {labels.selected}{" "}
                 {answer.selectedOptionText ? (
                   <MathText text={answer.selectedOptionText} />
                 ) : (
-                  "(no answer)"
+                  labels.noAnswer
                 )}
               </p>
               {!answer.isCorrect && answer.correctOptionText && (
                 <p>
-                  Correct answer: <MathText text={answer.correctOptionText} />
+                  {labels.correctAnswer}{" "}
+                  <MathText text={answer.correctOptionText} />
                 </p>
               )}
               <Badge variant={answer.isCorrect ? "default" : "destructive"}>
-                {answer.isCorrect ? "Correct" : "Incorrect"}
+                {answer.isCorrect ? labels.correct : labels.incorrect}
               </Badge>
             </div>
           )}

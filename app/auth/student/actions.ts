@@ -29,7 +29,7 @@ export async function checkStudentEmailAction(
     table: "students",
     columns: "id, user_id, first_name, last_name, email",
     notFoundError:
-      "No student found with this email. Please contact your teacher.",
+      "Δεν βρέθηκε μαθητής με αυτό το email. Επικοινωνήστε με τον καθηγητή σας.",
     toSuccess: (row: {
       id: string;
       user_id: string | null;

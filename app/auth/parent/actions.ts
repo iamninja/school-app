@@ -28,7 +28,7 @@ export async function checkParentEmailAction(
     table: "family_parents",
     columns: "id, user_id, name, email, family_id",
     notFoundError:
-      "No parent found with this email. Please contact your child's teacher.",
+      "Δεν βρέθηκε γονέας με αυτό το email. Επικοινωνήστε με τον καθηγητή του παιδιού σας.",
     toSuccess: (row: {
       id: string;
       user_id: string | null;
@@ -93,7 +93,7 @@ export async function getParentDashboardDataAction(): Promise<
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return { success: false, error: "Not authenticated" };
+    return { success: false, error: "Δεν έχετε συνδεθεί" };
   }
 
   const { data: parent, error: parentError } = await supabase
@@ -103,7 +103,7 @@ export async function getParentDashboardDataAction(): Promise<
     .single();
 
   if (parentError || !parent) {
-    return { success: false, error: "Parent record not found" };
+    return { success: false, error: "Δεν βρέθηκε λογαριασμός γονέα" };
   }
 
   const { data: allParents } = await supabase
@@ -134,7 +134,10 @@ export async function getParentDashboardDataAction(): Promise<
 
   if (studentsError || !studentRows || studentRows.length === 0) {
     console.error("Student query error:", studentsError);
-    return { success: false, error: "No student records found for this family" };
+    return {
+      success: false,
+      error: "Δεν βρέθηκαν μαθητές για αυτή την οικογένεια",
+    };
   }
 
   const children: ParentDashboardChild[] = await Promise.all(

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { format } from "date-fns";
+import { el } from "date-fns/locale";
 import {
   Calendar,
   ClipboardList,
@@ -17,6 +18,11 @@ import { MathText } from "@/components/math-text";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import type { ParentDashboardChild } from "@/lib/types/database";
+import {
+  ATTENDANCE_STATUS_LABELS_EL,
+  DAY_LABELS_EL,
+  TUITION_STATUS_LABELS_EL,
+} from "@/lib/greek-labels";
 
 type ParentDashboardProps = {
   parent: {
@@ -81,20 +87,20 @@ function ChildSection({ student, classes, schedules, attendance, quizzes }: Pare
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <GraduationCap className="h-5 w-5" />
-            Student Information
+            Στοιχεία μαθητή
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="grid gap-3 md:grid-cols-2">
             <div>
-              <p className="text-sm font-medium">Student Name</p>
+              <p className="text-sm font-medium">Όνομα μαθητή</p>
               <p className="text-sm text-muted-foreground">
                 {student.firstName} {student.lastName}
               </p>
             </div>
             {student.gradeLevel && (
               <div>
-                <p className="text-sm font-medium">Grade</p>
+                <p className="text-sm font-medium">Τάξη</p>
                 <p className="text-sm text-muted-foreground">
                   {student.gradeLevel}
                 </p>
@@ -102,7 +108,7 @@ function ChildSection({ student, classes, schedules, attendance, quizzes }: Pare
             )}
             {student.email && (
               <div>
-                <p className="text-sm font-medium">Student Email</p>
+                <p className="text-sm font-medium">Email μαθητή</p>
                 <p className="text-sm text-muted-foreground">
                   {student.email}
                 </p>
@@ -110,7 +116,7 @@ function ChildSection({ student, classes, schedules, attendance, quizzes }: Pare
             )}
             {student.tuitionStatus && (
               <div>
-                <p className="text-sm font-medium">Tuition Status</p>
+                <p className="text-sm font-medium">Κατάσταση διδάκτρων</p>
                 <Badge
                   variant={
                     student.tuitionStatus === "current"
@@ -120,7 +126,8 @@ function ChildSection({ student, classes, schedules, attendance, quizzes }: Pare
                         : "destructive"
                   }
                 >
-                  {student.tuitionStatus}
+                  {TUITION_STATUS_LABELS_EL[student.tuitionStatus] ??
+                    student.tuitionStatus}
                 </Badge>
               </div>
             )}
@@ -132,13 +139,13 @@ function ChildSection({ student, classes, schedules, attendance, quizzes }: Pare
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Calendar className="h-5 w-5" />
-            Classes & Schedule
+            Τάξεις & Πρόγραμμα
           </CardTitle>
         </CardHeader>
         <CardContent>
           {classes.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              Not enrolled in any classes yet.
+              Δεν έχει εγγραφεί σε καμία τάξη ακόμα.
             </p>
           ) : (
             <div className="space-y-4">
@@ -152,11 +159,11 @@ function ChildSection({ student, classes, schedules, attendance, quizzes }: Pare
                       <h3 className="flex items-center gap-2 font-semibold">
                         {classItem.name}
                         {classItem.archivedAt ? (
-                          <Badge variant="secondary">Archived</Badge>
+                          <Badge variant="secondary">Αρχειοθετημένο</Badge>
                         ) : null}
                       </h3>
                       <p className="text-sm text-muted-foreground">
-                        {classItem.hoursPerWeek} hours per week
+                        {classItem.hoursPerWeek} ώρες/εβδομάδα
                       </p>
                     </div>
                   </div>
@@ -165,12 +172,13 @@ function ChildSection({ student, classes, schedules, attendance, quizzes }: Pare
                     <div className="space-y-2">
                       <p className="text-sm font-medium flex items-center gap-2">
                         <ClockIcon className="h-4 w-4" />
-                        Schedule
+                        Πρόγραμμα
                       </p>
                       <div className="flex flex-wrap gap-2">
                         {schedulesByClass[classItem.id].map((schedule, idx) => (
                           <Badge key={idx} variant="outline">
-                            {schedule.day} at {schedule.time}
+                            {DAY_LABELS_EL[schedule.day] ?? schedule.day} στις{" "}
+                            {schedule.time}
                           </Badge>
                         ))}
                       </div>
@@ -187,19 +195,19 @@ function ChildSection({ student, classes, schedules, attendance, quizzes }: Pare
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Users className="h-5 w-5" />
-            Attendance Overview
+            Επισκόπηση παρουσιών
           </CardTitle>
         </CardHeader>
         <CardContent>
           {totalRecords === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No attendance records yet.
+              Δεν υπάρχουν καταγραφές παρουσίας ακόμα.
             </p>
           ) : (
             <div className="space-y-4">
               <div className="flex items-center gap-4">
                 <div className="flex-1 space-y-1">
-                  <p className="text-sm font-medium">Attendance Rate</p>
+                  <p className="text-sm font-medium">Ποσοστό παρουσίας</p>
                   <p className="text-3xl font-bold">{attendanceRate}%</p>
                 </div>
                 <div className="grid grid-cols-3 gap-4 text-center">
@@ -207,26 +215,34 @@ function ChildSection({ student, classes, schedules, attendance, quizzes }: Pare
                     <p className="text-2xl font-bold text-green-600">
                       {attendanceStats.present}
                     </p>
-                    <p className="text-xs text-muted-foreground">Present</p>
+                    <p className="text-xs text-muted-foreground">
+                      {ATTENDANCE_STATUS_LABELS_EL.present}
+                    </p>
                   </div>
                   <div>
                     <p className="text-2xl font-bold text-yellow-600">
                       {attendanceStats.late}
                     </p>
-                    <p className="text-xs text-muted-foreground">Late</p>
+                    <p className="text-xs text-muted-foreground">
+                      {ATTENDANCE_STATUS_LABELS_EL.late}
+                    </p>
                   </div>
                   <div>
                     <p className="text-2xl font-bold text-red-600">
                       {attendanceStats.absent}
                     </p>
-                    <p className="text-xs text-muted-foreground">Absent</p>
+                    <p className="text-xs text-muted-foreground">
+                      {ATTENDANCE_STATUS_LABELS_EL.absent}
+                    </p>
                   </div>
                 </div>
               </div>
 
               {attendance.length > 0 && (
                 <div className="border-t pt-4">
-                  <p className="text-sm font-medium mb-3">Recent Records</p>
+                  <p className="text-sm font-medium mb-3">
+                    Πρόσφατες καταγραφές
+                  </p>
                   <div className="space-y-2">
                     {attendance.slice(0, 10).map((record, idx) => {
                       const classInfo = classes.find(
@@ -239,12 +255,13 @@ function ChildSection({ student, classes, schedules, attendance, quizzes }: Pare
                         >
                           <div>
                             <p className="text-sm font-medium">
-                              {classInfo?.name || "Unknown Class"}
+                              {classInfo?.name || "Άγνωστη τάξη"}
                             </p>
                             <p className="text-xs text-muted-foreground">
                               {format(
                                 new Date(record.attendance_date),
-                                "MMMM d, yyyy",
+                                "d MMMM yyyy",
+                                { locale: el },
                               )}
                             </p>
                           </div>
@@ -257,7 +274,8 @@ function ChildSection({ student, classes, schedules, attendance, quizzes }: Pare
                                   : "destructive"
                             }
                           >
-                            {record.status}
+                            {ATTENDANCE_STATUS_LABELS_EL[record.status] ??
+                              record.status}
                           </Badge>
                         </div>
                       );
@@ -274,13 +292,13 @@ function ChildSection({ student, classes, schedules, attendance, quizzes }: Pare
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <ClipboardList className="h-5 w-5" />
-            Quiz Results
+            Αποτελέσματα τεστ
           </CardTitle>
         </CardHeader>
         <CardContent>
           {quizzes.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No quizzes assigned yet.
+              Δεν έχουν ανατεθεί τεστ ακόμα.
             </p>
           ) : (
             <div className="space-y-2">
@@ -302,7 +320,7 @@ function ChildSection({ student, classes, schedules, attendance, quizzes }: Pare
                       {quiz.score} / {quiz.maxScore}
                     </Badge>
                   ) : (
-                    <Badge variant="outline">Not taken yet</Badge>
+                    <Badge variant="outline">Δεν έχει γίνει ακόμα</Badge>
                   )}
                 </div>
               ))}
@@ -329,26 +347,28 @@ export function ParentDashboard(props: ParentDashboardProps) {
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <User className="h-4 w-4" />
-            Parent Dashboard
+            Πίνακας γονέα
           </div>
           <h1 className="text-2xl font-semibold">
-            Welcome, {props.parent.name}!
+            Καλωσήρθατε, {props.parent.name}!
           </h1>
           <p className="text-sm text-muted-foreground">
             {props.kids.length > 1
-              ? "View your children's classes, schedule, and attendance"
-              : `View ${props.kids[0]?.student.firstName ?? "your child"}'s classes, schedule, and attendance`}
+              ? "Τάξεις, πρόγραμμα και παρουσίες των παιδιών σας"
+              : `Τάξεις, πρόγραμμα και παρουσίες: ${props.kids[0]?.student.firstName ?? "το παιδί σας"}`}
           </p>
         </div>
         <Button onClick={handleSignOut} variant="outline">
-          Sign Out
+          Αποσύνδεση
         </Button>
       </div>
 
       {props.allParents.length > 1 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Other Parent/Guardian</CardTitle>
+            <CardTitle className="text-base">
+              Άλλος γονέας/κηδεμόνας
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid gap-3 md:grid-cols-2">

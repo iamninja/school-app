@@ -23,14 +23,14 @@ describe("StudentLoginForm", () => {
     render(<StudentLoginForm />);
 
     expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /login/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/κωδικός/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /σύνδεση/i })).toBeInTheDocument();
   });
 
   it("shows link to sign up page", () => {
     render(<StudentLoginForm />);
 
-    const signUpLink = screen.getByRole("link", { name: /sign up/i });
+    const signUpLink = screen.getByRole("link", { name: /εγγραφή/i });
     expect(signUpLink).toBeInTheDocument();
     expect(signUpLink).toHaveAttribute("href", "/auth/student-signup");
   });
@@ -39,7 +39,7 @@ describe("StudentLoginForm", () => {
     render(<StudentLoginForm />);
 
     const forgotPasswordLink = screen.getByRole("link", {
-      name: /forgot your password/i,
+      name: /ξεχάσατε τον κωδικό/i,
     });
     expect(forgotPasswordLink).toBeInTheDocument();
     expect(forgotPasswordLink).toHaveAttribute(
@@ -54,8 +54,8 @@ describe("StudentLoginForm", () => {
 
     render(<StudentLoginForm />);
 
-    await user.type(screen.getByLabelText(/password/i), "password123");
-    await user.click(screen.getByRole("button", { name: /login/i }));
+    await user.type(screen.getByLabelText(/κωδικός/i), "password123");
+    await user.click(screen.getByRole("button", { name: /σύνδεση/i }));
 
     expect(signInStudentAction).not.toHaveBeenCalled();
   });
@@ -67,7 +67,7 @@ describe("StudentLoginForm", () => {
     render(<StudentLoginForm />);
 
     await user.type(screen.getByLabelText(/email/i), "student@example.com");
-    await user.click(screen.getByRole("button", { name: /login/i }));
+    await user.click(screen.getByRole("button", { name: /σύνδεση/i }));
 
     expect(signInStudentAction).not.toHaveBeenCalled();
   });
@@ -80,8 +80,8 @@ describe("StudentLoginForm", () => {
     render(<StudentLoginForm />);
 
     await user.type(screen.getByLabelText(/email/i), "student@example.com");
-    await user.type(screen.getByLabelText(/password/i), "password123");
-    await user.click(screen.getByRole("button", { name: /login/i }));
+    await user.type(screen.getByLabelText(/κωδικός/i), "password123");
+    await user.click(screen.getByRole("button", { name: /σύνδεση/i }));
 
     await waitFor(() => {
       expect(signInStudentAction).toHaveBeenCalledWith({
@@ -101,8 +101,8 @@ describe("StudentLoginForm", () => {
     render(<StudentLoginForm />);
 
     await user.type(screen.getByLabelText(/email/i), "student@example.com");
-    await user.type(screen.getByLabelText(/password/i), "wrongpassword");
-    await user.click(screen.getByRole("button", { name: /login/i }));
+    await user.type(screen.getByLabelText(/κωδικός/i), "wrongpassword");
+    await user.click(screen.getByRole("button", { name: /σύνδεση/i }));
 
     await waitFor(() => {
       expect(
@@ -121,12 +121,12 @@ describe("StudentLoginForm", () => {
     render(<StudentLoginForm />);
 
     await user.type(screen.getByLabelText(/email/i), "student@example.com");
-    await user.type(screen.getByLabelText(/password/i), "password123");
+    await user.type(screen.getByLabelText(/κωδικός/i), "password123");
 
-    const submitButton = screen.getByRole("button", { name: /login/i });
+    const submitButton = screen.getByRole("button", { name: /σύνδεση/i });
     await user.click(submitButton);
 
     expect(submitButton).toBeDisabled();
-    expect(screen.getByText(/logging in/i)).toBeInTheDocument();
+    expect(screen.getByText(/σύνδεση\.\.\./i)).toBeInTheDocument();
   });
 });

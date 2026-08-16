@@ -35,7 +35,7 @@ export function StudentSignUpForm({
 
   const handleCheckEmail = async () => {
     if (!email) {
-      setError("Please enter your email");
+      setError("Παρακαλώ εισάγετε το email σας");
       return;
     }
 
@@ -52,12 +52,14 @@ export function StudentSignUpForm({
         setStudentName(`${result.firstName} ${result.lastName}`);
         setError(null);
       } else {
-        setError(result.error || "Unable to verify email");
+        setError(result.error || "Δεν ήταν δυνατή η επαλήθευση του email");
         setEmailVerified(false);
       }
     } catch (error: unknown) {
       console.error("Email check error:", error);
-      setError(error instanceof Error ? error.message : "An error occurred");
+      setError(
+        error instanceof Error ? error.message : "Παρουσιάστηκε σφάλμα",
+      );
       setEmailVerified(false);
     } finally {
       setIsCheckingEmail(false);
@@ -70,13 +72,13 @@ export function StudentSignUpForm({
     setError(null);
 
     if (password !== confirmPassword) {
-      setError("Passwords do not match");
+      setError("Οι κωδικοί δεν ταιριάζουν");
       setIsLoading(false);
       return;
     }
 
     if (password.length < 6) {
-      setError("Password must be at least 6 characters");
+      setError("Ο κωδικός πρέπει να έχει τουλάχιστον 6 χαρακτήρες");
       setIsLoading(false);
       return;
     }
@@ -89,7 +91,9 @@ export function StudentSignUpForm({
         router.push("/auth/student-login?registered=true");
       }
     } catch (error: unknown) {
-      setError(error instanceof Error ? error.message : "An error occurred");
+      setError(
+        error instanceof Error ? error.message : "Παρουσιάστηκε σφάλμα",
+      );
     } finally {
       setIsLoading(false);
     }
@@ -99,9 +103,10 @@ export function StudentSignUpForm({
     <div className={cn("flex flex-col gap-6", className)} {...props}>
       <Card>
         <CardHeader>
-          <CardTitle className="text-2xl">Student Sign Up</CardTitle>
+          <CardTitle className="text-2xl">Εγγραφή μαθητή</CardTitle>
           <CardDescription>
-            Create your student account using the email your teacher provided
+            Δημιουργήστε τον λογαριασμό μαθητή με το email που σας έδωσε ο
+            καθηγητής σας
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -129,13 +134,13 @@ export function StudentSignUpForm({
                       onClick={handleCheckEmail}
                       disabled={isCheckingEmail}
                     >
-                      {isCheckingEmail ? "Checking..." : "Verify"}
+                      {isCheckingEmail ? "Έλεγχος..." : "Επαλήθευση"}
                     </Button>
                   )}
                 </div>
                 {emailVerified && studentName && (
                   <p className="text-sm text-green-600">
-                    ✓ Verified as {studentName}
+                    ✓ Επαληθεύτηκε ως {studentName}
                   </p>
                 )}
               </div>
@@ -143,26 +148,28 @@ export function StudentSignUpForm({
               {emailVerified && (
                 <>
                   <div className="grid gap-2">
-                    <Label htmlFor="password">Password</Label>
+                    <Label htmlFor="password">Κωδικός</Label>
                     <Input
                       id="password"
                       type="password"
-                      placeholder="Create a password"
+                      placeholder="Δημιουργήστε έναν κωδικό"
                       required
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       minLength={6}
                     />
                     <p className="text-xs text-muted-foreground">
-                      Must be at least 6 characters
+                      Πρέπει να έχει τουλάχιστον 6 χαρακτήρες
                     </p>
                   </div>
                   <div className="grid gap-2">
-                    <Label htmlFor="confirmPassword">Confirm Password</Label>
+                    <Label htmlFor="confirmPassword">
+                      Επιβεβαίωση κωδικού
+                    </Label>
                     <Input
                       id="confirmPassword"
                       type="password"
-                      placeholder="Confirm your password"
+                      placeholder="Επιβεβαιώστε τον κωδικό σας"
                       required
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
@@ -176,17 +183,17 @@ export function StudentSignUpForm({
 
               {emailVerified && (
                 <Button type="submit" className="w-full" disabled={isLoading}>
-                  {isLoading ? "Creating account..." : "Create Account"}
+                  {isLoading ? "Δημιουργία λογαριασμού..." : "Δημιουργία λογαριασμού"}
                 </Button>
               )}
             </div>
             <div className="mt-4 text-center text-sm">
-              Already have an account?{" "}
+              Έχετε ήδη λογαριασμό;{" "}
               <Link
                 href="/auth/student-login"
                 className="underline underline-offset-4"
               >
-                Login
+                Σύνδεση
               </Link>
             </div>
           </form>
