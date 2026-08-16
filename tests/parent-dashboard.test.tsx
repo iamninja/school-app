@@ -84,7 +84,7 @@ describe("ParentDashboard", () => {
         {...baseProps}
         kids={[
           makeChild({
-            classes: [{ id: "class-1", name: "Algebra II", hoursPerWeek: 3 }],
+            classes: [{ id: "class-1", name: "Algebra II", hoursPerWeek: 3, archivedAt: null }],
             schedules: [{ class_id: "class-1", day: "Mon", time: "10:00" }],
           }),
         ]}
@@ -108,7 +108,7 @@ describe("ParentDashboard", () => {
         {...baseProps}
         kids={[
           makeChild({
-            classes: [{ id: "class-1", name: "Algebra II", hoursPerWeek: 3 }],
+            classes: [{ id: "class-1", name: "Algebra II", hoursPerWeek: 3, archivedAt: null }],
             attendance: [
               { class_id: "class-1", attendance_date: "2026-01-05", status: "present" },
               { class_id: "class-1", attendance_date: "2026-01-06", status: "present" },
@@ -267,7 +267,7 @@ describe("ParentDashboard", () => {
               tuitionStatus: "current",
               withdrawnAt: null,
             },
-            classes: [{ id: "class-1", name: "Algebra II", hoursPerWeek: 3 }],
+            classes: [{ id: "class-1", name: "Algebra II", hoursPerWeek: 3, archivedAt: null }],
             quizzes: [
               {
                 id: "quiz-1",
@@ -291,7 +291,7 @@ describe("ParentDashboard", () => {
               tuitionStatus: "scholarship",
               withdrawnAt: null,
             },
-            classes: [{ id: "class-2", name: "Biology", hoursPerWeek: 2 }],
+            classes: [{ id: "class-2", name: "Biology", hoursPerWeek: 2, archivedAt: null }],
             quizzes: [
               {
                 id: "quiz-2",

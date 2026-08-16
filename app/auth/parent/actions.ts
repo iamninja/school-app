@@ -147,7 +147,8 @@ export async function getParentDashboardDataAction(): Promise<
           classes:class_id (
             id,
             name,
-            hours_per_week
+            hours_per_week,
+            archived_at
           )
         `,
         )
@@ -256,6 +257,7 @@ export async function getParentDashboardDataAction(): Promise<
               id: a.classes.id,
               name: a.classes.name,
               hoursPerWeek: a.classes.hours_per_week,
+              archivedAt: a.classes.archived_at,
             }),
           ) || [],
         schedules,

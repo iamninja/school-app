@@ -51,7 +51,7 @@ export default async function TeacherPage() {
   ] = await Promise.all([
     supabase
       .from("classes")
-      .select("id, name, hours_per_week, created_at")
+      .select("id, name, hours_per_week, archived_at, created_at")
       .eq("teacher_id", user.id)
       .order("created_at", { ascending: true }),
     supabase
@@ -89,6 +89,7 @@ export default async function TeacherPage() {
     id: item.id,
     name: item.name,
     hoursPerWeek: item.hours_per_week,
+    archivedAt: item.archived_at,
   }));
 
   const initialSlots = (scheduleSlots ?? []).map((slot) => ({

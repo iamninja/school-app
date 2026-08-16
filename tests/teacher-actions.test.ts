@@ -3,10 +3,13 @@ import { createClient } from "@/lib/supabase/server";
 import { requireTeacher } from "@/lib/auth/require-teacher";
 import { ExpectedError } from "@/lib/expected-error";
 import {
+  archiveClassAction,
   createClassAction,
   createStudentAction,
+  restoreClassAction,
   restoreStudentAction,
   setAttendanceAction,
+  updateClassAction,
   withdrawStudentAction,
 } from "@/app/protected/teacher/actions";
 import { createMockSupabaseClient } from "./support/mock-supabase";
@@ -178,6 +181,58 @@ describe("teacher actions - withdraw/restore round trip", () => {
 
     const restored = await restoreStudentAction("student-1");
     expect(restored.withdrawnAt).toBeNull();
+  });
+});
+
+describe("teacher actions - updateClassAction", () => {
+  beforeEach(() => {
+    vi.mocked(requireTeacher).mockResolvedValue(undefined);
+  });
+
+  it("updates the class and returns the new values", async () => {
+    vi.mocked(createClient).mockResolvedValue(
+      createMockSupabaseClient({
+        classes: {
+          data: { id: "class-1", name: "Algebra I", hours_per_week: 4 },
+          error: null,
+        },
+      }) as never,
+    );
+
+    const result = await updateClassAction({
+      classId: "class-1",
+      name: "Algebra I",
+      hoursPerWeek: 4,
+    });
+
+    expect(result).toEqual({
+      id: "class-1",
+      name: "Algebra I",
+      hoursPerWeek: 4,
+    });
+  });
+});
+
+describe("teacher actions - archive/restore class round trip", () => {
+  beforeEach(() => {
+    vi.mocked(requireTeacher).mockResolvedValue(undefined);
+  });
+
+  it("sets archived_at then clears it", async () => {
+    vi.mocked(createClient).mockResolvedValue(
+      createMockSupabaseClient({
+        classes: [
+          { data: null, error: null },
+          { data: null, error: null },
+        ],
+      }) as never,
+    );
+
+    const archived = await archiveClassAction("class-1");
+    expect(archived.archivedAt).not.toBeNull();
+
+    const restored = await restoreClassAction("class-1");
+    expect(restored.archivedAt).toBeNull();
   });
 });
 

@@ -8,11 +8,14 @@ import { TeacherDashboard } from "@/components/teacher-dashboard";
 import * as actions from "@/app/protected/teacher/actions";
 
 vi.mock("@/app/protected/teacher/actions", () => ({
+  archiveClassAction: vi.fn(),
   createClassAction: vi.fn(),
   createStudentAction: vi.fn(),
   getAttendanceAction: vi.fn().mockResolvedValue([]),
+  restoreClassAction: vi.fn(),
   setAttendanceAction: vi.fn(),
   setScheduleSlotAction: vi.fn(),
+  updateClassAction: vi.fn(),
 }));
 
 describe("TeacherDashboard attendance validation", () => {
@@ -22,6 +25,7 @@ describe("TeacherDashboard attendance validation", () => {
     subject: "Mathematics",
     room: "Room 101",
     hoursPerWeek: 5,
+    archivedAt: null,
   };
 
   const assignedStudent = {
@@ -150,6 +154,7 @@ describe("TeacherDashboard attendance validation", () => {
       subject: "Physics",
       room: "Room 301",
       hoursPerWeek: 4,
+      archivedAt: null,
     };
 
     render(
@@ -245,6 +250,7 @@ describe("TeacherDashboard attendance validation", () => {
       subject: "English",
       room: "Room 201",
       hoursPerWeek: 4,
+      archivedAt: null,
     };
 
     const class2Schedule = [

@@ -40,6 +40,105 @@ export async function createClassAction(data: {
   };
 }
 
+export async function updateClassAction(data: {
+  classId: string;
+  name: string;
+  hoursPerWeek: number;
+}) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error("Not authenticated");
+  }
+
+  await requireTeacher(supabase, user.id);
+
+  const { data: row, error } = await supabase
+    .from("classes")
+    .update({ name: data.name, hours_per_week: data.hoursPerWeek })
+    .eq("id", data.classId)
+    .eq("teacher_id", user.id)
+    .select("id, name, hours_per_week")
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return {
+    id: row.id,
+    name: row.name,
+    hoursPerWeek: row.hours_per_week,
+  };
+}
+
+export async function archiveClassAction(classId: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error("Not authenticated");
+  }
+
+  await requireTeacher(supabase, user.id);
+
+  const archivedAt = new Date().toISOString();
+  const { error } = await supabase
+    .from("classes")
+    .update({ archived_at: archivedAt })
+    .eq("id", classId)
+    .eq("teacher_id", user.id);
+
+  if (error) {
+    throw error;
+  }
+
+  // An archived class can no longer occupy a weekly time slot - drop it
+  // from the schedule rather than leaving a dangling reference the teacher
+  // can't clear from the (now hidden) unscheduled-classes tray.
+  const { error: scheduleError } = await supabase
+    .from("class_schedule_slots")
+    .delete()
+    .eq("class_id", classId)
+    .eq("teacher_id", user.id);
+
+  if (scheduleError) {
+    throw scheduleError;
+  }
+
+  return { id: classId, archivedAt };
+}
+
+export async function restoreClassAction(classId: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error("Not authenticated");
+  }
+
+  await requireTeacher(supabase, user.id);
+
+  const { error } = await supabase
+    .from("classes")
+    .update({ archived_at: null })
+    .eq("id", classId)
+    .eq("teacher_id", user.id);
+
+  if (error) {
+    throw error;
+  }
+
+  return { id: classId, archivedAt: null as string | null };
+}
+
 export async function setScheduleSlotAction(data: {
   day: string;
   time: string;

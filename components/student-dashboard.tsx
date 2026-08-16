@@ -31,6 +31,7 @@ type StudentDashboardProps = {
     id: string;
     name: string;
     hoursPerWeek: number;
+    archivedAt: string | null;
   }>;
   schedules: Array<{
     class_id: string;
@@ -215,7 +216,12 @@ export function StudentDashboard(props: StudentDashboardProps) {
                 >
                   <div className="flex items-start justify-between">
                     <div>
-                      <h3 className="font-semibold">{classItem.name}</h3>
+                      <h3 className="flex items-center gap-2 font-semibold">
+                        {classItem.name}
+                        {classItem.archivedAt ? (
+                          <Badge variant="secondary">Archived</Badge>
+                        ) : null}
+                      </h3>
                       <p className="text-sm text-muted-foreground">
                         {classItem.hoursPerWeek} hours per week
                       </p>

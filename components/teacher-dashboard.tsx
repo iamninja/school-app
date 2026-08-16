@@ -12,16 +12,26 @@ import {
 } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { format } from "date-fns";
-import { CalendarIcon, PlusIcon, XIcon } from "lucide-react";
+import {
+  ArchiveIcon,
+  CalendarIcon,
+  PencilIcon,
+  PlusIcon,
+  RotateCcwIcon,
+  XIcon,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import {
+  archiveClassAction,
   createClassAction,
   createStudentAction,
   getAttendanceAction,
+  restoreClassAction,
   restoreStudentAction,
   setAttendanceAction,
   setScheduleSlotAction,
+  updateClassAction,
   withdrawStudentAction,
 } from "@/app/protected/teacher/actions";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -30,6 +40,13 @@ import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -61,6 +78,7 @@ type ClassItem = {
   name: string;
   hoursPerWeek: number;
   color: string;
+  archivedAt: string | null;
 };
 
 type ScheduleState = Record<string, string | null>;
@@ -103,6 +121,7 @@ type TeacherDashboardProps = {
     id: string;
     name: string;
     hoursPerWeek: number;
+    archivedAt: string | null;
   }>;
   initialSlots: Array<{
     day: string;
@@ -293,8 +312,12 @@ export function TeacherDashboard({
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
   );
-  const [className, setClassName] = React.useState("");
-  const [hoursPerWeek, setHoursPerWeek] = React.useState("2");
+  const [isCreateClassOpen, setIsCreateClassOpen] = React.useState(false);
+  const [editClassId, setEditClassId] = React.useState<string | null>(null);
+  const [classFormName, setClassFormName] = React.useState("");
+  const [classFormHours, setClassFormHours] = React.useState("2");
+  const [isSavingClass, setIsSavingClass] = React.useState(false);
+  const [showArchivedClasses, setShowArchivedClasses] = React.useState(false);
   const [classes, setClasses] = React.useState<ClassItem[]>(() =>
     initialClasses.map((item, index) => ({
       ...item,
@@ -371,32 +394,152 @@ export function TeacherDashboard({
     return remaining;
   }, [classes, scheduledCounts]);
 
-  const handleAddClass = async (event: React.FormEvent<HTMLFormElement>) => {
+  const activeClasses = React.useMemo(
+    () => classes.filter((item) => !item.archivedAt),
+    [classes],
+  );
+
+  const resetClassForm = () => {
+    setClassFormName("");
+    setClassFormHours("2");
+  };
+
+  const handleCreateClass = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const trimmed = className.trim();
-    const hours = Number.parseInt(hoursPerWeek, 10);
+    const trimmed = classFormName.trim();
+    const hours = Number.parseInt(classFormHours, 10);
     if (!trimmed) {
+      toast.error("Give the class a name");
       return;
     }
     if (Number.isNaN(hours) || hours < 1) {
+      toast.error("Hours per week must be at least 1");
       return;
     }
-    const nextColor = COLOR_CLASSES[classes.length % COLOR_CLASSES.length];
-    const created = await createClassAction({
-      name: trimmed,
-      hoursPerWeek: hours,
-    });
-    setClasses((prev) => [
-      ...prev,
-      {
-        id: created.id,
-        name: created.name,
-        hoursPerWeek: created.hoursPerWeek,
-        color: nextColor,
-      },
-    ]);
-    setClassName("");
-    setHoursPerWeek("2");
+    setIsSavingClass(true);
+    try {
+      const nextColor = COLOR_CLASSES[classes.length % COLOR_CLASSES.length];
+      const created = await createClassAction({
+        name: trimmed,
+        hoursPerWeek: hours,
+      });
+      setClasses((prev) => [
+        ...prev,
+        {
+          id: created.id,
+          name: created.name,
+          hoursPerWeek: created.hoursPerWeek,
+          color: nextColor,
+          archivedAt: null,
+        },
+      ]);
+      toast.success("Class created");
+      resetClassForm();
+      setIsCreateClassOpen(false);
+    } catch (error: unknown) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to create class",
+      );
+    } finally {
+      setIsSavingClass(false);
+    }
+  };
+
+  const openEditClassDialog = (classId: string) => {
+    const classItem = classes.find((item) => item.id === classId);
+    if (!classItem) {
+      return;
+    }
+    setClassFormName(classItem.name);
+    setClassFormHours(String(classItem.hoursPerWeek));
+    setEditClassId(classId);
+  };
+
+  const closeEditClassDialog = () => {
+    setEditClassId(null);
+    resetClassForm();
+  };
+
+  const handleSaveEditClass = async () => {
+    if (!editClassId) {
+      return;
+    }
+    const trimmed = classFormName.trim();
+    const hours = Number.parseInt(classFormHours, 10);
+    if (!trimmed) {
+      toast.error("Give the class a name");
+      return;
+    }
+    if (Number.isNaN(hours) || hours < 1) {
+      toast.error("Hours per week must be at least 1");
+      return;
+    }
+    setIsSavingClass(true);
+    try {
+      const updated = await updateClassAction({
+        classId: editClassId,
+        name: trimmed,
+        hoursPerWeek: hours,
+      });
+      setClasses((prev) =>
+        prev.map((item) =>
+          item.id === updated.id
+            ? { ...item, name: updated.name, hoursPerWeek: updated.hoursPerWeek }
+            : item,
+        ),
+      );
+      toast.success("Class updated");
+      closeEditClassDialog();
+    } catch (error: unknown) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to update class",
+      );
+    } finally {
+      setIsSavingClass(false);
+    }
+  };
+
+  const handleArchiveClass = async (classId: string) => {
+    try {
+      const result = await archiveClassAction(classId);
+      setClasses((prev) =>
+        prev.map((item) =>
+          item.id === classId
+            ? { ...item, archivedAt: result.archivedAt }
+            : item,
+        ),
+      );
+      setSchedule((prev) => {
+        const next = { ...prev };
+        for (const [slotId, scheduledClassId] of Object.entries(next)) {
+          if (scheduledClassId === classId) {
+            next[slotId] = null;
+          }
+        }
+        return next;
+      });
+      toast.success("Class archived and removed from the schedule");
+    } catch (error: unknown) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to archive class",
+      );
+    }
+  };
+
+  const handleRestoreClass = async (classId: string) => {
+    try {
+      await restoreClassAction(classId);
+      setClasses((prev) =>
+        prev.map((item) =>
+          item.id === classId ? { ...item, archivedAt: null } : item,
+        ),
+      );
+      toast.success("Class restored");
+    } catch (error: unknown) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to restore class",
+      );
+    }
   };
 
   const handleClearSlot = async (slotId: string) => {
@@ -772,8 +915,8 @@ export function TeacherDashboard({
             Plan classes and weekly schedule
           </h1>
           <p className="text-sm text-muted-foreground">
-            Create classes, then drag them into the weekly calendar to build a
-            schedule.
+            Manage classes in the Classes tab, then drag them into the weekly
+            calendar to build a schedule.
           </p>
         </div>
       </div>
@@ -800,6 +943,7 @@ export function TeacherDashboard({
       <Tabs defaultValue="schedule" className="w-full">
         <TabsList>
           <TabsTrigger value="schedule">Schedule</TabsTrigger>
+          <TabsTrigger value="classes">Classes</TabsTrigger>
           <TabsTrigger value="students">Students</TabsTrigger>
           <TabsTrigger value="attendance">Attendance</TabsTrigger>
           <TabsTrigger value="quizzes">Quizzes</TabsTrigger>
@@ -814,50 +958,17 @@ export function TeacherDashboard({
             <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
               <Card className="order-1">
                 <CardHeader>
-                  <CardTitle>Create class</CardTitle>
+                  <CardTitle>Unscheduled classes</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <form className="space-y-3" onSubmit={handleAddClass}>
-                    <div className="space-y-2">
-                      <Label htmlFor="class-name">Class name</Label>
-                      <Input
-                        id="class-name"
-                        value={className}
-                        onChange={(event) => setClassName(event.target.value)}
-                        placeholder="e.g. Algebra II"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="hours-per-week">Hours per week</Label>
-                      <Input
-                        id="hours-per-week"
-                        type="number"
-                        min={1}
-                        max={40}
-                        value={hoursPerWeek}
-                        onChange={(event) =>
-                          setHoursPerWeek(event.target.value)
-                        }
-                        placeholder="e.g. 3"
-                      />
-                    </div>
-                    <Button type="submit" className="w-full">
-                      <PlusIcon className="mr-2 h-4 w-4" />
-                      Add class
-                    </Button>
-                  </form>
-
                   <div className="space-y-3">
-                    <div className="text-sm font-medium">
-                      Unscheduled classes
-                    </div>
                     <div className="flex flex-wrap gap-2">
-                      {classes.length === 0 ? (
+                      {activeClasses.length === 0 ? (
                         <p className="text-xs text-muted-foreground">
-                          All classes are scheduled. Add more above.
+                          No classes yet. Add one in the Classes tab.
                         </p>
                       ) : (
-                        classes.map((item) => (
+                        activeClasses.map((item) => (
                           <DraggableClassChip
                             key={item.id}
                             classItem={item}
@@ -918,13 +1029,188 @@ export function TeacherDashboard({
                     ))}
                   </div>
                   <p className="mt-3 text-xs text-muted-foreground">
-                    Drag classes into the schedule. This is a UI prototype and
-                    resets on refresh.
+                    Drag classes into the schedule.
                   </p>
                 </CardContent>
               </Card>
             </div>
           </DndContext>
+        </TabsContent>
+
+        <TabsContent value="classes" className="mt-6">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-4">
+              <CardTitle>Classes</CardTitle>
+              <div className="flex items-center gap-4">
+                <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Checkbox
+                    checked={showArchivedClasses}
+                    onCheckedChange={(checked) =>
+                      setShowArchivedClasses(checked === true)
+                    }
+                  />
+                  Show archived
+                </label>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => setIsCreateClassOpen(true)}
+                >
+                  <PlusIcon className="mr-1 h-3.5 w-3.5" /> Add class
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {classes.filter(
+                (item) => showArchivedClasses || !item.archivedAt,
+              ).length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No classes yet. Add one above.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {classes
+                    .filter((item) => showArchivedClasses || !item.archivedAt)
+                    .map((item) => (
+                      <div
+                        key={item.id}
+                        className="flex items-center justify-between gap-3 rounded-md border p-3"
+                      >
+                        <div>
+                          <div className="flex items-center gap-2 text-sm font-semibold">
+                            {item.name}
+                            {item.archivedAt ? (
+                              <Badge variant="secondary">Archived</Badge>
+                            ) : null}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {item.hoursPerWeek} hrs/week
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openEditClassDialog(item.id)}
+                          >
+                            <PencilIcon className="mr-1 h-3.5 w-3.5" /> Edit
+                          </Button>
+                          {item.archivedAt ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => void handleRestoreClass(item.id)}
+                            >
+                              <RotateCcwIcon className="mr-1 h-3.5 w-3.5" />{" "}
+                              Restore
+                            </Button>
+                          ) : (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => void handleArchiveClass(item.id)}
+                            >
+                              <ArchiveIcon className="mr-1 h-3.5 w-3.5" />{" "}
+                              Archive
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Dialog
+            open={isCreateClassOpen}
+            onOpenChange={(open) => {
+              setIsCreateClassOpen(open);
+              if (!open) {
+                resetClassForm();
+              }
+            }}
+          >
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Add class</DialogTitle>
+              </DialogHeader>
+              <form className="space-y-3" onSubmit={handleCreateClass}>
+                <div className="space-y-2">
+                  <Label htmlFor="class-name">Class name</Label>
+                  <Input
+                    id="class-name"
+                    value={classFormName}
+                    onChange={(event) => setClassFormName(event.target.value)}
+                    placeholder="e.g. Algebra II"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="hours-per-week">Hours per week</Label>
+                  <Input
+                    id="hours-per-week"
+                    type="number"
+                    min={1}
+                    max={40}
+                    value={classFormHours}
+                    onChange={(event) => setClassFormHours(event.target.value)}
+                    placeholder="e.g. 3"
+                  />
+                </div>
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={isSavingClass}
+                >
+                  {isSavingClass ? "Creating..." : "Create class"}
+                </Button>
+              </form>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog
+            open={editClassId !== null}
+            onOpenChange={(open) => !open && closeEditClassDialog()}
+          >
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Edit class</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-class-name">Class name</Label>
+                  <Input
+                    id="edit-class-name"
+                    value={classFormName}
+                    onChange={(event) => setClassFormName(event.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-hours-per-week">Hours per week</Label>
+                  <Input
+                    id="edit-hours-per-week"
+                    type="number"
+                    min={1}
+                    max={40}
+                    value={classFormHours}
+                    onChange={(event) => setClassFormHours(event.target.value)}
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button
+                  type="button"
+                  onClick={handleSaveEditClass}
+                  disabled={isSavingClass}
+                >
+                  {isSavingClass ? "Saving..." : "Save"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </TabsContent>
 
         <TabsContent value="students" className="mt-6">
@@ -1429,12 +1715,12 @@ export function TeacherDashboard({
                         Assigned classes
                       </div>
                       <div className="grid gap-3">
-                        {classes.length === 0 ? (
+                        {activeClasses.length === 0 ? (
                           <p className="text-xs text-muted-foreground">
-                            Create classes in the Schedule tab first.
+                            Create classes in the Classes tab first.
                           </p>
                         ) : (
-                          classes.map((classItem) => (
+                          activeClasses.map((classItem) => (
                             <label
                               key={classItem.id}
                               className="flex items-center gap-3 rounded-md border p-3 text-sm"
@@ -1648,7 +1934,7 @@ export function TeacherDashboard({
                     className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                   >
                     <option value="">All students</option>
-                    {classes.map((classItem) => (
+                    {activeClasses.map((classItem) => (
                       <option key={classItem.id} value={classItem.id}>
                         {classItem.name}
                       </option>
@@ -1813,7 +2099,7 @@ export function TeacherDashboard({
 
         <TabsContent value="quizzes" className="mt-6">
           <TeacherQuizBuilder
-            classes={classes.map(({ id, name }) => ({ id, name }))}
+            classes={activeClasses.map(({ id, name }) => ({ id, name }))}
             initialQuizzes={initialQuizzes}
           />
         </TabsContent>
