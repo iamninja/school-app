@@ -185,7 +185,7 @@ function DraggableClassChip({
       {...listeners}
       style={{ transform: CSS.Transform.toString(transform) }}
       className={
-        "inline-flex items-center gap-2 rounded-md border px-3 py-1 text-xs font-semibold shadow-sm transition " +
+        "inline-flex items-center gap-2 rounded-md border px-3 py-1 text-xs font-semibold shadow-xs transition " +
         classItem.color +
         (isCompact ? " text-[11px]" : "") +
         (isDragging ? " opacity-60" : "") +
@@ -234,7 +234,7 @@ function ScheduledClassCard({
       {...listeners}
       style={{ transform: CSS.Transform.toString(transform) }}
       className={
-        "group flex flex-col gap-1 rounded-md border bg-gradient-to-br from-background to-muted/50 p-2 text-left shadow-sm transition " +
+        "group flex flex-col gap-1 rounded-md border bg-linear-to-br from-background to-muted/50 p-2 text-left shadow-xs transition " +
         classItem.color +
         (isDragging ? " opacity-60" : "")
       }

@@ -27,7 +27,7 @@ export default function Home() {
             </p>
           </div>
           <div className="grid gap-6 md:grid-cols-3">
-            <div className="flex flex-col items-start gap-4 rounded-xl border bg-card/40 p-6 shadow-sm">
+            <div className="flex flex-col items-start gap-4 rounded-xl border bg-card/40 p-6 shadow-xs">
               <div>
                 <h2 className="text-lg font-semibold">Καθηγητής</h2>
                 <p className="text-sm text-muted-foreground">
@@ -38,7 +38,7 @@ export default function Home() {
                 <Link href="/protected/teacher">Είσοδος καθηγητή</Link>
               </Button>
             </div>
-            <div className="flex flex-col items-start gap-4 rounded-xl border bg-card/40 p-6 shadow-sm">
+            <div className="flex flex-col items-start gap-4 rounded-xl border bg-card/40 p-6 shadow-xs">
               <div>
                 <h2 className="text-lg font-semibold">Μαθητές</h2>
                 <p className="text-sm text-muted-foreground">
@@ -49,7 +49,7 @@ export default function Home() {
                 <Link href="/auth/student-login">Είσοδος μαθητή</Link>
               </Button>
             </div>
-            <div className="flex flex-col items-start gap-4 rounded-xl border bg-card/40 p-6 shadow-sm">
+            <div className="flex flex-col items-start gap-4 rounded-xl border bg-card/40 p-6 shadow-xs">
               <div>
                 <h2 className="text-lg font-semibold">Γονείς</h2>
                 <p className="text-sm text-muted-foreground">
