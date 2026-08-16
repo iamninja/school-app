@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist } from "next/font/google";
+import { Commissioner } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
@@ -11,15 +11,17 @@ const defaultUrl = process.env.VERCEL_URL
 
 export const metadata: Metadata = {
   metadataBase: new URL(defaultUrl),
-  title: "Modus",
+  title: "Modus — Φροντιστήριο Μαθηματικών | Καρδίτσα",
   description:
-    "Classes, attendance, and quizzes for your tutoring center, in one place.",
+    "Φροντιστήριο Μαθηματικών Modus — Βάγιος Βλάχος. Ηρώων Πολυτεχνείου 3, 1ος όροφος, Καρδίτσα. Πρόγραμμα, παρουσίες και διαγωνίσματα στην πύλη του φροντιστηρίου.",
 };
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// Commissioner ships full Greek glyph coverage (Geist is latin-only, so all
+// Greek copy previously fell back to the system font).
+const commissioner = Commissioner({
+  variable: "--font-commissioner",
   display: "swap",
-  subsets: ["latin"],
+  subsets: ["latin", "greek"],
 });
 
 export default function RootLayout({
@@ -28,8 +30,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body className={`${geistSans.className} antialiased`}>
+    <html lang="el" suppressHydrationWarning>
+      <body className={`${commissioner.className} antialiased`}>
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
