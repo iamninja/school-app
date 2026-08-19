@@ -18,6 +18,10 @@ vi.mock("@/app/protected/teacher/actions", () => ({
   updateClassAction: vi.fn(),
 }));
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn() }),
+}));
+
 describe("TeacherDashboard attendance validation", () => {
   const mockClass = {
     id: "class-1",

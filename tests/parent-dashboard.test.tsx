@@ -64,9 +64,9 @@ describe("ParentDashboard", () => {
   it("shows the parent name and student information", () => {
     render(<ParentDashboard {...baseProps} />);
 
-    expect(screen.getByText(/καλωσήρθατε, jane doe/i)).toBeInTheDocument();
+    expect(screen.getByText(/καλωσήρθατε, jane/i)).toBeInTheDocument();
     expect(screen.getAllByText("John Smith").length).toBeGreaterThan(0);
-    expect(screen.getByText("8th")).toBeInTheDocument();
+    expect(screen.getByText(/τάξη: 8th/i)).toBeInTheDocument();
     expect(screen.getByText("Ενημερωμένος")).toBeInTheDocument();
   });
 
@@ -74,7 +74,7 @@ describe("ParentDashboard", () => {
     render(<ParentDashboard {...baseProps} />);
 
     expect(
-      screen.getByText(/δεν έχει εγγραφεί σε καμία τάξη/i),
+      screen.getByText(/δεν έχει εγγραφεί σε κανένα τμήμα/i),
     ).toBeInTheDocument();
   });
 
@@ -163,7 +163,7 @@ describe("ParentDashboard", () => {
     render(<ParentDashboard {...baseProps} />);
 
     expect(
-      screen.getByText(/δεν έχουν ανατεθεί τεστ/i),
+      screen.getByText(/δεν έχουν ανατεθεί διαγωνίσματα/i),
     ).toBeInTheDocument();
   });
 
@@ -331,10 +331,10 @@ describe("ParentDashboard", () => {
     // the core regression risk of grouping data per-child.
     const johnSection = screen
       .getByRole("heading", { level: 2, name: "John Smith" })
-      .closest("div") as HTMLElement;
+      .closest("section") as HTMLElement;
     const emmaSection = screen
       .getByRole("heading", { level: 2, name: "Emma Smith" })
-      .closest("div") as HTMLElement;
+      .closest("section") as HTMLElement;
 
     expect(johnSection).not.toBe(emmaSection);
     expect(

@@ -18,6 +18,10 @@ vi.mock("@/app/protected/teacher/actions", () => ({
   restoreStudentAction: vi.fn(),
 }));
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn() }),
+}));
+
 vi.mock("sonner", () => ({
   toast: {
     error: vi.fn(),
@@ -44,6 +48,7 @@ describe("TeacherDashboard student form", () => {
     render(<TeacherDashboard {...baseProps} />);
 
     await user.click(screen.getByRole("tab", { name: /students/i }));
+    await user.click(screen.getByRole("button", { name: /add student/i }));
 
     await user.type(screen.getByLabelText(/last name/i), "Carter");
     await user.selectOptions(screen.getByLabelText(/^grade$/i), "10");
@@ -66,6 +71,7 @@ describe("TeacherDashboard student form", () => {
     render(<TeacherDashboard {...baseProps} />);
 
     await user.click(screen.getByRole("tab", { name: /students/i }));
+    await user.click(screen.getByRole("button", { name: /add student/i }));
 
     await user.type(screen.getByLabelText(/first name/i), "Maya");
     await user.selectOptions(screen.getByLabelText(/^grade$/i), "10");
@@ -88,6 +94,7 @@ describe("TeacherDashboard student form", () => {
     render(<TeacherDashboard {...baseProps} />);
 
     await user.click(screen.getByRole("tab", { name: /students/i }));
+    await user.click(screen.getByRole("button", { name: /add student/i }));
 
     await user.type(screen.getByLabelText(/first name/i), "Maya");
     await user.type(screen.getByLabelText(/last name/i), "Carter");
@@ -110,6 +117,7 @@ describe("TeacherDashboard student form", () => {
     render(<TeacherDashboard {...baseProps} />);
 
     await user.click(screen.getByRole("tab", { name: /students/i }));
+    await user.click(screen.getByRole("button", { name: /add student/i }));
 
     await user.type(screen.getByLabelText(/first name/i), "Maya");
     await user.type(screen.getByLabelText(/last name/i), "Carter");
@@ -132,6 +140,7 @@ describe("TeacherDashboard student form", () => {
     render(<TeacherDashboard {...baseProps} />);
 
     await user.click(screen.getByRole("tab", { name: /students/i }));
+    await user.click(screen.getByRole("button", { name: /add student/i }));
 
     await user.type(screen.getByLabelText(/first name/i), "Maya");
     await user.type(screen.getByLabelText(/last name/i), "Carter");
@@ -154,6 +163,7 @@ describe("TeacherDashboard student form", () => {
     render(<TeacherDashboard {...baseProps} />);
 
     await user.click(screen.getByRole("tab", { name: /students/i }));
+    await user.click(screen.getByRole("button", { name: /add student/i }));
 
     await user.type(screen.getByLabelText(/first name/i), "Maya");
     await user.type(screen.getByLabelText(/last name/i), "Carter");
@@ -173,6 +183,7 @@ describe("TeacherDashboard student form", () => {
     render(<TeacherDashboard {...baseProps} />);
 
     await user.click(screen.getByRole("tab", { name: /students/i }));
+    await user.click(screen.getByRole("button", { name: /add student/i }));
 
     await user.type(screen.getByLabelText(/first name/i), "Maya");
     await user.type(screen.getByLabelText(/last name/i), "Carter");
@@ -214,6 +225,7 @@ describe("TeacherDashboard student form", () => {
     render(<TeacherDashboard {...baseProps} />);
 
     await user.click(screen.getByRole("tab", { name: /students/i }));
+    await user.click(screen.getByRole("button", { name: /add student/i }));
 
     await user.type(screen.getByLabelText(/first name/i), "Maya");
     await user.type(screen.getByLabelText(/last name/i), "Carter");
@@ -239,6 +251,7 @@ describe("TeacherDashboard student form", () => {
     render(<TeacherDashboard {...baseProps} />);
 
     await user.click(screen.getByRole("tab", { name: /students/i }));
+    await user.click(screen.getByRole("button", { name: /add student/i }));
 
     // Try to submit empty form
     await user.click(screen.getByRole("button", { name: /create student/i }));
@@ -259,6 +272,7 @@ describe("TeacherDashboard student form", () => {
     render(<TeacherDashboard {...baseProps} />);
 
     await user.click(screen.getByRole("tab", { name: /students/i }));
+    await user.click(screen.getByRole("button", { name: /add student/i }));
 
     await user.type(screen.getByLabelText(/first name/i), "Maya");
     await user.click(screen.getByRole("button", { name: /create student/i }));
@@ -279,6 +293,7 @@ describe("TeacherDashboard student form", () => {
     render(<TeacherDashboard {...baseProps} />);
 
     await user.click(screen.getByRole("tab", { name: /students/i }));
+    await user.click(screen.getByRole("button", { name: /add student/i }));
 
     await user.type(screen.getByLabelText(/first name/i), "Maya");
     await user.type(screen.getByLabelText(/last name/i), "Carter");
@@ -303,6 +318,7 @@ describe("TeacherDashboard student form", () => {
     render(<TeacherDashboard {...baseProps} />);
 
     await user.click(screen.getByRole("tab", { name: /students/i }));
+    await user.click(screen.getByRole("button", { name: /add student/i }));
 
     await user.type(screen.getByLabelText(/first name/i), "Maya");
     await user.type(screen.getByLabelText(/last name/i), "Carter");
@@ -331,6 +347,7 @@ describe("TeacherDashboard student form", () => {
     render(<TeacherDashboard {...baseProps} />);
 
     await user.click(screen.getByRole("tab", { name: /students/i }));
+    await user.click(screen.getByRole("button", { name: /add student/i }));
 
     // Try to submit empty form
     await user.click(screen.getByRole("button", { name: /create student/i }));
@@ -359,6 +376,7 @@ describe("TeacherDashboard student form", () => {
     render(<TeacherDashboard {...baseProps} />);
 
     await user.click(screen.getByRole("tab", { name: /students/i }));
+    await user.click(screen.getByRole("button", { name: /add student/i }));
 
     // Submit empty form to trigger errors
     await user.click(screen.getByRole("button", { name: /create student/i }));
@@ -381,6 +399,7 @@ describe("TeacherDashboard student form", () => {
     render(<TeacherDashboard {...baseProps} />);
 
     await user.click(screen.getByRole("tab", { name: /students/i }));
+    await user.click(screen.getByRole("button", { name: /add student/i }));
 
     // Fill in some fields but not all
     await user.type(screen.getByLabelText(/first name/i), "Maya");
@@ -437,6 +456,7 @@ describe("TeacherDashboard student form", () => {
     render(<TeacherDashboard {...baseProps} />);
 
     await user.click(screen.getByRole("tab", { name: /students/i }));
+    await user.click(screen.getByRole("button", { name: /add student/i }));
 
     // Trigger validation errors first
     await user.click(screen.getByRole("button", { name: /create student/i }));
@@ -462,8 +482,11 @@ describe("TeacherDashboard student form", () => {
     // Wait for student to appear
     await screen.findByText(/maya carter/i);
 
-    // After successful submission, form should be cleared and no errors
-    // Note: Form is cleared, so we need to check the empty fields don't have errors
+    // A successful submission closes the dialog
+    expect(screen.queryByLabelText(/first name/i)).not.toBeInTheDocument();
+
+    // Reopening it should show a cleared form with no leftover error styling
+    await user.click(screen.getByRole("button", { name: /add student/i }));
     const firstNameInput = screen.getByLabelText(/first name/i);
     expect(firstNameInput).toHaveValue("");
     expect(firstNameInput).not.toHaveClass("border-red-500");
@@ -487,6 +510,7 @@ describe("TeacherDashboard student form", () => {
     );
 
     await user.click(screen.getByRole("tab", { name: /students/i }));
+    await user.click(screen.getByRole("button", { name: /add student/i }));
     await user.click(screen.getByRole("radio", { name: /existing family/i }));
 
     expect(screen.queryByLabelText(/parent name/i)).not.toBeInTheDocument();
@@ -531,6 +555,7 @@ describe("TeacherDashboard student form", () => {
     );
 
     await user.click(screen.getByRole("tab", { name: /students/i }));
+    await user.click(screen.getByRole("button", { name: /add student/i }));
     await user.click(screen.getByRole("radio", { name: /existing family/i }));
 
     await user.type(screen.getByLabelText(/first name/i), "Liam");
@@ -569,6 +594,7 @@ describe("TeacherDashboard student form", () => {
     );
 
     await user.click(screen.getByRole("tab", { name: /students/i }));
+    await user.click(screen.getByRole("button", { name: /add student/i }));
     await user.click(screen.getByRole("radio", { name: /existing family/i }));
 
     await user.type(screen.getByLabelText(/first name/i), "Liam");
