@@ -31,11 +31,13 @@ import {
   archiveClassAction,
   createClassAction,
   createStudentAction,
+  enrollStudentInClassAction,
   getAttendanceAction,
   restoreClassAction,
   restoreStudentAction,
   setAttendanceAction,
   setScheduleSlotAction,
+  unenrollStudentFromClassAction,
   updateClassAction,
   withdrawStudentAction,
 } from "@/app/protected/teacher/actions";
@@ -70,6 +72,7 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LogoutButton } from "@/components/logout-button";
+import { TeacherClassDetail } from "@/components/teacher-class-detail";
 import { TeacherQuizBuilder } from "@/components/teacher-quiz-builder";
 import { ThemeSwitcher } from "@/components/theme-switcher";
 import type { TeacherQuizListItem } from "@/lib/types/database";
@@ -396,7 +399,11 @@ export function TeacherDashboard({
   const [classFormName, setClassFormName] = React.useState("");
   const [classFormHours, setClassFormHours] = React.useState("2");
   const [isSavingClass, setIsSavingClass] = React.useState(false);
+  const [isMutatingEnrollment, setIsMutatingEnrollment] = React.useState(false);
   const [showArchivedClasses, setShowArchivedClasses] = React.useState(false);
+  const [selectedClassId, setSelectedClassId] = React.useState<
+    string | null
+  >(null);
   const [classes, setClasses] = React.useState<ClassItem[]>(() =>
     initialClasses.map((item, index) => ({
       ...item,
@@ -619,6 +626,56 @@ export function TeacherDashboard({
       toast.error(
         error instanceof Error ? error.message : "Failed to restore class",
       );
+    }
+  };
+
+  const handleEnrollStudent = async (studentId: string, classId: string) => {
+    setIsMutatingEnrollment(true);
+    try {
+      await enrollStudentInClassAction(studentId, classId);
+      setStudents((prev) =>
+        prev.map((student) =>
+          student.id === studentId
+            ? {
+                ...student,
+                assignedClassIds: student.assignedClassIds.includes(classId)
+                  ? student.assignedClassIds
+                  : [...student.assignedClassIds, classId],
+              }
+            : student,
+        ),
+      );
+    } catch (error: unknown) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to enroll student",
+      );
+    } finally {
+      setIsMutatingEnrollment(false);
+    }
+  };
+
+  const handleUnenrollStudent = async (studentId: string, classId: string) => {
+    setIsMutatingEnrollment(true);
+    try {
+      await unenrollStudentFromClassAction(studentId, classId);
+      setStudents((prev) =>
+        prev.map((student) =>
+          student.id === studentId
+            ? {
+                ...student,
+                assignedClassIds: student.assignedClassIds.filter(
+                  (id) => id !== classId,
+                ),
+              }
+            : student,
+        ),
+      );
+    } catch (error: unknown) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to remove student",
+      );
+    } finally {
+      setIsMutatingEnrollment(false);
     }
   };
 
@@ -1187,6 +1244,56 @@ export function TeacherDashboard({
         </TabsContent>
 
         <TabsContent value="classes" className="mt-0">
+          {selectedClassId ? (
+            (() => {
+              const classItem = classes.find(
+                (item) => item.id === selectedClassId,
+              );
+              if (!classItem) {
+                return null;
+              }
+              const scheduledSlots = Object.entries(schedule)
+                .filter(([, classId]) => classId === selectedClassId)
+                .map(([slotId]) => parseSlotId(slotId));
+              const enrolledStudents = students.filter(
+                (student) =>
+                  !student.withdrawnAt &&
+                  student.assignedClassIds.includes(selectedClassId),
+              );
+              const assignedQuizzes = initialQuizzes.filter((quiz) =>
+                quiz.assignedClasses.some((c) => c.id === selectedClassId),
+              );
+              return (
+                <TeacherClassDetail
+                  classItem={classItem}
+                  scheduledSlots={scheduledSlots}
+                  enrolledStudents={enrolledStudents}
+                  allStudents={students.filter(
+                    (student) => !student.withdrawnAt,
+                  )}
+                  assignedQuizzes={assignedQuizzes}
+                  isSavingClass={isSavingClass}
+                  isMutatingEnrollment={isMutatingEnrollment}
+                  onBack={() => setSelectedClassId(null)}
+                  onEdit={() => openEditClassDialog(classItem.id)}
+                  onArchive={() => void handleArchiveClass(classItem.id)}
+                  onRestore={() => void handleRestoreClass(classItem.id)}
+                  onViewStudent={(studentId) => {
+                    setSection("students");
+                    setSelectedStudentId(studentId);
+                  }}
+                  onGoToQuizzes={() => setSection("quizzes")}
+                  onEnrollStudent={(studentId) =>
+                    void handleEnrollStudent(studentId, classItem.id)
+                  }
+                  onUnenrollStudent={(studentId) =>
+                    void handleUnenrollStudent(studentId, classItem.id)
+                  }
+                />
+              );
+            })()
+          ) : (
+            <>
           <div className="rounded-lg border border-border bg-card">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
               <div className="text-sm font-semibold">
@@ -1240,7 +1347,11 @@ export function TeacherDashboard({
                   {classes
                     .filter((item) => showArchivedClasses || !item.archivedAt)
                     .map((item) => (
-                      <TableRow key={item.id}>
+                      <TableRow
+                        key={item.id}
+                        className="cursor-pointer"
+                        onClick={() => setSelectedClassId(item.id)}
+                      >
                         <TableCell>
                           <div className="flex items-center gap-2.5">
                             <span
@@ -1273,7 +1384,10 @@ export function TeacherDashboard({
                               type="button"
                               variant="outline"
                               size="sm"
-                              onClick={() => openEditClassDialog(item.id)}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                openEditClassDialog(item.id);
+                              }}
                             >
                               <PencilIcon className="mr-1 h-3.5 w-3.5" /> Edit
                             </Button>
@@ -1282,7 +1396,10 @@ export function TeacherDashboard({
                                 type="button"
                                 variant="outline"
                                 size="sm"
-                                onClick={() => void handleRestoreClass(item.id)}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  void handleRestoreClass(item.id);
+                                }}
                               >
                                 <RotateCcwIcon className="mr-1 h-3.5 w-3.5" />{" "}
                                 Restore
@@ -1292,7 +1409,10 @@ export function TeacherDashboard({
                                 type="button"
                                 variant="outline"
                                 size="sm"
-                                onClick={() => void handleArchiveClass(item.id)}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  void handleArchiveClass(item.id);
+                                }}
                               >
                                 <ArchiveIcon className="mr-1 h-3.5 w-3.5" />{" "}
                                 Archive
@@ -1306,6 +1426,8 @@ export function TeacherDashboard({
               </Table>
             )}
           </div>
+            </>
+          )}
 
           <Dialog
             open={isCreateClassOpen}

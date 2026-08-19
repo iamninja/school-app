@@ -6,9 +6,11 @@ import {
   archiveClassAction,
   createClassAction,
   createStudentAction,
+  enrollStudentInClassAction,
   restoreClassAction,
   restoreStudentAction,
   setAttendanceAction,
+  unenrollStudentFromClassAction,
   updateClassAction,
   withdrawStudentAction,
 } from "@/app/protected/teacher/actions";
@@ -233,6 +235,65 @@ describe("teacher actions - archive/restore class round trip", () => {
 
     const restored = await restoreClassAction("class-1");
     expect(restored.archivedAt).toBeNull();
+  });
+});
+
+describe("teacher actions - enrollment", () => {
+  beforeEach(() => {
+    vi.mocked(requireTeacher).mockResolvedValue(undefined);
+  });
+
+  it("enrolls a student in a class", async () => {
+    vi.mocked(createClient).mockResolvedValue(
+      createMockSupabaseClient({
+        students: { data: { id: "student-1" }, error: null },
+        classes: { data: { id: "class-1" }, error: null },
+        student_class_assignments: { data: null, error: null },
+      }) as never,
+    );
+
+    await expect(
+      enrollStudentInClassAction("student-1", "class-1"),
+    ).resolves.toBeUndefined();
+  });
+
+  it("unenrolls a student from a class", async () => {
+    vi.mocked(createClient).mockResolvedValue(
+      createMockSupabaseClient({
+        students: { data: { id: "student-1" }, error: null },
+        classes: { data: { id: "class-1" }, error: null },
+        student_class_assignments: { data: null, error: null },
+      }) as never,
+    );
+
+    await expect(
+      unenrollStudentFromClassAction("student-1", "class-1"),
+    ).resolves.toBeUndefined();
+  });
+
+  it("throws when the class doesn't belong to this teacher", async () => {
+    vi.mocked(createClient).mockResolvedValue(
+      createMockSupabaseClient({
+        students: { data: { id: "student-1" }, error: null },
+        classes: { data: null, error: null },
+      }) as never,
+    );
+
+    await expect(
+      enrollStudentInClassAction("student-1", "class-1"),
+    ).rejects.toThrow("Class not found");
+  });
+
+  it("throws when the student doesn't belong to this teacher", async () => {
+    vi.mocked(createClient).mockResolvedValue(
+      createMockSupabaseClient({
+        students: { data: null, error: null },
+      }) as never,
+    );
+
+    await expect(
+      enrollStudentInClassAction("student-1", "class-1"),
+    ).rejects.toThrow("Student not found");
   });
 });
 

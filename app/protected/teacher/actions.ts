@@ -4,6 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import { requireTeacher } from "@/lib/auth/require-teacher";
 import { ExpectedError } from "@/lib/expected-error";
 
+type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
+
 export async function createClassAction(data: {
   name: string;
   hoursPerWeek: number;
@@ -403,6 +405,100 @@ export async function restoreStudentAction(studentId: string) {
   }
 
   return { id: studentId, withdrawnAt: null as string | null };
+}
+
+// RLS on student_class_assignments only checks that the student belongs to
+// the calling teacher, not the class - verify both explicitly here rather
+// than rely on the database catching a cross-teacher class_id.
+async function requireOwnedStudent(
+  supabase: SupabaseServerClient,
+  studentId: string,
+  teacherId: string,
+) {
+  const { data: student, error } = await supabase
+    .from("students")
+    .select("id")
+    .eq("id", studentId)
+    .eq("teacher_id", teacherId)
+    .single();
+
+  if (error || !student) {
+    throw new Error("Student not found");
+  }
+}
+
+async function requireOwnedClass(
+  supabase: SupabaseServerClient,
+  classId: string,
+  teacherId: string,
+) {
+  const { data: classRow, error } = await supabase
+    .from("classes")
+    .select("id")
+    .eq("id", classId)
+    .eq("teacher_id", teacherId)
+    .single();
+
+  if (error || !classRow) {
+    throw new Error("Class not found");
+  }
+}
+
+export async function enrollStudentInClassAction(
+  studentId: string,
+  classId: string,
+): Promise<void> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error("Not authenticated");
+  }
+
+  await requireTeacher(supabase, user.id);
+  await requireOwnedStudent(supabase, studentId, user.id);
+  await requireOwnedClass(supabase, classId, user.id);
+
+  const { error } = await supabase
+    .from("student_class_assignments")
+    .upsert(
+      { student_id: studentId, class_id: classId },
+      { onConflict: "student_id,class_id", ignoreDuplicates: true },
+    );
+
+  if (error) {
+    throw error;
+  }
+}
+
+export async function unenrollStudentFromClassAction(
+  studentId: string,
+  classId: string,
+): Promise<void> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error("Not authenticated");
+  }
+
+  await requireTeacher(supabase, user.id);
+  await requireOwnedStudent(supabase, studentId, user.id);
+  await requireOwnedClass(supabase, classId, user.id);
+
+  const { error } = await supabase
+    .from("student_class_assignments")
+    .delete()
+    .eq("student_id", studentId)
+    .eq("class_id", classId);
+
+  if (error) {
+    throw error;
+  }
 }
 
 export async function getAttendanceAction(data: {
