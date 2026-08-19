@@ -12,6 +12,7 @@ import {
   setAttendanceAction,
   unenrollStudentFromClassAction,
   updateClassAction,
+  updateStudentAction,
   withdrawStudentAction,
 } from "@/app/protected/teacher/actions";
 import { createMockSupabaseClient } from "./support/mock-supabase";
@@ -110,6 +111,111 @@ describe("teacher actions - createStudentAction", () => {
     );
     await expect(createStudentAction(baseNewFamilyInput)).rejects.toThrow(
       /Use "Existing family" instead/,
+    );
+  });
+});
+
+describe("teacher actions - updateStudentAction", () => {
+  beforeEach(() => {
+    vi.mocked(requireTeacher).mockResolvedValue(undefined);
+  });
+
+  const baseUpdateInput = {
+    studentId: "student-1",
+    firstName: "Maya",
+    lastName: "Carter",
+    gradeLevel: "10",
+    email: "maya@example.com",
+    tuitionAmount: "420",
+    tuitionStatus: "current" as const,
+    parentName: "Jordan Carter",
+    parentEmail: "parent@example.com",
+    parentPhone: "(555) 123-4567",
+  };
+
+  it("updates the student and both existing parent records", async () => {
+    vi.mocked(createClient).mockResolvedValue(
+      createMockSupabaseClient({
+        students: [
+          { data: { id: "student-1", family_id: "family-1" }, error: null },
+          { data: null, error: null },
+        ],
+        family_parents: [
+          {
+            data: [
+              { id: "parent-1", is_primary: true },
+              { id: "parent-2", is_primary: false },
+            ],
+            error: null,
+          },
+          { data: null, error: null },
+        ],
+      }) as never,
+    );
+
+    const result = await updateStudentAction({
+      ...baseUpdateInput,
+      parentTwoName: "Jamie Carter",
+      parentTwoEmail: "jamie@example.com",
+      parentTwoPhone: "(555) 999-1111",
+    });
+
+    expect(result.id).toBe("student-1");
+    expect(result.familyId).toBe("family-1");
+    expect(result.firstName).toBe("Maya");
+    expect(result.parentTwoName).toBe("Jamie Carter");
+  });
+
+  it("inserts a primary parent row when none existed yet", async () => {
+    vi.mocked(createClient).mockResolvedValue(
+      createMockSupabaseClient({
+        students: [
+          { data: { id: "student-1", family_id: "family-1" }, error: null },
+          { data: null, error: null },
+        ],
+        family_parents: [
+          { data: [], error: null },
+          { data: null, error: null },
+        ],
+      }) as never,
+    );
+
+    const result = await updateStudentAction(baseUpdateInput);
+
+    expect(result.parentName).toBe("Jordan Carter");
+  });
+
+  it("surfaces a duplicate parent email as a friendly ExpectedError", async () => {
+    vi.mocked(createClient).mockResolvedValue(
+      createMockSupabaseClient({
+        students: [
+          { data: { id: "student-1", family_id: "family-1" }, error: null },
+          { data: null, error: null },
+        ],
+        family_parents: [
+          { data: [], error: null },
+          {
+            data: null,
+            error: { code: "23505", message: "duplicate key value" },
+          },
+        ],
+      }) as never,
+    );
+
+    await expect(updateStudentAction(baseUpdateInput)).rejects.toThrow(
+      ExpectedError,
+    );
+  });
+
+  it("throws when the student isn't owned by this teacher", async () => {
+    vi.mocked(createClient).mockResolvedValue(
+      createMockSupabaseClient({
+        students: { data: null, error: null },
+      }) as never,
+    );
+
+    await expect(updateStudentAction(baseUpdateInput)).rejects.toThrow(
+      "Student not found",
     );
   });
 });

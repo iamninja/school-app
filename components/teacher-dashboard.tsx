@@ -39,6 +39,7 @@ import {
   setScheduleSlotAction,
   unenrollStudentFromClassAction,
   updateClassAction,
+  updateStudentAction,
   withdrawStudentAction,
 } from "@/app/protected/teacher/actions";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -446,11 +447,39 @@ export function TeacherDashboard({
   const [families, setFamilies] =
     React.useState<FamilyItem[]>(initialFamilies);
   const [showWithdrawn, setShowWithdrawn] = React.useState(false);
+  const [showArchivedStudentClasses, setShowArchivedStudentClasses] =
+    React.useState(false);
   const [showSecondParent, setShowSecondParent] = React.useState(false);
   const [studentFormErrors, setStudentFormErrors] = React.useState<
     Record<string, boolean>
   >({});
   const [selectedStudentId, setSelectedStudentId] = React.useState<
+    string | null
+  >(null);
+  const [editStudentId, setEditStudentId] = React.useState<string | null>(
+    null,
+  );
+  const [editStudentForm, setEditStudentForm] = React.useState({
+    firstName: "",
+    lastName: "",
+    gradeLevel: "",
+    email: "",
+    parentName: "",
+    parentEmail: "",
+    parentPhone: "",
+    parentTwoName: "",
+    parentTwoEmail: "",
+    parentTwoPhone: "",
+    tuitionAmount: "",
+    tuitionStatus: "current" as StudentItem["tuitionStatus"],
+  });
+  const [showEditSecondParent, setShowEditSecondParent] =
+    React.useState(false);
+  const [editStudentFormErrors, setEditStudentFormErrors] = React.useState<
+    Record<string, boolean>
+  >({});
+  const [isSavingStudent, setIsSavingStudent] = React.useState(false);
+  const [manageStudentClassesId, setManageStudentClassesId] = React.useState<
     string | null
   >(null);
   const [attendanceDate, setAttendanceDate] = React.useState(() => new Date());
@@ -922,6 +951,173 @@ export function TeacherDashboard({
           : student,
       ),
     );
+  };
+
+  const handleEditStudentChange = (
+    key: keyof typeof editStudentForm,
+    value: string,
+  ) => {
+    setEditStudentForm((prev) => ({ ...prev, [key]: value }));
+    setEditStudentFormErrors((prev) => ({ ...prev, [key]: false }));
+  };
+
+  const openEditStudentDialog = (studentId: string) => {
+    const student = students.find((item) => item.id === studentId);
+    if (!student) return;
+    setEditStudentForm({
+      firstName: student.firstName,
+      lastName: student.lastName,
+      gradeLevel: student.gradeLevel,
+      email: student.email,
+      parentName: student.parentName,
+      parentEmail: student.parentEmail,
+      parentPhone: student.parentPhone,
+      parentTwoName: student.parentTwoName ?? "",
+      parentTwoEmail: student.parentTwoEmail ?? "",
+      parentTwoPhone: student.parentTwoPhone ?? "",
+      tuitionAmount: student.tuitionAmount,
+      tuitionStatus: student.tuitionStatus,
+    });
+    setShowEditSecondParent(
+      Boolean(
+        student.parentTwoName || student.parentTwoEmail || student.parentTwoPhone,
+      ),
+    );
+    setEditStudentFormErrors({});
+    setEditStudentId(studentId);
+  };
+
+  const closeEditStudentDialog = () => {
+    setEditStudentId(null);
+    setShowEditSecondParent(false);
+    setEditStudentFormErrors({});
+  };
+
+  const handleSaveEditStudent = async () => {
+    if (!editStudentId) return;
+
+    const missingFields: string[] = [];
+    const errors: Record<string, boolean> = {};
+
+    if (!editStudentForm.firstName.trim()) {
+      missingFields.push("First name");
+      errors.firstName = true;
+    }
+    if (!editStudentForm.lastName.trim()) {
+      missingFields.push("Last name");
+      errors.lastName = true;
+    }
+    if (!editStudentForm.gradeLevel.trim()) {
+      missingFields.push("Grade");
+      errors.gradeLevel = true;
+    }
+    if (!editStudentForm.email.trim()) {
+      missingFields.push("Email");
+      errors.email = true;
+    }
+    if (!editStudentForm.parentName.trim()) {
+      missingFields.push("Parent name");
+      errors.parentName = true;
+    }
+    if (!editStudentForm.parentEmail.trim()) {
+      missingFields.push("Parent email");
+      errors.parentEmail = true;
+    }
+    if (!editStudentForm.parentPhone.trim()) {
+      missingFields.push("Parent phone");
+      errors.parentPhone = true;
+    }
+
+    if (missingFields.length > 0) {
+      setEditStudentFormErrors(errors);
+      toast.error("Please fill in all required fields", {
+        description: `Missing: ${missingFields.join(", ")}`,
+      });
+      return;
+    }
+
+    setIsSavingStudent(true);
+    let updated;
+    try {
+      updated = await updateStudentAction({
+        studentId: editStudentId,
+        firstName: editStudentForm.firstName.trim(),
+        lastName: editStudentForm.lastName.trim(),
+        gradeLevel: editStudentForm.gradeLevel.trim(),
+        email: editStudentForm.email.trim(),
+        tuitionAmount: editStudentForm.tuitionAmount.trim(),
+        tuitionStatus: editStudentForm.tuitionStatus,
+        parentName: editStudentForm.parentName.trim(),
+        parentEmail: editStudentForm.parentEmail.trim(),
+        parentPhone: editStudentForm.parentPhone.trim(),
+        parentTwoName: editStudentForm.parentTwoName.trim(),
+        parentTwoEmail: editStudentForm.parentTwoEmail.trim(),
+        parentTwoPhone: editStudentForm.parentTwoPhone.trim(),
+      });
+    } catch (error: unknown) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to update student",
+      );
+      setIsSavingStudent(false);
+      return;
+    }
+
+    setStudents((prev) =>
+      prev.map((student) => {
+        if (student.id === updated.id) {
+          return {
+            ...student,
+            firstName: updated.firstName,
+            lastName: updated.lastName,
+            gradeLevel: updated.gradeLevel,
+            email: updated.email,
+            parentName: updated.parentName,
+            parentEmail: updated.parentEmail,
+            parentPhone: updated.parentPhone,
+            parentTwoName: updated.parentTwoName,
+            parentTwoEmail: updated.parentTwoEmail,
+            parentTwoPhone: updated.parentTwoPhone,
+            tuitionAmount: updated.tuitionAmount,
+            tuitionStatus: updated.tuitionStatus,
+          };
+        }
+        // A sibling in the same family shares the same parent contact
+        // record - keep their cached copy of it in sync too, or it goes
+        // stale until a full page reload.
+        if (student.familyId === updated.familyId) {
+          return {
+            ...student,
+            parentName: updated.parentName,
+            parentEmail: updated.parentEmail,
+            parentPhone: updated.parentPhone,
+            parentTwoName: updated.parentTwoName,
+            parentTwoEmail: updated.parentTwoEmail,
+            parentTwoPhone: updated.parentTwoPhone,
+          };
+        }
+        return student;
+      }),
+    );
+    setFamilies((prev) =>
+      prev.map((family) =>
+        family.id === updated.familyId
+          ? {
+              ...family,
+              parentNames: [updated.parentName, updated.parentTwoName].filter(
+                (name): name is string => Boolean(name),
+              ),
+              parentEmails: [
+                updated.parentEmail,
+                updated.parentTwoEmail,
+              ].filter((email): email is string => Boolean(email)),
+            }
+          : family,
+      ),
+    );
+
+    toast.success("Student updated");
+    setIsSavingStudent(false);
+    closeEditStudentDialog();
   };
 
   const attendanceRoster = React.useMemo(() => {
@@ -1543,6 +1739,12 @@ export function TeacherDashboard({
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          onClick={() => openEditStudentDialog(student.id)}
+                        >
+                          <PencilIcon className="mr-1 h-3.5 w-3.5" /> Edit
+                        </Button>
                         {student.withdrawnAt ? (
                           <Button
                             variant="outline"
@@ -1615,26 +1817,98 @@ export function TeacherDashboard({
 
                       <div className="space-y-4">
                         <div className="rounded-lg border p-4">
-                          <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                            Assigned classes
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                              Assigned classes
+                            </div>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                setManageStudentClassesId(student.id)
+                              }
+                            >
+                              Manage classes
+                            </Button>
                           </div>
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            {student.assignedClassIds.length === 0 ? (
-                              <span className="text-xs text-muted-foreground">
-                                No assigned classes
-                              </span>
-                            ) : (
-                              student.assignedClassIds.map((classId) => {
-                                const className =
-                                  classes.find((item) => item.id === classId)
-                                    ?.name ?? "Unknown class";
-                                return (
-                                  <Badge key={classId} variant="outline">
-                                    {className}
-                                  </Badge>
+                          <div className="mt-3 flex flex-wrap items-center gap-2">
+                            {(() => {
+                              const activeAssignedIds =
+                                student.assignedClassIds.filter(
+                                  (classId) =>
+                                    !classes.find(
+                                      (item) => item.id === classId,
+                                    )?.archivedAt,
                                 );
-                              })
-                            )}
+                              const archivedAssignedIds =
+                                student.assignedClassIds.filter(
+                                  (classId) =>
+                                    classes.find(
+                                      (item) => item.id === classId,
+                                    )?.archivedAt,
+                                );
+                              if (student.assignedClassIds.length === 0) {
+                                return (
+                                  <span className="text-xs text-muted-foreground">
+                                    No assigned classes
+                                  </span>
+                                );
+                              }
+                              return (
+                                <>
+                                  {activeAssignedIds.length === 0 &&
+                                  !showArchivedStudentClasses ? (
+                                    <span className="text-xs text-muted-foreground">
+                                      No active classes
+                                    </span>
+                                  ) : (
+                                    activeAssignedIds.map((classId) => {
+                                      const className =
+                                        classes.find(
+                                          (item) => item.id === classId,
+                                        )?.name ?? "Unknown class";
+                                      return (
+                                        <Badge
+                                          key={classId}
+                                          variant="outline"
+                                        >
+                                          {className}
+                                        </Badge>
+                                      );
+                                    })
+                                  )}
+                                  {archivedAssignedIds.length > 0 ? (
+                                    showArchivedStudentClasses ? (
+                                      archivedAssignedIds.map((classId) => {
+                                        const className =
+                                          classes.find(
+                                            (item) => item.id === classId,
+                                          )?.name ?? "Unknown class";
+                                        return (
+                                          <Badge
+                                            key={classId}
+                                            variant="secondary"
+                                          >
+                                            {className}
+                                          </Badge>
+                                        );
+                                      })
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+                                        onClick={() =>
+                                          setShowArchivedStudentClasses(true)
+                                        }
+                                      >
+                                        +{archivedAssignedIds.length} archived
+                                      </button>
+                                    )
+                                  ) : null}
+                                </>
+                              );
+                            })()}
                           </div>
                         </div>
 
@@ -2201,6 +2475,360 @@ export function TeacherDashboard({
               </div>
             </div>
           )}
+
+          <Dialog
+                open={editStudentId !== null}
+                onOpenChange={(open) => !open && closeEditStudentDialog()}
+              >
+                <DialogContent className="max-h-[85svh] overflow-y-auto sm:max-w-2xl">
+                  <DialogHeader>
+                    <DialogTitle>Edit student</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-student-first-name">
+                          First name
+                        </Label>
+                        <Input
+                          id="edit-student-first-name"
+                          value={editStudentForm.firstName}
+                          onChange={(event) =>
+                            handleEditStudentChange(
+                              "firstName",
+                              event.target.value,
+                            )
+                          }
+                          className={
+                            editStudentFormErrors.firstName
+                              ? "border-red-500 focus-visible:ring-red-500"
+                              : ""
+                          }
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-student-last-name">
+                          Last name
+                        </Label>
+                        <Input
+                          id="edit-student-last-name"
+                          value={editStudentForm.lastName}
+                          onChange={(event) =>
+                            handleEditStudentChange(
+                              "lastName",
+                              event.target.value,
+                            )
+                          }
+                          className={
+                            editStudentFormErrors.lastName
+                              ? "border-red-500 focus-visible:ring-red-500"
+                              : ""
+                          }
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-student-grade">Grade</Label>
+                        <select
+                          id="edit-student-grade"
+                          value={editStudentForm.gradeLevel}
+                          onChange={(event) =>
+                            handleEditStudentChange(
+                              "gradeLevel",
+                              event.target.value,
+                            )
+                          }
+                          className={`h-10 w-full rounded-md border bg-background px-3 text-sm ${
+                            editStudentFormErrors.gradeLevel
+                              ? "border-red-500 focus-visible:ring-red-500"
+                              : "border-input"
+                          }`}
+                        >
+                          <option value="">Select grade</option>
+                          <option value="7">7th grade</option>
+                          <option value="8">8th grade</option>
+                          <option value="9">9th grade</option>
+                          <option value="10">10th grade</option>
+                          <option value="11">11th grade</option>
+                          <option value="12">12th grade</option>
+                        </select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-student-email">Email</Label>
+                        <Input
+                          id="edit-student-email"
+                          type="email"
+                          value={editStudentForm.email}
+                          onChange={(event) =>
+                            handleEditStudentChange(
+                              "email",
+                              event.target.value,
+                            )
+                          }
+                          className={
+                            editStudentFormErrors.email
+                              ? "border-red-500 focus-visible:ring-red-500"
+                              : ""
+                          }
+                        />
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border p-4 space-y-4">
+                      <div className="text-sm font-medium">Parent</div>
+                      {(() => {
+                        const editingStudent = students.find(
+                          (item) => item.id === editStudentId,
+                        );
+                        const siblingCount = editingStudent
+                          ? (
+                              families.find(
+                                (family) =>
+                                  family.id === editingStudent.familyId,
+                              )?.studentNames.length ?? 1
+                            ) - 1
+                          : 0;
+                        return siblingCount > 0 ? (
+                          <p className="text-xs text-muted-foreground">
+                            Shared with {siblingCount} other{" "}
+                            {siblingCount === 1 ? "sibling" : "siblings"} in
+                            this family — editing here updates it for them
+                            too.
+                          </p>
+                        ) : null;
+                      })()}
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label htmlFor="edit-parent-name">
+                            Parent name
+                          </Label>
+                          <Input
+                            id="edit-parent-name"
+                            value={editStudentForm.parentName}
+                            onChange={(event) =>
+                              handleEditStudentChange(
+                                "parentName",
+                                event.target.value,
+                              )
+                            }
+                            className={
+                              editStudentFormErrors.parentName
+                                ? "border-red-500 focus-visible:ring-red-500"
+                                : ""
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="edit-parent-email">
+                            Parent email
+                          </Label>
+                          <Input
+                            id="edit-parent-email"
+                            type="email"
+                            value={editStudentForm.parentEmail}
+                            onChange={(event) =>
+                              handleEditStudentChange(
+                                "parentEmail",
+                                event.target.value,
+                              )
+                            }
+                            className={
+                              editStudentFormErrors.parentEmail
+                                ? "border-red-500 focus-visible:ring-red-500"
+                                : ""
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2 sm:col-span-2">
+                          <Label htmlFor="edit-parent-phone">
+                            Parent phone
+                          </Label>
+                          <Input
+                            id="edit-parent-phone"
+                            value={editStudentForm.parentPhone}
+                            onChange={(event) =>
+                              handleEditStudentChange(
+                                "parentPhone",
+                                event.target.value,
+                              )
+                            }
+                            className={
+                              editStudentFormErrors.parentPhone
+                                ? "border-red-500 focus-visible:ring-red-500"
+                                : ""
+                            }
+                          />
+                        </div>
+                      </div>
+                      {showEditSecondParent ? (
+                        <div className="mt-4 border-t pt-4">
+                          <div className="text-sm font-medium">
+                            Second parent
+                          </div>
+                          <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                            <div className="space-y-2">
+                              <Label htmlFor="edit-parent-two-name">
+                                Name
+                              </Label>
+                              <Input
+                                id="edit-parent-two-name"
+                                value={editStudentForm.parentTwoName}
+                                onChange={(event) =>
+                                  handleEditStudentChange(
+                                    "parentTwoName",
+                                    event.target.value,
+                                  )
+                                }
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="edit-parent-two-email">
+                                Email
+                              </Label>
+                              <Input
+                                id="edit-parent-two-email"
+                                type="email"
+                                value={editStudentForm.parentTwoEmail}
+                                onChange={(event) =>
+                                  handleEditStudentChange(
+                                    "parentTwoEmail",
+                                    event.target.value,
+                                  )
+                                }
+                              />
+                            </div>
+                            <div className="space-y-2 sm:col-span-2">
+                              <Label htmlFor="edit-parent-two-phone">
+                                Phone
+                              </Label>
+                              <Input
+                                id="edit-parent-two-phone"
+                                value={editStudentForm.parentTwoPhone}
+                                onChange={(event) =>
+                                  handleEditStudentChange(
+                                    "parentTwoPhone",
+                                    event.target.value,
+                                  )
+                                }
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="mt-4"
+                        onClick={() =>
+                          setShowEditSecondParent((prev) => !prev)
+                        }
+                      >
+                        {showEditSecondParent ? "Remove" : "Add"} second
+                        parent
+                      </Button>
+                    </div>
+
+                    <div className="rounded-lg border p-4">
+                      <div className="text-sm font-medium">Tuition</div>
+                      <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label htmlFor="edit-tuition-amount">Amount</Label>
+                          <Input
+                            id="edit-tuition-amount"
+                            type="number"
+                            min={0}
+                            value={editStudentForm.tuitionAmount}
+                            onChange={(event) =>
+                              handleEditStudentChange(
+                                "tuitionAmount",
+                                event.target.value,
+                              )
+                            }
+                            placeholder="e.g. 420"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="edit-tuition-status">Status</Label>
+                          <select
+                            id="edit-tuition-status"
+                            value={editStudentForm.tuitionStatus}
+                            onChange={(event) =>
+                              handleEditStudentChange(
+                                "tuitionStatus",
+                                event.target.value,
+                              )
+                            }
+                            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                          >
+                            <option value="current">Current</option>
+                            <option value="past-due">Past due</option>
+                            <option value="scholarship">Scholarship</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button
+                      type="button"
+                      onClick={handleSaveEditStudent}
+                      disabled={isSavingStudent}
+                    >
+                      {isSavingStudent ? "Saving..." : "Save"}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+
+              <Dialog
+                open={manageStudentClassesId !== null}
+                onOpenChange={(open) => !open && setManageStudentClassesId(null)}
+              >
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Manage classes</DialogTitle>
+                  </DialogHeader>
+                  <div className="grid gap-2">
+                    {(() => {
+                      const managedStudent = students.find(
+                        (item) => item.id === manageStudentClassesId,
+                      );
+                      if (!managedStudent) {
+                        return null;
+                      }
+                      return activeClasses.map((classItem) => {
+                        const isEnrolled =
+                          managedStudent.assignedClassIds.includes(
+                            classItem.id,
+                          );
+                        return (
+                          <label
+                            key={classItem.id}
+                            className="flex items-center gap-3 rounded-md border p-3 text-sm"
+                          >
+                            <Checkbox
+                              checked={isEnrolled}
+                              disabled={isMutatingEnrollment}
+                              onCheckedChange={() =>
+                                isEnrolled
+                                  ? void handleUnenrollStudent(
+                                      managedStudent.id,
+                                      classItem.id,
+                                    )
+                                  : void handleEnrollStudent(
+                                      managedStudent.id,
+                                      classItem.id,
+                                    )
+                              }
+                            />
+                            <span className="flex-1">{classItem.name}</span>
+                          </label>
+                        );
+                      });
+                    })()}
+                  </div>
+                  <DialogFooter showCloseButton />
+                </DialogContent>
+              </Dialog>
         </TabsContent>
 
         <TabsContent value="attendance" className="mt-0 space-y-4">

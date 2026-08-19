@@ -356,6 +356,162 @@ export async function createStudentAction(data: CreateStudentInput) {
   };
 }
 
+export type UpdateStudentInput = {
+  studentId: string;
+  firstName: string;
+  lastName: string;
+  gradeLevel: string;
+  email: string;
+  tuitionAmount: string;
+  tuitionStatus: "current" | "past-due" | "scholarship";
+  parentName: string;
+  parentEmail: string;
+  parentPhone: string;
+  parentTwoName?: string;
+  parentTwoEmail?: string;
+  parentTwoPhone?: string;
+};
+
+export async function updateStudentAction(data: UpdateStudentInput) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error("Not authenticated");
+  }
+
+  await requireTeacher(supabase, user.id);
+
+  const { data: existingStudent, error: lookupError } = await supabase
+    .from("students")
+    .select("id, family_id")
+    .eq("id", data.studentId)
+    .eq("teacher_id", user.id)
+    .single();
+
+  if (lookupError || !existingStudent) {
+    throw new Error("Student not found");
+  }
+
+  const familyId = existingStudent.family_id;
+
+  const tuitionAmount = data.tuitionAmount.trim()
+    ? Number.parseFloat(data.tuitionAmount)
+    : null;
+
+  const { error: studentError } = await supabase
+    .from("students")
+    .update({
+      first_name: data.firstName,
+      last_name: data.lastName,
+      grade_level: data.gradeLevel || null,
+      email: data.email || null,
+      tuition_amount: tuitionAmount,
+      tuition_status: data.tuitionStatus,
+    })
+    .eq("id", data.studentId)
+    .eq("teacher_id", user.id);
+
+  if (studentError) {
+    throw studentError;
+  }
+
+  const { data: existingParents, error: parentsLookupError } = await supabase
+    .from("family_parents")
+    .select("id, is_primary")
+    .eq("family_id", familyId);
+
+  if (parentsLookupError) {
+    throw parentsLookupError;
+  }
+
+  const primaryParent = (existingParents ?? []).find((p) => p.is_primary);
+  const secondaryParent = (existingParents ?? []).find((p) => !p.is_primary);
+
+  const parentUpserts: Array<{
+    id?: string;
+    family_id: string;
+    name: string | null;
+    email: string | null;
+    phone: string | null;
+    is_primary: boolean;
+  }> = [];
+
+  if (primaryParent) {
+    parentUpserts.push({
+      id: primaryParent.id,
+      family_id: familyId,
+      name: data.parentName || null,
+      email: data.parentEmail || null,
+      phone: data.parentPhone || null,
+      is_primary: true,
+    });
+  } else if (data.parentName || data.parentEmail || data.parentPhone) {
+    parentUpserts.push({
+      family_id: familyId,
+      name: data.parentName || null,
+      email: data.parentEmail || null,
+      phone: data.parentPhone || null,
+      is_primary: true,
+    });
+  }
+
+  if (secondaryParent) {
+    parentUpserts.push({
+      id: secondaryParent.id,
+      family_id: familyId,
+      name: data.parentTwoName || null,
+      email: data.parentTwoEmail || null,
+      phone: data.parentTwoPhone || null,
+      is_primary: false,
+    });
+  } else if (data.parentTwoName || data.parentTwoEmail || data.parentTwoPhone) {
+    parentUpserts.push({
+      family_id: familyId,
+      name: data.parentTwoName || null,
+      email: data.parentTwoEmail || null,
+      phone: data.parentTwoPhone || null,
+      is_primary: false,
+    });
+  }
+
+  if (parentUpserts.length > 0) {
+    const { error: parentError } = await supabase
+      .from("family_parents")
+      .upsert(parentUpserts);
+
+    if (parentError) {
+      // 23505 = unique_violation on family_parents_email_unique - this
+      // parent's email is already registered to a different family.
+      if (parentError.code === "23505") {
+        throw new ExpectedError(
+          "This parent email is already registered to another family.",
+        );
+      }
+      throw parentError;
+    }
+  }
+
+  return {
+    id: data.studentId,
+    familyId,
+    firstName: data.firstName,
+    lastName: data.lastName,
+    gradeLevel: data.gradeLevel,
+    email: data.email,
+    parentName: data.parentName,
+    parentEmail: data.parentEmail,
+    parentPhone: data.parentPhone,
+    parentTwoName: data.parentTwoName,
+    parentTwoEmail: data.parentTwoEmail,
+    parentTwoPhone: data.parentTwoPhone,
+    tuitionAmount: data.tuitionAmount,
+    tuitionStatus: data.tuitionStatus,
+  };
+}
+
 export async function withdrawStudentAction(studentId: string) {
   const supabase = await createClient();
   const {

@@ -70,6 +70,11 @@ export async function createFixtures() {
     name: "RLS Test Class A",
     hours_per_week: 1,
   });
+  const classB = await insertOne(admin, "classes", {
+    teacher_id: teacherB.id,
+    name: "RLS Test Class B",
+    hours_per_week: 1,
+  });
   await admin
     .from("student_class_assignments")
     .insert({ student_id: studentA.id, class_id: classA.id });
@@ -99,6 +104,7 @@ export async function createFixtures() {
     studentA,
     studentB,
     classA,
+    classB,
     quizA,
     questionA,
   };
@@ -114,7 +120,10 @@ export async function cleanupFixtures(fixtures: Fixtures) {
   await admin.from("quiz_assignments").delete().eq("quiz_id", fixtures.quizA.id);
   await admin.from("quiz_questions").delete().eq("quiz_id", fixtures.quizA.id);
   await admin.from("quizzes").delete().eq("id", fixtures.quizA.id);
-  await admin.from("classes").delete().eq("id", fixtures.classA.id);
+  await admin
+    .from("classes")
+    .delete()
+    .in("id", [fixtures.classA.id, fixtures.classB.id]);
   await admin
     .from("students")
     .delete()

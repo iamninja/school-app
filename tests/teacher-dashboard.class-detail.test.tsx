@@ -159,3 +159,152 @@ describe("TeacherDashboard class detail - enrollment", () => {
     });
   });
 });
+
+describe("TeacherDashboard class detail - rendering and navigation", () => {
+  const baseProps = {
+    initialClasses: [
+      { id: "class-1", name: "Algebra II", hoursPerWeek: 3, archivedAt: null },
+    ],
+    initialSlots: [{ day: "Mon", time: "15:15", classId: "class-1" }],
+    initialStudents: [
+      {
+        id: "student-1",
+        firstName: "Maya",
+        lastName: "Carter",
+        gradeLevel: "10",
+        email: "maya@example.com",
+        parentName: "Jordan Carter",
+        parentEmail: "parent@example.com",
+        parentPhone: "(555) 123-4567",
+        tuitionAmount: "420",
+        tuitionStatus: "current" as const,
+        assignedClassIds: ["class-1"],
+      },
+      {
+        id: "student-2",
+        firstName: "Nina",
+        lastName: "Diaz",
+        gradeLevel: "10",
+        email: "nina@example.com",
+        withdrawnAt: "2026-01-01T00:00:00.000Z",
+        parentName: "Pat Diaz",
+        parentEmail: "pat@example.com",
+        parentPhone: "(555) 222-3333",
+        tuitionAmount: "420",
+        tuitionStatus: "current" as const,
+        assignedClassIds: ["class-1"],
+      },
+    ],
+    initialAttendance: [],
+    initialQuizzes: [
+      {
+        id: "quiz-1",
+        title: "Chapter 3 Quiz",
+        description: null,
+        timeLimitMinutes: 20,
+        assignedClasses: [{ id: "class-1", name: "Algebra II" }],
+        questionCount: 5,
+        hasAttempts: false,
+      },
+    ],
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  async function openAlgebraDetail(user: ReturnType<typeof userEvent.setup>) {
+    render(<TeacherDashboard {...baseProps} />);
+    await user.click(screen.getByRole("tab", { name: /classes/i }));
+    await user.click(screen.getByText("Algebra II"));
+    expect(
+      screen.getByRole("button", { name: /back to classes/i }),
+    ).toBeInTheDocument();
+  }
+
+  it("shows the class's schedule, assigned quizzes, and active status", async () => {
+    const user = userEvent.setup();
+
+    await openAlgebraDetail(user);
+
+    expect(screen.getByText(/mon.*15:15/i)).toBeInTheDocument();
+    expect(screen.getByText("Chapter 3 Quiz")).toBeInTheDocument();
+    expect(screen.getByText(/5 questions/i)).toBeInTheDocument();
+    expect(screen.getByText(/20 min/i)).toBeInTheDocument();
+    expect(screen.getByText("Active")).toBeInTheDocument();
+  });
+
+  it("excludes a withdrawn student from the enrolled-students panel", async () => {
+    const user = userEvent.setup();
+
+    await openAlgebraDetail(user);
+
+    expect(screen.getByText("Maya Carter")).toBeInTheDocument();
+    expect(screen.queryByText("Nina Diaz")).not.toBeInTheDocument();
+  });
+
+  it("edits, archives, and restores the class from the detail view", async () => {
+    const user = userEvent.setup();
+    const updateClassAction = vi.mocked(actions.updateClassAction);
+    const archiveClassAction = vi.mocked(actions.archiveClassAction);
+    const restoreClassAction = vi.mocked(actions.restoreClassAction);
+    updateClassAction.mockResolvedValue({
+      id: "class-1",
+      name: "Algebra II Honors",
+      hoursPerWeek: 3,
+    });
+    archiveClassAction.mockResolvedValue({
+      id: "class-1",
+      archivedAt: "2026-08-19T00:00:00.000Z",
+    });
+    restoreClassAction.mockResolvedValue({ id: "class-1", archivedAt: null });
+
+    await openAlgebraDetail(user);
+
+    // Edit
+    await user.click(screen.getByRole("button", { name: /^\s*edit\s*$/i }));
+    const editDialog = screen.getByRole("dialog");
+    expect(
+      within(editDialog).getByDisplayValue("Algebra II"),
+    ).toBeInTheDocument();
+    await user.click(within(editDialog).getByRole("button", { name: /save/i }));
+    await waitFor(() => {
+      expect(updateClassAction).toHaveBeenCalledWith(
+        expect.objectContaining({ classId: "class-1" }),
+      );
+    });
+    expect(await screen.findByText("Algebra II Honors")).toBeInTheDocument();
+
+    // Archive
+    await user.click(screen.getByRole("button", { name: /^\s*archive\s*$/i }));
+    await waitFor(() => {
+      expect(archiveClassAction).toHaveBeenCalledWith("class-1");
+    });
+    expect(await screen.findByText("Archived")).toBeInTheDocument();
+
+    // Restore
+    await user.click(screen.getByRole("button", { name: /^\s*restore\s*$/i }));
+    await waitFor(() => {
+      expect(restoreClassAction).toHaveBeenCalledWith("class-1");
+    });
+    expect(await screen.findByText("Active")).toBeInTheDocument();
+  });
+
+  it("jumps to a student's detail and to the Quizzes tab from the class detail view", async () => {
+    const user = userEvent.setup();
+
+    await openAlgebraDetail(user);
+
+    await user.click(screen.getByText("Maya Carter"));
+    expect(
+      screen.getByRole("button", { name: /back to students/i }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: /classes/i }));
+    await user.click(screen.getByText("Algebra II"));
+    await user.click(screen.getByRole("button", { name: /go to quizzes/i }));
+    expect(
+      screen.getByRole("button", { name: /new quiz/i }),
+    ).toBeInTheDocument();
+  });
+});
