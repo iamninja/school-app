@@ -362,4 +362,61 @@ describe("TeacherDashboard student detail - edit", () => {
       );
     });
   });
+
+  it("falls back to the snapshotted class name for a deleted class's attendance record", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <TeacherDashboard
+        {...baseProps}
+        initialAttendance={[
+          {
+            studentId: "student-1",
+            classId: null,
+            className: "Old Chemistry",
+            attendanceDate: "2026-01-05",
+            status: "present",
+          },
+        ]}
+      />,
+    );
+
+    await user.click(screen.getByRole("tab", { name: /students/i }));
+    await user.click(screen.getByText(/maya carter/i));
+
+    expect(screen.getByText("Old Chemistry")).toBeInTheDocument();
+  });
+
+  it("prefers the live class name over the snapshot when the class still exists", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <TeacherDashboard
+        {...baseProps}
+        initialAttendance={[
+          {
+            studentId: "student-1",
+            classId: "class-1",
+            className: "stale snapshot, should be ignored",
+            attendanceDate: "2026-01-05",
+            status: "present",
+          },
+        ]}
+      />,
+    );
+
+    await user.click(screen.getByRole("tab", { name: /students/i }));
+    await user.click(screen.getByText(/maya carter/i));
+
+    // "Attendance" also matches the sidebar tab label - find the panel
+    // heading specifically (the one with a .rounded-lg card ancestor).
+    const attendancePanel = screen
+      .getAllByText("Attendance")
+      .map((el) => el.closest(".rounded-lg"))
+      .find((el): el is HTMLElement => el !== null) as HTMLElement;
+    expect(within(attendancePanel).getByText("Algebra II")).toBeInTheDocument();
+    expect(
+      screen.queryByText("stale snapshot, should be ignored"),
+    ).not.toBeInTheDocument();
+  });
 });
