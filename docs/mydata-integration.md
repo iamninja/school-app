@@ -41,7 +41,7 @@ already stored per-environment in `private.integration_credentials`.
 `vatCategory` and `vatExemptionCategory` both being `7` is a coincidence —
 they are different enumerations and must not be conflated.
 
-### ⚠️ Άρθρο 22 is now Άρθρο 27 — needs a decision
+### Άρθρο 22 is now Άρθρο 27 — decided 2026-08-20: use άρθρο 27
 
 §8.3 lists exemption reasons in two columns: the old law (ν. 2859/2000),
 **struck through**, and the current one (ν. 5144/2024). Code `7` is:
@@ -54,10 +54,16 @@ The whole VAT Code was renumbered (13→17, 14→18, 16→21, 19→24, **22→27
 transmission is unaffected — but the human-readable exemption wording
 printed on the receipt is not.
 
-`components/receipt-document.tsx` currently prints *"απαλλαγή κατ' άρθρο
-22 του Κώδικα ΦΠΑ"*, which is the superseded citation. Changing it is a
-legal-wording question, not a code one — confirm with an accountant
-before editing.
+**Resolved:** receipts now print *"απαλλαγή κατ' άρθρο 27 του Κώδικα
+ΦΠΑ"*, and the stored identifier was renamed `exempt_article_22` →
+`exempt_article_27` (migration `20260820160506`) so it can't contradict
+what's printed.
+
+`components/receipt-document.tsx` deliberately still recognises the old
+identifier. A receipt already issued is a historical record: reprinting
+one must reproduce the citation it carried when issued, not silently
+restate it under the new law. Both cases are covered by tests in
+`tests/teacher-receipts.test.tsx`.
 
 ## Structural rules worth remembering
 

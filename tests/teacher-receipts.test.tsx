@@ -258,6 +258,46 @@ describe("TeacherReceipts", () => {
     expect(screen.getByText("Δίδακτρα Σεπτεμβρίου")).toBeInTheDocument();
   });
 
+  it("prints the current-law VAT exemption citation, not the superseded one", async () => {
+    // ν. 5144/2024 renumbered the VAT Code, moving this exemption from
+    // άρθρο 22 to άρθρο 27. Asserted because it's a legally significant
+    // string that would otherwise be free to drift unnoticed.
+    const user = userEvent.setup();
+    render(
+      <TeacherReceipts
+        initialReceipts={[
+          { ...existingReceipt, vat_category: "exempt_article_27" },
+        ]}
+        families={families}
+        business={business}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /^view$/i }));
+
+    expect(screen.getByText(/άρθρο 27 του Κώδικα ΦΠΑ/)).toBeInTheDocument();
+    expect(screen.queryByText(/άρθρο 22/)).not.toBeInTheDocument();
+  });
+
+  it("still renders the original wording for a receipt issued under the old citation", async () => {
+    // An already-issued receipt is a historical record - reprinting it must
+    // reproduce what it said when issued, not silently restate it.
+    const user = userEvent.setup();
+    render(
+      <TeacherReceipts
+        initialReceipts={[
+          { ...existingReceipt, vat_category: "exempt_article_22" },
+        ]}
+        families={families}
+        business={business}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /^view$/i }));
+
+    expect(screen.getByText(/άρθρο 22 του Κώδικα ΦΠΑ/)).toBeInTheDocument();
+  });
+
   it("deletes a receipt after confirming, and does nothing when cancelled", async () => {
     const user = userEvent.setup();
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);

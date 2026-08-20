@@ -3,7 +3,14 @@ import { el } from "date-fns/locale";
 
 import type { BusinessProfile, Receipt } from "@/lib/types/database";
 
+// Άρθρο 27 under ν. 5144/2024, which renumbered the VAT Code - this is
+// the exemption previously cited as άρθρο 22 of ν. 2859/2000. The myDATA
+// vatExemptionCategory code is 7 either way (see docs/mydata-integration.md);
+// only the printed citation changed.
 const VAT_NOTES: Record<string, string> = {
+  exempt_article_27:
+    "Χωρίς ΦΠΑ — απαλλαγή κατ' άρθρο 27 του Κώδικα ΦΠΑ (παράδοση ιδιαίτερων μαθημάτων).",
+  // Receipts issued before the rename keep rendering their original wording.
   exempt_article_22:
     "Χωρίς ΦΠΑ — απαλλαγή κατ' άρθρο 22 του Κώδικα ΦΠΑ (παράδοση ιδιαίτερων μαθημάτων).",
 };
