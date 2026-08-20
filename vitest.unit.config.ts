@@ -21,6 +21,7 @@ export default defineConfig({
       "tests/parent-actions.test.ts",
       "tests/student-actions.test.ts",
       "tests/business-settings-actions.test.ts",
+      "tests/receipt-actions.test.ts",
     ],
   },
   resolve: {

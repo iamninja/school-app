@@ -21,6 +21,7 @@ import {
   LayersIcon,
   PencilIcon,
   PlusIcon,
+  ReceiptTextIcon,
   RotateCcwIcon,
   SearchIcon,
   Trash2Icon,
@@ -82,10 +83,12 @@ import {
   TeacherBusinessSettings,
   type CredentialStatusView,
 } from "@/components/teacher-business-settings";
+import { TeacherReceipts } from "@/components/teacher-receipts";
 import { ThemeSwitcher } from "@/components/theme-switcher";
 import type {
   BusinessProfile,
   IntegrationSettings,
+  Receipt,
   TeacherQuizListItem,
 } from "@/lib/types/database";
 
@@ -139,6 +142,12 @@ const SECTIONS = [
     label: "Quizzes",
     description: "Build and assign quizzes",
     icon: FileTextIcon,
+  },
+  {
+    value: "receipts",
+    label: "Receipts",
+    description: "Issue and print receipts",
+    icon: ReceiptTextIcon,
   },
   {
     value: "business",
@@ -219,6 +228,7 @@ type TeacherDashboardProps = {
   businessProfile?: BusinessProfile | null;
   integrationSettings?: IntegrationSettings[];
   credentialStatuses?: Record<string, CredentialStatusView>;
+  initialReceipts?: Receipt[];
   loadErrors?: string[];
 };
 
@@ -401,6 +411,7 @@ export function TeacherDashboard({
   businessProfile = null,
   integrationSettings = [],
   credentialStatuses = {},
+  initialReceipts = [],
   loadErrors = [],
 }: TeacherDashboardProps) {
   const sensors = useSensors(
@@ -3170,6 +3181,14 @@ export function TeacherDashboard({
           <TeacherQuizBuilder
             classes={activeClasses.map(({ id, name }) => ({ id, name }))}
             initialQuizzes={initialQuizzes}
+          />
+        </TabsContent>
+
+        <TabsContent value="receipts" className="mt-0">
+          <TeacherReceipts
+            initialReceipts={initialReceipts}
+            families={initialFamilies}
+            business={businessProfile}
           />
         </TabsContent>
 

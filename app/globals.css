@@ -256,3 +256,39 @@ body.theme-console {
 @utility mask-fade-b {
   mask-image: linear-gradient(to bottom, black 55%, transparent 100%);
 }
+
+/*
+ * Printing a receipt. Rather than pull in a PDF-rendering dependency, the
+ * receipt is laid out as normal DOM and everything else on the page is
+ * hidden at print time - the browser's own dialog then covers both "print
+ * to paper" and "save as PDF".
+ *
+ * visibility (not display) is deliberate: it keeps the printed element's
+ * ancestors in the layout tree, so the receipt can be positioned normally
+ * instead of collapsing along with the app chrome around it.
+ */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .receipt-print,
+  .receipt-print * {
+    visibility: visible;
+  }
+
+  .receipt-print {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    max-width: none;
+    padding: 0;
+    color: #000;
+    background: #fff;
+  }
+
+  @page {
+    margin: 18mm;
+  }
+}

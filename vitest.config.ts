@@ -32,6 +32,7 @@ export default defineConfig({
       "tests/parent-actions.test.ts",
       "tests/student-actions.test.ts",
       "tests/business-settings-actions.test.ts",
+      "tests/receipt-actions.test.ts",
     ],
     // isolate: false previously let files sharing a worker reuse the same
     // jsdom environment and module graph (React/Radix/KaTeX etc.) instead of
@@ -48,7 +49,15 @@ export default defineConfig({
     // that passes the same way every time regardless of file count/order.
     isolate: true,
     pool: "threads",
-    maxWorkers: 4,
+    // Dropped 4 -> 2 when the Receipts tab landed and the suite started
+    // dying with "Zone Allocation failed - process out of memory"
+    // (reproducible, not a one-off). isolate: true means every worker holds
+    // its own jsdom plus a full module graph - React, Radix, KaTeX, dnd-kit
+    // and now a considerably larger teacher-dashboard tree - so peak memory
+    // scales with worker count, and four copies no longer fit. Isolation is
+    // not negotiable here (see the note above: sharing workers leaked Radix
+    // Dialog state between files), so worker count is the thing that gives.
+    maxWorkers: 2,
   },
   resolve: {
     alias: {

@@ -498,3 +498,54 @@ export interface IntegrationSettings {
   enabled: boolean;
   updated_at: string;
 }
+
+// Receipts (Αποδείξεις Παροχής Υπηρεσιών). Recipient fields are
+// snapshotted at issue time, not joined - a receipt is a record of what
+// was issued that day, and later edits to a family must not change it.
+export type MyDataStatus = "not_submitted" | "submitted" | "failed";
+
+export interface ReceiptLineItem {
+  id: string;
+  student_id: string | null;
+  description: string;
+  amount: number;
+  order_index: number;
+}
+
+export interface Receipt {
+  id: string;
+  series: string;
+  receipt_number: number;
+  issue_date: string;
+  recipient_name: string;
+  recipient_afm: string | null;
+  recipient_address: string | null;
+  family_id: string | null;
+  total_amount: number;
+  vat_category: string;
+  notes: string | null;
+  mydata_status: MyDataStatus;
+  mydata_mark: string | null;
+  mydata_uid: string | null;
+  mydata_error: string | null;
+  mydata_submitted_at: string | null;
+  emailed_at: string | null;
+  created_at: string;
+  lineItems: ReceiptLineItem[];
+}
+
+export interface ReceiptLineItemInput {
+  studentId?: string | null;
+  description: string;
+  amount: number;
+}
+
+export interface CreateReceiptInput {
+  issueDate?: string;
+  recipientName: string;
+  recipientAfm?: string;
+  recipientAddress?: string;
+  familyId?: string | null;
+  notes?: string;
+  lineItems: ReceiptLineItemInput[];
+}
