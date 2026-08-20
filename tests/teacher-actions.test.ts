@@ -6,6 +6,7 @@ import {
   archiveClassAction,
   createClassAction,
   createStudentAction,
+  deleteClassAction,
   enrollStudentInClassAction,
   restoreClassAction,
   restoreStudentAction,
@@ -233,6 +234,7 @@ describe("teacher actions - setAttendanceAction", () => {
 
     const result = await setAttendanceAction({
       classId: "class-1",
+      className: "Algebra II",
       studentId: "student-1",
       attendanceDate: "2026-08-16",
       status: "",
@@ -252,6 +254,7 @@ describe("teacher actions - setAttendanceAction", () => {
 
     const result = await setAttendanceAction({
       classId: "class-1",
+      className: "Algebra II",
       studentId: "student-1",
       attendanceDate: "2026-08-16",
       status: "present",
@@ -260,7 +263,15 @@ describe("teacher actions - setAttendanceAction", () => {
     expect(result).toEqual({ studentId: "student-1", status: "present" });
     const chain = client.from.mock.results[0].value;
     expect(chain.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({ status: "present" }),
+      expect.objectContaining({
+        status: "present",
+        class_id: "class-1",
+        // class_name is a snapshot, not a live join - if this regresses
+        // (dropped, renamed, or left undefined), a deleted class's
+        // attendance history would show a blank/broken name instead of
+        // surviving via attendance_records.class_id ON DELETE SET NULL.
+        class_name: "Algebra II",
+      }),
       expect.objectContaining({
         onConflict: "teacher_id,class_id,student_id,attendance_date",
       }),
@@ -341,6 +352,35 @@ describe("teacher actions - archive/restore class round trip", () => {
 
     const restored = await restoreClassAction("class-1");
     expect(restored.archivedAt).toBeNull();
+  });
+});
+
+describe("teacher actions - deleteClassAction", () => {
+  beforeEach(() => {
+    vi.mocked(requireTeacher).mockResolvedValue(undefined);
+  });
+
+  it("deletes the class with no history guard", async () => {
+    vi.mocked(createClient).mockResolvedValue(
+      createMockSupabaseClient({
+        classes: { data: null, error: null },
+      }) as never,
+    );
+
+    await expect(deleteClassAction("class-1")).resolves.toBeUndefined();
+  });
+
+  it("throws when the delete is rejected (e.g. not owned by this teacher)", async () => {
+    vi.mocked(createClient).mockResolvedValue(
+      createMockSupabaseClient({
+        classes: {
+          data: null,
+          error: { code: "42501", message: "permission denied" },
+        },
+      }) as never,
+    );
+
+    await expect(deleteClassAction("class-1")).rejects.toThrow();
   });
 });
 

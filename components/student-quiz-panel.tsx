@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import { format } from "date-fns";
+import { el } from "date-fns/locale";
 import { toast } from "sonner";
 
 import {
@@ -318,10 +320,19 @@ export function StudentQuizPanel({
                     <MathText text={quiz.title} />
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {quiz.className}
+                    {quiz.className ||
+                      (quiz.submittedAt
+                        ? format(new Date(quiz.submittedAt), "d MMMM yyyy", {
+                            locale: el,
+                          })
+                        : "")}
                   </p>
                 </div>
-                {quiz.completed ? (
+                {quiz.quizDeleted ? (
+                  <Badge variant="outline">
+                    {quiz.score} / {quiz.maxScore}
+                  </Badge>
+                ) : quiz.completed ? (
                   <Button
                     variant="outline"
                     size="sm"

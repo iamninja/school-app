@@ -27,6 +27,7 @@ const quizzes = [
     score: null,
     maxScore: 1,
     submittedAt: null,
+    quizDeleted: false,
   },
 ];
 
@@ -97,6 +98,49 @@ describe("StudentQuizPanel", () => {
     expect(
       screen.getByRole("button", { name: /1 \/ 1.*ανασκόπηση/i }),
     ).toBeInTheDocument();
+  });
+
+  it("shows a plain score badge with no review button for a deleted quiz", () => {
+    render(
+      <StudentQuizPanel
+        quizzes={[
+          {
+            ...quizzes[0],
+            completed: true,
+            score: 1,
+            submittedAt: "2026-01-02T00:00:00Z",
+            quizDeleted: true,
+          },
+        ]}
+      />,
+    );
+
+    // The quiz itself is gone - there's nothing left to review, so this
+    // must not be a clickable button (which would call getQuizReviewAction
+    // with an attempt id instead of a real quiz id and fail).
+    expect(
+      screen.queryByRole("button", { name: /ανασκόπηση/i }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("1 / 1")).toBeInTheDocument();
+  });
+
+  it("shows the submission date instead of a class name for a deleted quiz", () => {
+    render(
+      <StudentQuizPanel
+        quizzes={[
+          {
+            ...quizzes[0],
+            className: "",
+            completed: true,
+            score: 1,
+            submittedAt: "2026-01-02T00:00:00Z",
+            quizDeleted: true,
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText(/2 Ιανουαρίου 2026/i)).toBeInTheDocument();
   });
 
   it("loads and displays quiz questions when taking a quiz", async () => {

@@ -104,6 +104,29 @@ describe("ParentDashboard", () => {
     ).toBeInTheDocument();
   });
 
+  it("falls back to the snapshotted class name for a deleted class's attendance record", () => {
+    render(
+      <ParentDashboard
+        {...baseProps}
+        kids={[
+          makeChild({
+            classes: [],
+            attendance: [
+              {
+                class_id: null,
+                class_name: "Old Trigonometry",
+                attendance_date: "2026-01-05",
+                status: "present",
+              },
+            ],
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("Old Trigonometry")).toBeInTheDocument();
+  });
+
   it("computes the attendance rate from present, late, and absent records", () => {
     render(
       <ParentDashboard
@@ -112,10 +135,10 @@ describe("ParentDashboard", () => {
           makeChild({
             classes: [{ id: "class-1", name: "Algebra II", hoursPerWeek: 3, archivedAt: null }],
             attendance: [
-              { class_id: "class-1", attendance_date: "2026-01-05", status: "present" },
-              { class_id: "class-1", attendance_date: "2026-01-06", status: "present" },
-              { class_id: "class-1", attendance_date: "2026-01-07", status: "late" },
-              { class_id: "class-1", attendance_date: "2026-01-08", status: "absent" },
+              { class_id: "class-1", class_name: "Algebra II", attendance_date: "2026-01-05", status: "present" },
+              { class_id: "class-1", class_name: "Algebra II", attendance_date: "2026-01-06", status: "present" },
+              { class_id: "class-1", class_name: "Algebra II", attendance_date: "2026-01-07", status: "late" },
+              { class_id: "class-1", class_name: "Algebra II", attendance_date: "2026-01-08", status: "absent" },
             ],
           }),
         ]}
@@ -167,6 +190,34 @@ describe("ParentDashboard", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows a deleted quiz's snapshotted title, date, and score", () => {
+    render(
+      <ParentDashboard
+        {...baseProps}
+        kids={[
+          makeChild({
+            quizzes: [
+              {
+                id: "attempt-1",
+                title: "Old Chapter 2 Quiz",
+                className: "",
+                completed: true,
+                score: 3,
+                maxScore: 5,
+                submittedAt: "2026-01-02T00:00:00Z",
+                quizDeleted: true,
+              },
+            ],
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("Old Chapter 2 Quiz")).toBeInTheDocument();
+    expect(screen.getByText("3 / 5")).toBeInTheDocument();
+    expect(screen.getByText(/2 Ιανουαρίου 2026/i)).toBeInTheDocument();
+  });
+
   it("lists quizzes with scores and a not-taken-yet state", () => {
     render(
       <ParentDashboard
@@ -182,6 +233,7 @@ describe("ParentDashboard", () => {
                 score: 4,
                 maxScore: 5,
                 submittedAt: "2026-01-02T00:00:00Z",
+                quizDeleted: false,
               },
               {
                 id: "quiz-2",
@@ -191,6 +243,7 @@ describe("ParentDashboard", () => {
                 score: null,
                 maxScore: 3,
                 submittedAt: null,
+                quizDeleted: false,
               },
             ],
           }),
@@ -219,6 +272,7 @@ describe("ParentDashboard", () => {
                 score: null,
                 maxScore: 5,
                 submittedAt: null,
+                quizDeleted: false,
               },
             ],
           }),
@@ -244,6 +298,7 @@ describe("ParentDashboard", () => {
                 score: null,
                 maxScore: 5,
                 submittedAt: null,
+                quizDeleted: false,
               },
             ],
           }),
@@ -281,6 +336,7 @@ describe("ParentDashboard", () => {
                 score: 5,
                 maxScore: 5,
                 submittedAt: "2026-01-02T00:00:00Z",
+                quizDeleted: false,
               },
             ],
           }),
@@ -305,6 +361,7 @@ describe("ParentDashboard", () => {
                 score: null,
                 maxScore: 3,
                 submittedAt: null,
+                quizDeleted: false,
               },
             ],
           }),

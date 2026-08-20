@@ -11,6 +11,7 @@ vi.mock("@/app/protected/teacher/actions", () => ({
   archiveClassAction: vi.fn(),
   createClassAction: vi.fn(),
   createStudentAction: vi.fn(),
+  deleteClassAction: vi.fn(),
   enrollStudentInClassAction: vi.fn(),
   getAttendanceAction: vi.fn().mockResolvedValue([]),
   restoreClassAction: vi.fn(),
@@ -306,5 +307,74 @@ describe("TeacherDashboard class detail - rendering and navigation", () => {
     expect(
       screen.getByRole("button", { name: /new quiz/i }),
     ).toBeInTheDocument();
+  });
+
+  it("deletes the class from the detail view after confirming, and does nothing if cancelled", async () => {
+    const user = userEvent.setup();
+    const deleteClassAction = vi.mocked(actions.deleteClassAction);
+    deleteClassAction.mockResolvedValue(undefined);
+    const confirmSpy = vi.spyOn(window, "confirm");
+
+    await openAlgebraDetail(user);
+
+    confirmSpy.mockReturnValueOnce(false);
+    await user.click(screen.getByRole("button", { name: /^\s*delete\s*$/i }));
+    expect(deleteClassAction).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("button", { name: /back to classes/i }),
+    ).toBeInTheDocument();
+
+    confirmSpy.mockReturnValueOnce(true);
+    await user.click(screen.getByRole("button", { name: /^\s*delete\s*$/i }));
+    await waitFor(() => {
+      expect(deleteClassAction).toHaveBeenCalledWith("class-1");
+    });
+
+    // The class is gone - the detail view can't show it anymore, so we
+    // should be back on the (now empty) class list.
+    expect(screen.queryByText("Algebra II")).not.toBeInTheDocument();
+
+    confirmSpy.mockRestore();
+  });
+
+  it("deletes the class from the flat list row after confirming, without opening the detail view", async () => {
+    const user = userEvent.setup();
+    const deleteClassAction = vi.mocked(actions.deleteClassAction);
+    deleteClassAction.mockResolvedValue(undefined);
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    render(<TeacherDashboard {...baseProps} />);
+    await user.click(screen.getByRole("tab", { name: /classes/i }));
+
+    await user.click(screen.getByRole("button", { name: /^\s*delete\s*$/i }));
+
+    await waitFor(() => {
+      expect(deleteClassAction).toHaveBeenCalledWith("class-1");
+    });
+    expect(screen.queryByText("Algebra II")).not.toBeInTheDocument();
+    // Deleting from the row is not the same click target as viewing the
+    // class - the stopPropagation on the button must hold, or this would
+    // also navigate into the (now-deleted) class's detail view.
+    expect(
+      screen.queryByRole("button", { name: /back to classes/i }),
+    ).not.toBeInTheDocument();
+
+    confirmSpy.mockRestore();
+  });
+
+  it("does not delete the class from the list row if the confirmation is cancelled", async () => {
+    const user = userEvent.setup();
+    const deleteClassAction = vi.mocked(actions.deleteClassAction);
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+
+    render(<TeacherDashboard {...baseProps} />);
+    await user.click(screen.getByRole("tab", { name: /classes/i }));
+
+    await user.click(screen.getByRole("button", { name: /^\s*delete\s*$/i }));
+
+    expect(deleteClassAction).not.toHaveBeenCalled();
+    expect(screen.getByText("Algebra II")).toBeInTheDocument();
+
+    confirmSpy.mockRestore();
   });
 });

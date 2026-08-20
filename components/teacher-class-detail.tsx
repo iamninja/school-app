@@ -5,6 +5,7 @@ import {
   ArchiveIcon,
   PencilIcon,
   RotateCcwIcon,
+  Trash2Icon,
   UserPlusIcon,
   XIcon,
 } from "lucide-react";
@@ -53,6 +54,7 @@ type TeacherClassDetailProps = {
   onEdit: () => void;
   onArchive: () => void;
   onRestore: () => void;
+  onDelete: () => void;
   onViewStudent: (studentId: string) => void;
   onGoToQuizzes: () => void;
   onEnrollStudent: (studentId: string) => void;
@@ -71,6 +73,7 @@ export function TeacherClassDetail({
   onEdit,
   onArchive,
   onRestore,
+  onDelete,
   onViewStudent,
   onGoToQuizzes,
   onEnrollStudent,
@@ -137,6 +140,14 @@ export function TeacherClassDetail({
                 <ArchiveIcon className="mr-1 h-3.5 w-3.5" /> Archive
               </Button>
             )}
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onDelete}
+              disabled={isSavingClass}
+            >
+              <Trash2Icon className="mr-1 h-3.5 w-3.5" /> Delete
+            </Button>
             <Button type="button" variant="outline" onClick={onBack}>
               Back to classes
             </Button>

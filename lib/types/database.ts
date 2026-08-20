@@ -76,7 +76,8 @@ export interface ClassScheduleSlot {
 export interface AttendanceRecord {
   id: string;
   student_id: string;
-  class_id: string;
+  class_id: string | null;
+  class_name: string;
   attendance_date: string;
   status: string;
   created_at?: string;
@@ -212,6 +213,10 @@ export interface QuizSummary {
   score: number | null;
   maxScore: number;
   submittedAt: string | null;
+  // True only for a snapshot entry surfaced after the teacher deleted the
+  // quiz - `id` is the attempt's own id in that case, not a real quiz id,
+  // so there's nothing left to fetch a review/breakdown for.
+  quizDeleted: boolean;
 }
 
 // Teacher-side: authoring input
@@ -345,7 +350,8 @@ export interface StudentDashboardData {
     time: string;
   }>;
   attendance: Array<{
-    class_id: string;
+    class_id: string | null;
+    class_name: string;
     attendance_date: string;
     status: string;
   }>;
@@ -375,7 +381,8 @@ export interface ParentDashboardChild {
     time: string;
   }>;
   attendance: Array<{
-    class_id: string;
+    class_id: string | null;
+    class_name: string;
     attendance_date: string;
     status: string;
   }>;

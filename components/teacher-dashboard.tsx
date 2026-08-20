@@ -22,6 +22,7 @@ import {
   PlusIcon,
   RotateCcwIcon,
   SearchIcon,
+  Trash2Icon,
   UsersIcon,
   XIcon,
 } from "lucide-react";
@@ -31,6 +32,7 @@ import {
   archiveClassAction,
   createClassAction,
   createStudentAction,
+  deleteClassAction,
   enrollStudentInClassAction,
   getAttendanceAction,
   restoreClassAction,
@@ -177,7 +179,8 @@ type FamilyItem = {
 
 type AttendanceRecord = {
   studentId: string;
-  classId: string;
+  classId: string | null;
+  className: string;
   attendanceDate: string;
   status: "present" | "late" | "absent";
 };
@@ -658,6 +661,37 @@ export function TeacherDashboard({
     }
   };
 
+  const handleDeleteClass = async (classId: string) => {
+    if (
+      !window.confirm(
+        "Delete this class? Attendance history is kept, but the class itself, its schedule, and any quiz assignments are gone for good.",
+      )
+    ) {
+      return;
+    }
+    try {
+      await deleteClassAction(classId);
+      setClasses((prev) => prev.filter((item) => item.id !== classId));
+      setSchedule((prev) => {
+        const next = { ...prev };
+        for (const [slotId, scheduledClassId] of Object.entries(next)) {
+          if (scheduledClassId === classId) {
+            next[slotId] = null;
+          }
+        }
+        return next;
+      });
+      if (selectedClassId === classId) {
+        setSelectedClassId(null);
+      }
+      toast.success("Class deleted");
+    } catch (error: unknown) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to delete class",
+      );
+    }
+  };
+
   const handleEnrollStudent = async (studentId: string, classId: string) => {
     setIsMutatingEnrollment(true);
     try {
@@ -1120,6 +1154,11 @@ export function TeacherDashboard({
     closeEditStudentDialog();
   };
 
+  const attendanceClassName = React.useMemo(
+    () => classes.find((item) => item.id === attendanceClassId)?.name ?? "",
+    [attendanceClassId, classes],
+  );
+
   const attendanceRoster = React.useMemo(() => {
     if (!attendanceClassId) {
       return [];
@@ -1165,6 +1204,7 @@ export function TeacherDashboard({
           next.unshift({
             studentId,
             classId: attendanceClassId,
+            className: attendanceClassName,
             attendanceDate: attendanceDateKey,
             status,
           });
@@ -1172,7 +1212,7 @@ export function TeacherDashboard({
         return next;
       });
     },
-    [attendanceClassId, attendanceDateKey],
+    [attendanceClassId, attendanceClassName, attendanceDateKey],
   );
 
   React.useEffect(() => {
@@ -1474,6 +1514,7 @@ export function TeacherDashboard({
                   onEdit={() => openEditClassDialog(classItem.id)}
                   onArchive={() => void handleArchiveClass(classItem.id)}
                   onRestore={() => void handleRestoreClass(classItem.id)}
+                  onDelete={() => void handleDeleteClass(classItem.id)}
                   onViewStudent={(studentId) => {
                     setSection("students");
                     setSelectedStudentId(studentId);
@@ -1614,6 +1655,18 @@ export function TeacherDashboard({
                                 Archive
                               </Button>
                             )}
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void handleDeleteClass(item.id);
+                              }}
+                            >
+                              <Trash2Icon className="mr-1 h-3.5 w-3.5" />{" "}
+                              Delete
+                            </Button>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -1945,7 +1998,7 @@ export function TeacherDashboard({
                                     const className =
                                       classes.find(
                                         (item) => item.id === record.classId,
-                                      )?.name ?? "Unknown class";
+                                      )?.name ?? record.className;
                                     return (
                                       <div
                                         key={`${record.studentId}-${record.classId}-${record.attendanceDate}`}
@@ -2994,6 +3047,7 @@ export function TeacherDashboard({
                                 }));
                                 await setAttendanceAction({
                                   classId: attendanceClassId,
+                                  className: attendanceClassName,
                                   studentId: student.id,
                                   attendanceDate: attendanceDateKey,
                                   status: nextStatus,
@@ -3028,6 +3082,7 @@ export function TeacherDashboard({
                                 }));
                                 await setAttendanceAction({
                                   classId: attendanceClassId,
+                                  className: attendanceClassName,
                                   studentId: student.id,
                                   attendanceDate: attendanceDateKey,
                                   status: nextStatus,
@@ -3062,6 +3117,7 @@ export function TeacherDashboard({
                                 }));
                                 await setAttendanceAction({
                                   classId: attendanceClassId,
+                                  className: attendanceClassName,
                                   studentId: student.id,
                                   attendanceDate: attendanceDateKey,
                                   status: nextStatus,

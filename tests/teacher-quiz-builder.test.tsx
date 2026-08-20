@@ -7,6 +7,7 @@ import * as quizActions from "@/app/protected/teacher/quiz-actions";
 
 vi.mock("@/app/protected/teacher/quiz-actions", () => ({
   createQuizAction: vi.fn(),
+  deleteQuizAction: vi.fn(),
   getQuizResultsAction: vi.fn(),
   getStudentQuizAttemptAction: vi.fn(),
   assignQuizToClassAction: vi.fn(),
@@ -766,6 +767,34 @@ describe("TeacherQuizBuilder", () => {
       expect(screen.getByText("Chapter 3 Quiz (copy)")).toBeInTheDocument();
       expect(screen.getAllByText("Unassigned").length).toBeGreaterThan(0);
     });
+  });
+
+  it("deletes a quiz after confirming, and does nothing if cancelled", async () => {
+    const user = userEvent.setup();
+    const deleteQuizAction = vi.mocked(quizActions.deleteQuizAction);
+    deleteQuizAction.mockResolvedValue(undefined);
+    const confirmSpy = vi.spyOn(window, "confirm");
+
+    render(
+      <TeacherQuizBuilder
+        classes={classes}
+        initialQuizzes={[{ ...baseQuiz, hasAttempts: true }]}
+      />,
+    );
+
+    confirmSpy.mockReturnValueOnce(false);
+    await user.click(screen.getByRole("button", { name: /^delete$/i }));
+    expect(deleteQuizAction).not.toHaveBeenCalled();
+    expect(screen.getByText("Chapter 3 Quiz")).toBeInTheDocument();
+
+    confirmSpy.mockReturnValueOnce(true);
+    await user.click(screen.getByRole("button", { name: /^delete$/i }));
+    await waitFor(() => {
+      expect(deleteQuizAction).toHaveBeenCalledWith("quiz-1");
+    });
+    expect(screen.queryByText("Chapter 3 Quiz")).not.toBeInTheDocument();
+
+    confirmSpy.mockRestore();
   });
 
   it("shows a per-question answer distribution and each student's answer", async () => {

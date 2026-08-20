@@ -242,7 +242,12 @@ function ChildSection({
                           <MathText text={quiz.title} />
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {quiz.className}
+                          {quiz.className ||
+                            (quiz.submittedAt
+                              ? format(new Date(quiz.submittedAt), "d MMMM yyyy", {
+                                  locale: el,
+                                })
+                              : "")}
                         </p>
                       </div>
                       {quiz.completed ? (
@@ -286,7 +291,7 @@ function ChildSection({
                     >
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium">
-                          {classInfo?.name || "Άγνωστο τμήμα"}
+                          {classInfo?.name || record.class_name}
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {format(

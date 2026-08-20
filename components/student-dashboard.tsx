@@ -48,7 +48,8 @@ type StudentDashboardProps = {
     time: string;
   }>;
   attendance: Array<{
-    class_id: string;
+    class_id: string | null;
+    class_name: string;
     attendance_date: string;
     status: string;
   }>;
@@ -246,7 +247,7 @@ export function StudentDashboard(props: StudentDashboardProps) {
                           >
                             <div className="min-w-0">
                               <p className="truncate text-sm font-medium">
-                                {classInfo?.name || "Άγνωστο τμήμα"}
+                                {classInfo?.name || record.class_name}
                               </p>
                               <p className="text-xs text-muted-foreground">
                                 {format(

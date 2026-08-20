@@ -116,6 +116,34 @@ export async function archiveClassAction(classId: string) {
   return { id: classId, archivedAt };
 }
 
+export async function deleteClassAction(classId: string): Promise<void> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error("Not authenticated");
+  }
+
+  await requireTeacher(supabase, user.id);
+
+  // No history-check guard - attendance_records.class_id is ON DELETE SET
+  // NULL with class_name snapshotted at record time, so a student's
+  // attendance history survives the class itself being deleted.
+  // student_class_assignments and quiz_assignments cascade away freely -
+  // they're current-membership rows, not history.
+  const { error } = await supabase
+    .from("classes")
+    .delete()
+    .eq("id", classId)
+    .eq("teacher_id", user.id);
+
+  if (error) {
+    throw error;
+  }
+}
+
 export async function restoreClassAction(classId: string) {
   const supabase = await createClient();
   const {
@@ -688,6 +716,7 @@ export async function getAttendanceAction(data: {
 
 export async function setAttendanceAction(data: {
   classId: string;
+  className: string;
   studentId: string;
   attendanceDate: string;
   status: "present" | "late" | "absent" | "";
@@ -727,6 +756,7 @@ export async function setAttendanceAction(data: {
       {
         teacher_id: user.id,
         class_id: data.classId,
+        class_name: data.className,
         student_id: data.studentId,
         attendance_date: data.attendanceDate,
         status: data.status,

@@ -7,12 +7,14 @@ import {
   CopyIcon,
   PencilIcon,
   PlusIcon,
+  Trash2Icon,
   UsersIcon,
 } from "lucide-react";
 
 import {
   assignQuizToClassAction,
   createQuizAction,
+  deleteQuizAction,
   duplicateQuizAction,
   getQuizForEditingAction,
   getQuizQuestionBreakdownAction,
@@ -103,6 +105,9 @@ export function TeacherQuizBuilder({
   const [duplicatingQuizId, setDuplicatingQuizId] = React.useState<
     string | null
   >(null);
+  const [deletingQuizId, setDeletingQuizId] = React.useState<string | null>(
+    null,
+  );
 
   const [breakdownQuizId, setBreakdownQuizId] = React.useState<string | null>(
     null,
@@ -332,6 +337,28 @@ export function TeacherQuizBuilder({
       );
     } finally {
       setIsLoadingBreakdown(false);
+    }
+  };
+
+  const handleDeleteQuiz = async (quizId: string) => {
+    if (
+      !window.confirm(
+        "Delete this quiz? Any students who took it keep their score in their own history, but the questions and full breakdown are gone for good.",
+      )
+    ) {
+      return;
+    }
+    setDeletingQuizId(quizId);
+    try {
+      await deleteQuizAction(quizId);
+      setQuizzes((prev) => prev.filter((quiz) => quiz.id !== quizId));
+      toast.success("Quiz deleted");
+    } catch (error: unknown) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to delete quiz",
+      );
+    } finally {
+      setDeletingQuizId(null);
     }
   };
 
@@ -674,6 +701,16 @@ export function TeacherQuizBuilder({
                     >
                       <CopyIcon className="mr-1 h-3.5 w-3.5" />
                       {duplicatingQuizId === quiz.id ? "Copying..." : "Copy"}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={deletingQuizId === quiz.id}
+                      onClick={() => void handleDeleteQuiz(quiz.id)}
+                    >
+                      <Trash2Icon className="mr-1 h-3.5 w-3.5" />
+                      {deletingQuizId === quiz.id ? "Deleting..." : "Delete"}
                     </Button>
                   </div>
                 </div>

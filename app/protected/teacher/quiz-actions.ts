@@ -405,6 +405,31 @@ export async function duplicateQuizAction(
   return buildQuizListItem(supabase, newQuiz);
 }
 
+export async function deleteQuizAction(quizId: string): Promise<void> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error("Not authenticated");
+  }
+
+  await requireTeacher(supabase, user.id);
+
+  const quiz = await requireOwnedQuiz(supabase, quizId, user.id);
+
+  // No attempt-count guard - quiz_attempts.quiz_id is ON DELETE SET NULL
+  // with quiz_title/max_score snapshotted at submission time, so a
+  // student's history of taking this quiz survives the quiz itself being
+  // deleted. Only the live questions/options/answer detail are lost.
+  const { error } = await supabase.from("quizzes").delete().eq("id", quiz.id);
+
+  if (error) {
+    throw error;
+  }
+}
+
 export async function getQuizResultsAction(
   quizId: string,
 ): Promise<QuizResults> {
@@ -466,10 +491,31 @@ export async function getQuizResultsAction(
     throw classAssignmentsError;
   }
 
-  const studentIds = [
+  const currentRosterIds = [
     ...new Set(
       (classAssignments ?? []).map((assignment) => assignment.student_id),
     ),
+  ];
+
+  const { data: attempts, error: attemptsError } = await supabase
+    .from("quiz_attempts")
+    .select("id, student_id, score, submitted_at")
+    .eq("quiz_id", quizId);
+
+  if (attemptsError) {
+    throw attemptsError;
+  }
+
+  // Union of the current class roster (so a student who hasn't taken it
+  // yet still shows as "not started") and everyone who has ever attempted
+  // this quiz (so a past result doesn't silently disappear just because
+  // the quiz was later reassigned to a different class) - matches
+  // getQuizQuestionBreakdownAction's roster, which already gets this right.
+  const studentIds = [
+    ...new Set([
+      ...currentRosterIds,
+      ...(attempts ?? []).map((attempt) => attempt.student_id),
+    ]),
   ];
 
   // Fetched separately rather than embedded via a join - PostgREST's embed
@@ -486,15 +532,6 @@ export async function getQuizResultsAction(
   const studentById = new Map(
     (students ?? []).map((student) => [student.id, student]),
   );
-
-  const { data: attempts, error: attemptsError } = await supabase
-    .from("quiz_attempts")
-    .select("id, student_id, score, submitted_at")
-    .eq("quiz_id", quizId);
-
-  if (attemptsError) {
-    throw attemptsError;
-  }
 
   const attemptByStudent = new Map(
     (attempts ?? []).map((attempt) => [attempt.student_id, attempt]),

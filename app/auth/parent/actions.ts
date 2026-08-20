@@ -172,7 +172,7 @@ export async function getParentDashboardDataAction(): Promise<
 
       const { data: attendance } = await supabase
         .from("attendance_records")
-        .select("class_id, attendance_date, status")
+        .select("class_id, class_name, attendance_date, status")
         .eq("student_id", student.id)
         .order("attendance_date", { ascending: false })
         .limit(50);
@@ -238,9 +238,34 @@ export async function getParentDashboardDataAction(): Promise<
               score: attempt?.score ?? null,
               maxScore: maxScoreByQuiz.get(quiz.id) ?? 0,
               submittedAt: attempt?.submitted_at ?? null,
+              quizDeleted: false,
             };
           });
         }
+      }
+
+      // Attempts whose quiz has since been deleted (quiz_id is SET NULL on
+      // delete) aren't reachable via quiz_assignments above - the quiz's
+      // own assignment rows are gone too. Surface them from their
+      // quiz_title/max_score snapshot instead, so a student doesn't lose
+      // their own history just because the teacher deleted the quiz.
+      const { data: orphanedAttempts } = await supabase
+        .from("quiz_attempts")
+        .select("id, quiz_title, max_score, score, submitted_at")
+        .eq("student_id", student.id)
+        .is("quiz_id", null);
+
+      for (const attempt of orphanedAttempts ?? []) {
+        quizzes.push({
+          id: attempt.id,
+          title: attempt.quiz_title,
+          className: "",
+          completed: true,
+          score: attempt.score,
+          maxScore: attempt.max_score,
+          submittedAt: attempt.submitted_at,
+          quizDeleted: true,
+        });
       }
 
       return {

@@ -5,6 +5,8 @@ import { ExpectedError } from "@/lib/expected-error";
 import {
   assignQuizToClassAction,
   createQuizAction,
+  deleteQuizAction,
+  getQuizResultsAction,
   updateQuizAction,
 } from "@/app/protected/teacher/quiz-actions";
 import { createMockSupabaseClient } from "./support/mock-supabase";
@@ -159,6 +161,90 @@ describe("teacher quiz actions - createQuizAction", () => {
     expect(
       withoutClasses.from.mock.calls.filter(([t]) => t === "quiz_assignments"),
     ).toHaveLength(1);
+  });
+});
+
+describe("teacher quiz actions - deleteQuizAction", () => {
+  it("deletes the quiz with no guard, even if it has attempts", async () => {
+    vi.mocked(requireTeacher).mockResolvedValue(undefined);
+    vi.mocked(createClient).mockResolvedValue(
+      createMockSupabaseClient({
+        quizzes: [
+          { data: quizRow, error: null }, // requireOwnedQuiz
+          { data: null, error: null }, // delete
+        ],
+      }) as never,
+    );
+
+    await expect(deleteQuizAction("quiz-1")).resolves.toBeUndefined();
+  });
+
+  it("throws when the quiz isn't owned by this teacher", async () => {
+    vi.mocked(requireTeacher).mockResolvedValue(undefined);
+    vi.mocked(createClient).mockResolvedValue(
+      createMockSupabaseClient({
+        quizzes: { data: null, error: null },
+      }) as never,
+    );
+
+    await expect(deleteQuizAction("quiz-missing")).rejects.toThrow(
+      "Quiz not found",
+    );
+  });
+});
+
+describe("teacher quiz actions - getQuizResultsAction roster", () => {
+  it("keeps a past result visible even after the quiz is reassigned to a different class", async () => {
+    vi.mocked(requireTeacher).mockResolvedValue(undefined);
+    vi.mocked(createClient).mockResolvedValue(
+      createMockSupabaseClient({
+        quizzes: { data: quizRow, error: null },
+        quiz_questions: { data: [{ id: "q1", points: 5 }], error: null },
+        // Quiz is now only assigned to class-2.
+        quiz_assignments: { data: [{ class_id: "class-2" }], error: null },
+        // class-2's current roster is just student-B.
+        student_class_assignments: {
+          data: [{ student_id: "student-b" }],
+          error: null,
+        },
+        // student-a took it in the past (while it was assigned to a
+        // different class) and isn't on the current roster anymore.
+        quiz_attempts: {
+          data: [
+            {
+              id: "attempt-1",
+              student_id: "student-a",
+              score: 4,
+              submitted_at: "2026-01-02T00:00:00Z",
+            },
+          ],
+          error: null,
+        },
+        students: {
+          data: [
+            { id: "student-a", first_name: "Alex", last_name: "A" },
+            { id: "student-b", first_name: "Blair", last_name: "B" },
+          ],
+          error: null,
+        },
+        quiz_attempt_answers: { data: [], error: null },
+      }) as never,
+    );
+
+    const results = await getQuizResultsAction("quiz-1");
+
+    const studentAResult = results.results.find(
+      (row) => row.studentId === "student-a",
+    );
+    expect(studentAResult).toBeDefined();
+    expect(studentAResult?.completed).toBe(true);
+    expect(studentAResult?.score).toBe(4);
+
+    const studentBResult = results.results.find(
+      (row) => row.studentId === "student-b",
+    );
+    expect(studentBResult).toBeDefined();
+    expect(studentBResult?.completed).toBe(false);
   });
 });
 

@@ -276,12 +276,22 @@ export async function submitQuizAttemptAction(
     });
   }
 
+  const maxScore = (questions ?? []).reduce(
+    (sum, question) => sum + question.points,
+    0,
+  );
+
+  // quiz_title/max_score are a snapshot, not a live join - if the quiz is
+  // later deleted, this attempt (and the student's history of it) survives
+  // via ON DELETE SET NULL, even though the questions/answer detail don't.
   const { data: attempt, error: attemptError } = await supabase
     .from("quiz_attempts")
     .insert({
       quiz_id: quizId,
       student_id: studentId,
       score: totalScore,
+      quiz_title: quiz.title,
+      max_score: maxScore,
     })
     .select("id, submitted_at")
     .single();
@@ -310,11 +320,6 @@ export async function submitQuizAttemptAction(
     .delete()
     .eq("quiz_id", quizId)
     .eq("student_id", studentId);
-
-  const maxScore = (questions ?? []).reduce(
-    (sum, question) => sum + question.points,
-    0,
-  );
 
   return {
     attemptId: attempt.id,

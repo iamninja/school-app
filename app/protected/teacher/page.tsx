@@ -67,7 +67,7 @@ export default async function TeacherPage() {
       .order("created_at", { ascending: false }),
     supabase
       .from("attendance_records")
-      .select("student_id, class_id, attendance_date, status")
+      .select("student_id, class_id, class_name, attendance_date, status")
       .eq("teacher_id", user.id)
       .order("attendance_date", { ascending: false }),
     supabase
@@ -153,6 +153,7 @@ export default async function TeacherPage() {
   const initialAttendance = (attendance ?? []).map((record) => ({
     studentId: record.student_id,
     classId: record.class_id,
+    className: record.class_name,
     attendanceDate: record.attendance_date,
     status: record.status,
   }));
