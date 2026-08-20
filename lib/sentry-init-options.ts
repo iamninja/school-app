@@ -1,4 +1,4 @@
-import type { ErrorEvent, EventHint } from "@sentry/nextjs";
+import type { Breadcrumb, ErrorEvent, EventHint } from "@sentry/nextjs";
 import { ExpectedError } from "@/lib/expected-error";
 import { scrubPii } from "@/lib/sentry-scrub";
 
@@ -21,6 +21,16 @@ export function sentryInitOptions() {
         return null;
       }
       return scrubPii(event);
+    },
+    beforeBreadcrumb(breadcrumb: Breadcrumb) {
+      // consoleIntegration() is on by default in the Node SDK, and this
+      // codebase logs inside server actions - one console.error(err) in an
+      // integration client would ship whatever the error carries. Nothing
+      // here has ever been debugged from a console breadcrumb.
+      if (breadcrumb.category === "console") {
+        return null;
+      }
+      return breadcrumb;
     },
   };
 }
