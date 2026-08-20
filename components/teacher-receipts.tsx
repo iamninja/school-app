@@ -6,6 +6,7 @@ import { format } from "date-fns";
 import {
   PlusIcon,
   PrinterIcon,
+  SendIcon,
   Trash2Icon,
   XIcon,
 } from "lucide-react";
@@ -13,6 +14,7 @@ import {
 import {
   createReceiptAction,
   deleteReceiptAction,
+  submitReceiptToMyDataAction,
 } from "@/app/protected/teacher/receipt-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -66,6 +68,7 @@ export function TeacherReceipts({
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [viewing, setViewing] = React.useState<Receipt | null>(null);
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
+  const [submittingId, setSubmittingId] = React.useState<string | null>(null);
 
   const [familyId, setFamilyId] = React.useState("");
   const [recipientName, setRecipientName] = React.useState("");
@@ -133,6 +136,35 @@ export function TeacherReceipts({
       );
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleSubmitToMyData = async (receipt: Receipt) => {
+    setSubmittingId(receipt.id);
+    try {
+      const updated = await submitReceiptToMyDataAction(receipt.id);
+      setReceipts((prev) =>
+        prev.map((item) => (item.id === updated.id ? updated : item)),
+      );
+      if (viewing?.id === updated.id) {
+        setViewing(updated);
+      }
+      toast.success(`Sent to myDATA — MARK ${updated.mydata_mark}`);
+    } catch (error: unknown) {
+      // The receipt is still saved and still retryable; only the
+      // transmission failed, so this is a message rather than a crash.
+      toast.error(
+        error instanceof Error ? error.message : "Failed to send to myDATA",
+      );
+      setReceipts((prev) =>
+        prev.map((item) =>
+          item.id === receipt.id
+            ? { ...item, mydata_status: "failed" as const }
+            : item,
+        ),
+      );
+    } finally {
+      setSubmittingId(null);
     }
   };
 
@@ -227,11 +259,32 @@ export function TeacherReceipts({
                   </button>
                   <div className="flex items-center gap-2">
                     {receipt.mydata_status === "submitted" ? (
-                      <Badge>myDATA sent</Badge>
+                      <Badge title={`MARK ${receipt.mydata_mark ?? ""}`}>
+                        myDATA sent
+                        {receipt.mydata_environment === "sandbox"
+                          ? " (sandbox)"
+                          : ""}
+                      </Badge>
                     ) : receipt.mydata_status === "failed" ? (
                       <Badge variant="destructive">myDATA failed</Badge>
                     ) : (
                       <Badge variant="outline">Not sent to myDATA</Badge>
+                    )}
+                    {receipt.mydata_status !== "submitted" && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={submittingId === receipt.id}
+                        onClick={() => void handleSubmitToMyData(receipt)}
+                      >
+                        <SendIcon className="mr-1 h-3.5 w-3.5" />
+                        {submittingId === receipt.id
+                          ? "Sending..."
+                          : receipt.mydata_status === "failed"
+                            ? "Retry myDATA"
+                            : "Send to myDATA"}
+                      </Button>
                     )}
                     <Button
                       type="button"

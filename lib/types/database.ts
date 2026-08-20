@@ -529,6 +529,7 @@ export interface Receipt {
   mydata_uid: string | null;
   mydata_error: string | null;
   mydata_submitted_at: string | null;
+  mydata_environment: "sandbox" | "production" | null;
   emailed_at: string | null;
   created_at: string;
   lineItems: ReceiptLineItem[];

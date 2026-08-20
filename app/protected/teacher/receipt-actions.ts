@@ -3,7 +3,13 @@
 import { createClient } from "@/lib/supabase/server";
 import { requireTeacher } from "@/lib/auth/require-teacher";
 import { ExpectedError } from "@/lib/expected-error";
+import { buildInvoiceXml } from "@/lib/mydata/invoice-xml";
+import {
+  getActiveMyDataEnvironment,
+  sendInvoiceXml,
+} from "@/lib/mydata/client";
 import type {
+  BusinessProfile,
   CreateReceiptInput,
   Receipt,
   ReceiptLineItem,
@@ -12,7 +18,7 @@ import type {
 const DEFAULT_SERIES = "Α";
 
 const RECEIPT_COLUMNS =
-  "id, series, receipt_number, issue_date, recipient_name, recipient_afm, recipient_address, family_id, total_amount, vat_category, notes, mydata_status, mydata_mark, mydata_uid, mydata_error, mydata_submitted_at, emailed_at, created_at";
+  "id, series, receipt_number, issue_date, recipient_name, recipient_afm, recipient_address, family_id, total_amount, vat_category, notes, mydata_status, mydata_mark, mydata_uid, mydata_error, mydata_submitted_at, mydata_environment, emailed_at, created_at";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -188,6 +194,109 @@ export async function createReceiptAction(
   const [withItems] = await attachLineItems(supabase, [
     receipt as unknown as Omit<Receipt, "lineItems">,
   ]);
+  return withItems;
+}
+
+/**
+ * Transmits a receipt to myDATA and records the outcome.
+ *
+ * Safe to call again on a receipt that previously failed - this IS the
+ * retry path. Refuses to re-send one that already has a MARK, since that
+ * would file the same receipt twice with AADE.
+ */
+export async function submitReceiptToMyDataAction(
+  receiptId: string,
+): Promise<Receipt> {
+  const supabase = await requireTeacherSession();
+
+  const { data: receiptRow, error: fetchError } = await supabase
+    .from("receipts")
+    .select(RECEIPT_COLUMNS)
+    .eq("id", receiptId)
+    .single();
+
+  if (fetchError || !receiptRow) {
+    throw new Error("Receipt not found");
+  }
+
+  const [receipt] = await attachLineItems(supabase, [
+    receiptRow as unknown as Omit<Receipt, "lineItems">,
+  ]);
+
+  if (receipt.mydata_status === "submitted" && receipt.mydata_mark) {
+    throw new ExpectedError(
+      `This receipt was already sent to myDATA (MARK ${receipt.mydata_mark}). Re-sending would file it twice.`,
+    );
+  }
+
+  const { data: profile } = await supabase
+    .from("business_profile")
+    .select(
+      "id, business_name, afm, doy, activity_code, address, city, postal_code, phone, updated_at",
+    )
+    .eq("id", 1)
+    .maybeSingle();
+
+  if (!profile?.afm) {
+    throw new ExpectedError(
+      "Add your business ΑΦΜ in the Business tab before sending to myDATA",
+    );
+  }
+
+  const environment = await getActiveMyDataEnvironment();
+  const xml = buildInvoiceXml({
+    receipt,
+    business: profile as BusinessProfile,
+  });
+  const result = await sendInvoiceXml(xml);
+
+  // Logged before the receipt update, and on both paths: the attempt
+  // history is the thing you need when reconciling with AADE, so it must
+  // survive even if the status write below fails.
+  await supabase.from("mydata_submission_log").insert({
+    receipt_id: receipt.id,
+    environment,
+    success: result.ok,
+    mark: result.ok ? result.mark : null,
+    error: result.ok ? null : result.error,
+  });
+
+  const { data: updated, error: updateError } = await supabase
+    .from("receipts")
+    .update(
+      result.ok
+        ? {
+            mydata_status: "submitted",
+            mydata_mark: result.mark,
+            mydata_uid: result.uid,
+            mydata_error: null,
+            mydata_submitted_at: new Date().toISOString(),
+            mydata_environment: environment,
+          }
+        : {
+            mydata_status: "failed",
+            mydata_error: result.error,
+            mydata_environment: environment,
+          },
+    )
+    .eq("id", receipt.id)
+    .select(RECEIPT_COLUMNS)
+    .single();
+
+  if (updateError) {
+    throw updateError;
+  }
+
+  const [withItems] = await attachLineItems(supabase, [
+    updated as unknown as Omit<Receipt, "lineItems">,
+  ]);
+
+  if (!result.ok) {
+    // Surfaced to the teacher as a plain message rather than a crash - the
+    // receipt itself is saved and retryable, this is not an app error.
+    throw new ExpectedError(result.error);
+  }
+
   return withItems;
 }
 

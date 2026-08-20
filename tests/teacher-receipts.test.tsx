@@ -53,6 +53,7 @@ const existingReceipt = {
   mydata_uid: null,
   mydata_error: null,
   mydata_submitted_at: null,
+  mydata_environment: null,
   emailed_at: null,
   created_at: "2026-08-20T00:00:00Z",
   lineItems: [

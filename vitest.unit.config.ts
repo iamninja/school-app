@@ -22,11 +22,16 @@ export default defineConfig({
       "tests/student-actions.test.ts",
       "tests/business-settings-actions.test.ts",
       "tests/receipt-actions.test.ts",
+      "tests/mydata-invoice-xml.test.ts",
     ],
   },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "."),
+      // Same reasoning as vitest.config.ts: vitest has no RSC boundary
+      // transform, so importing a server-only module throws by design.
+      // next build still enforces the real constraint.
+      "server-only": path.resolve(__dirname, "tests/support/server-only-stub.ts"),
     },
   },
 });
