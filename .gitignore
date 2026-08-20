@@ -30,9 +30,11 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*.local
-.env
+# env files - ignore every variant, then opt .env.example back in.
+# .env*.local plus .env alone missed .env.production/.env.development,
+# which is exactly where a real BUSINESS_SECRETS_KEY would get pasted.
+.env*
+!.env.example
 
 # vercel
 .vercel

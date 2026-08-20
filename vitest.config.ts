@@ -8,7 +8,13 @@ export default defineConfig({
     globals: true,
     environment: "jsdom",
     setupFiles: "./vitest.setup.ts",
-    testTimeout: 15000,
+    // Raised 15000 -> 30000 when the Business tab landed: teacher-dashboard
+    // is now a bigger component tree, and the student-form tests (which
+    // user.type() into 6+ fields on a full dashboard render) were already
+    // sitting near the old limit under full-suite load - they pass 20/20 in
+    // isolation but intermittently timed out when sharing workers. A
+    // timeout only bounds failing tests, so this costs nothing on green runs.
+    testTimeout: 30000,
     // tests/rls/** needs a running local Supabase stack (`supabase start`)
     // and is run separately via `npm run test:rls` (see vitest.rls.config.ts)
     // - excluded here so the default suite never depends on Docker/local
@@ -25,6 +31,7 @@ export default defineConfig({
       "tests/student-dashboard-quiz-actions.test.ts",
       "tests/parent-actions.test.ts",
       "tests/student-actions.test.ts",
+      "tests/business-settings-actions.test.ts",
     ],
     // isolate: false previously let files sharing a worker reuse the same
     // jsdom environment and module graph (React/Radix/KaTeX etc.) instead of
@@ -46,6 +53,11 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "."),
+      // See tests/support/server-only-stub.ts - vitest has no RSC boundary
+      // transform, so the real package throws when a client component test
+      // transitively imports a server-only module. next build still
+      // enforces the real constraint.
+      "server-only": path.resolve(__dirname, "tests/support/server-only-stub.ts"),
     },
   },
 });

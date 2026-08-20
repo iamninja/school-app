@@ -20,6 +20,7 @@ export default defineConfig({
       "tests/student-dashboard-quiz-actions.test.ts",
       "tests/parent-actions.test.ts",
       "tests/student-actions.test.ts",
+      "tests/business-settings-actions.test.ts",
     ],
   },
   resolve: {

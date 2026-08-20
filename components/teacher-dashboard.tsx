@@ -14,6 +14,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { format } from "date-fns";
 import {
   ArchiveIcon,
+  Building2Icon,
   CalendarDaysIcon,
   ClipboardCheckIcon,
   FileTextIcon,
@@ -77,8 +78,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LogoutButton } from "@/components/logout-button";
 import { TeacherClassDetail } from "@/components/teacher-class-detail";
 import { TeacherQuizBuilder } from "@/components/teacher-quiz-builder";
+import {
+  TeacherBusinessSettings,
+  type CredentialStatusView,
+} from "@/components/teacher-business-settings";
 import { ThemeSwitcher } from "@/components/theme-switcher";
-import type { TeacherQuizListItem } from "@/lib/types/database";
+import type {
+  BusinessProfile,
+  IntegrationSettings,
+  TeacherQuizListItem,
+} from "@/lib/types/database";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -130,6 +139,12 @@ const SECTIONS = [
     label: "Quizzes",
     description: "Build and assign quizzes",
     icon: FileTextIcon,
+  },
+  {
+    value: "business",
+    label: "Business",
+    description: "Tax details and integrations",
+    icon: Building2Icon,
   },
 ] as const;
 
@@ -201,6 +216,9 @@ type TeacherDashboardProps = {
   initialFamilies?: FamilyItem[];
   initialAttendance: AttendanceRecord[];
   initialQuizzes?: TeacherQuizListItem[];
+  businessProfile?: BusinessProfile | null;
+  integrationSettings?: IntegrationSettings[];
+  credentialStatuses?: Record<string, CredentialStatusView>;
   loadErrors?: string[];
 };
 
@@ -380,6 +398,9 @@ export function TeacherDashboard({
   initialFamilies = [],
   initialAttendance,
   initialQuizzes = [],
+  businessProfile = null,
+  integrationSettings = [],
+  credentialStatuses = {},
   loadErrors = [],
 }: TeacherDashboardProps) {
   const sensors = useSensors(
@@ -3149,6 +3170,14 @@ export function TeacherDashboard({
           <TeacherQuizBuilder
             classes={activeClasses.map(({ id, name }) => ({ id, name }))}
             initialQuizzes={initialQuizzes}
+          />
+        </TabsContent>
+
+        <TabsContent value="business" className="mt-0">
+          <TeacherBusinessSettings
+            initialProfile={businessProfile}
+            initialIntegrations={integrationSettings}
+            initialCredentialStatuses={credentialStatuses}
           />
         </TabsContent>
           </main>

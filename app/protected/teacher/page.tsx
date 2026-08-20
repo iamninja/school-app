@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 
 import { TeacherDashboard } from "@/components/teacher-dashboard";
 import { createClient } from "@/lib/supabase/server";
+import { getBusinessSettingsAction } from "@/app/protected/teacher/business-settings-actions";
 
 // The Supabase client has no Database generic here, so its select-string
 // parser can't determine embed cardinality and infers every embed as an
@@ -209,6 +210,10 @@ export default async function TeacherPage() {
     createdAt: quiz.created_at,
   }));
 
+  // Business identity + integration config. Credential *statuses* only -
+  // getBusinessSettingsAction never returns a decrypted value.
+  const businessSettings = await getBusinessSettingsAction();
+
   return (
     <TeacherDashboard
       initialClasses={initialClasses}
@@ -217,6 +222,9 @@ export default async function TeacherPage() {
       initialFamilies={initialFamilies}
       initialAttendance={initialAttendance}
       initialQuizzes={initialQuizzes}
+      businessProfile={businessSettings.profile}
+      integrationSettings={businessSettings.integrations}
+      credentialStatuses={businessSettings.credentialStatuses}
       loadErrors={loadErrors}
     />
   );

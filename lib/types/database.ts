@@ -463,3 +463,38 @@ export interface ParentEmailCheckError {
 export type ParentEmailCheckResult =
   | ParentEmailCheckSuccess
   | ParentEmailCheckError;
+
+// Business settings. Deliberately not per-teacher - there is one business,
+// however many teacher accounts exist. Everything here is non-secret and
+// gets printed on receipts; API credentials live in
+// private.integration_credentials, never in these types.
+export interface BusinessProfile {
+  id: number;
+  business_name: string | null;
+  afm: string | null;
+  doy: string | null;
+  activity_code: string | null;
+  address: string | null;
+  city: string | null;
+  postal_code: string | null;
+  phone: string | null;
+  updated_at: string;
+}
+
+export interface BusinessProfileInput {
+  businessName?: string;
+  afm?: string;
+  doy?: string;
+  activityCode?: string;
+  address?: string;
+  city?: string;
+  postalCode?: string;
+  phone?: string;
+}
+
+export interface IntegrationSettings {
+  provider: string;
+  active_environment: "sandbox" | "production";
+  enabled: boolean;
+  updated_at: string;
+}

@@ -1,4 +1,5 @@
 import type { ErrorEvent } from "@sentry/nextjs";
+import { redactKnownSecrets } from "@/lib/secret-registry";
 
 // Substring match (case-insensitive) against object keys - deliberately
 // broad (e.g. "name" also catches "className", "familyName") since a
@@ -91,6 +92,32 @@ export function scrubPii(event: ErrorEvent): ErrorEvent {
   }
   if (event.user) {
     event.user = undefined;
+  }
+
+  // Last line of defence: if a decrypted credential was interpolated into
+  // an error message or breadcrumb anywhere, redact it by value. Key-name
+  // matching can't catch that case, and "never interpolate a secret into
+  // an Error" is otherwise a rule with nothing enforcing it.
+  return redactSecretsByValue(event);
+}
+
+function redactSecretsByValue(event: ErrorEvent): ErrorEvent {
+  if (event.exception?.values) {
+    for (const exceptionValue of event.exception.values) {
+      if (exceptionValue.value) {
+        exceptionValue.value = redactKnownSecrets(exceptionValue.value);
+      }
+    }
+  }
+  if (event.message) {
+    event.message = redactKnownSecrets(event.message);
+  }
+  if (event.breadcrumbs) {
+    for (const breadcrumb of event.breadcrumbs) {
+      if (breadcrumb.message) {
+        breadcrumb.message = redactKnownSecrets(breadcrumb.message);
+      }
+    }
   }
   return event;
 }

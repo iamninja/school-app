@@ -8,7 +8,7 @@
     "lint": "eslint .",
     "test": "vitest",
     "test:unit": "vitest run --config vitest.unit.config.ts",
-    "test:rls": "vitest run --config vitest.rls.config.ts tests/rls/parent-family-isolation.test.ts tests/rls/teacher-mutations.test.ts tests/rls/quiz-images.test.ts",
+    "test:rls": "vitest run --config vitest.rls.config.ts tests/rls/parent-family-isolation.test.ts tests/rls/teacher-mutations.test.ts tests/rls/quiz-images.test.ts tests/rls/business-settings.test.ts",
     "test:seed": "vitest run --config vitest.rls.config.ts tests/rls/local-stack-reset.test.ts",
     "db:pull": "supabase db pull",
     "db:push": "supabase db push",
@@ -36,6 +36,7 @@
     "react": "^19.0.0",
     "react-day-picker": "^9.13.2",
     "react-dom": "^19.0.0",
+    "server-only": "^0.0.1",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.3.0"
   },
