@@ -14,7 +14,13 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "node",
-    include: ["tests/teacher-actions.test.ts", "tests/teacher-quiz-actions.test.ts"],
+    include: [
+      "tests/teacher-actions.test.ts",
+      "tests/teacher-quiz-actions.test.ts",
+      "tests/student-dashboard-quiz-actions.test.ts",
+      "tests/parent-actions.test.ts",
+      "tests/student-actions.test.ts",
+    ],
   },
   resolve: {
     alias: {

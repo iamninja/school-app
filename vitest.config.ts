@@ -22,6 +22,9 @@ export default defineConfig({
       "tests/rls/**",
       "tests/teacher-actions.test.ts",
       "tests/teacher-quiz-actions.test.ts",
+      "tests/student-dashboard-quiz-actions.test.ts",
+      "tests/parent-actions.test.ts",
+      "tests/student-actions.test.ts",
     ],
     // isolate: false previously let files sharing a worker reuse the same
     // jsdom environment and module graph (React/Radix/KaTeX etc.) instead of
