@@ -18,7 +18,7 @@ import type {
 const DEFAULT_SERIES = "Α";
 
 const RECEIPT_COLUMNS =
-  "id, series, receipt_number, issue_date, recipient_name, recipient_afm, recipient_address, family_id, total_amount, vat_category, notes, mydata_status, mydata_mark, mydata_uid, mydata_error, mydata_submitted_at, mydata_environment, emailed_at, created_at";
+  "id, series, receipt_number, issue_date, recipient_name, recipient_afm, recipient_address, family_id, total_amount, vat_category, payment_method, notes, mydata_status, mydata_mark, mydata_uid, mydata_error, mydata_submitted_at, mydata_environment, emailed_at, created_at";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -166,6 +166,7 @@ export async function createReceiptAction(
       recipient_address: input.recipientAddress?.trim() || null,
       family_id: input.familyId || null,
       total_amount: totalAmount,
+      payment_method: input.paymentMethod ?? 3,
       notes: input.notes?.trim() || null,
     })
     .select(RECEIPT_COLUMNS)

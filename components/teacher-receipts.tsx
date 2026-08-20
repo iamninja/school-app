@@ -41,6 +41,15 @@ type FamilyOption = {
   studentNames: string[];
 };
 
+// AADE payment-method codes (spec §8.12), narrowed to the ones a tutoring
+// centre realistically gets paid by rather than the full list.
+const PAYMENT_METHODS = [
+  { code: 3, label: "Μετρητά (cash)" },
+  { code: 7, label: "POS / e-POS (card)" },
+  { code: 6, label: "Web banking / transfer" },
+  { code: 8, label: "IRIS" },
+] as const;
+
 type LineDraft = { description: string; amount: string };
 
 function blankLine(): LineDraft {
@@ -78,6 +87,7 @@ export function TeacherReceipts({
     new Date().toISOString().slice(0, 10),
   );
   const [notes, setNotes] = React.useState("");
+  const [paymentMethod, setPaymentMethod] = React.useState<number>(3);
   const [lines, setLines] = React.useState<LineDraft[]>([blankLine()]);
 
   const businessReady = Boolean(business?.business_name && business?.afm);
@@ -94,6 +104,7 @@ export function TeacherReceipts({
     setRecipientAddress("");
     setIssueDate(new Date().toISOString().slice(0, 10));
     setNotes("");
+    setPaymentMethod(3);
     setLines([blankLine()]);
   };
 
@@ -118,6 +129,7 @@ export function TeacherReceipts({
         recipientAddress,
         familyId: familyId || null,
         notes,
+        paymentMethod,
         lineItems: lines.map((line) => ({
           description: line.description,
           amount: Number.parseFloat(line.amount),
@@ -376,6 +388,28 @@ export function TeacherReceipts({
                   onChange={(event) => setIssueDate(event.target.value)}
                 />
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="receipt-payment-method">Paid by</Label>
+              <select
+                id="receipt-payment-method"
+                value={paymentMethod}
+                onChange={(event) =>
+                  setPaymentMethod(Number(event.target.value))
+                }
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+              >
+                {PAYMENT_METHODS.map((method) => (
+                  <option key={method.code} value={method.code}>
+                    {method.label}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">
+                Required by myDATA — how the payment was actually made is
+                part of the record sent to AADE.
+              </p>
             </div>
 
             <div className="space-y-2">

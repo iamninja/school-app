@@ -27,6 +27,7 @@ const receipt: Receipt = {
   family_id: null,
   total_amount: 180.5,
   vat_category: "exempt_article_27",
+  payment_method: 3,
   notes: null,
   mydata_status: "not_submitted",
   mydata_mark: null,
@@ -96,12 +97,45 @@ describe("buildInvoiceXml", () => {
     expect(xml).toContain("<vatAmount>0.00</vatAmount>");
   });
 
-  it("numbers lines from 1 and keeps their descriptions and amounts", () => {
+  it("numbers lines from 1 and carries their amounts", () => {
     expect(xml).toContain("<lineNumber>1</lineNumber>");
     expect(xml).toContain("<lineNumber>2</lineNumber>");
-    expect(xml).toContain("<itemDescr>Δίδακτρα Σεπτεμβρίου</itemDescr>");
     expect(xml).toContain("<netValue>150.00</netValue>");
     expect(xml).toContain("<netValue>30.50</netValue>");
+  });
+
+  it("omits itemDescr, which AADE forbids on this invoice type", () => {
+    // Confirmed by the sandbox validator: "Invoice Line Number: 1.
+    // itemDescr is forbidden". Retail receipts report amounts, not an
+    // itemisation - descriptions still print on the paper receipt.
+    expect(xml).not.toContain("<itemDescr>");
+    expect(xml).not.toContain("Δίδακτρα Σεπτεμβρίου");
+  });
+
+  it("includes paymentMethods, which AADE requires on this invoice type", () => {
+    // Also from the validator: "Payment Methods is mandatory for this
+    // invoice type" - stricter than the XSD, which marks it optional.
+    expect(xml).toContain("<paymentMethods>");
+    expect(xml).toContain("<type>3</type>");
+    expect(xml).toContain("<amount>180.50</amount>");
+  });
+
+  it("sends the payment method actually recorded on the receipt", () => {
+    // Not hardcoded: filing "cash" for a card payment would be filing
+    // something untrue.
+    const byCard = buildInvoiceXml({
+      receipt: { ...receipt, payment_method: 7 },
+      business,
+    });
+    expect(byCard).toContain("<type>7</type>");
+  });
+
+  it("places paymentMethods between the header and the lines", () => {
+    const header = xml.indexOf("<invoiceHeader>");
+    const payment = xml.indexOf("<paymentMethods>");
+    const details = xml.indexOf("<invoiceDetails>");
+    expect(payment).toBeGreaterThan(header);
+    expect(details).toBeGreaterThan(payment);
   });
 
   it("classifies income as retail services", () => {
@@ -130,25 +164,17 @@ describe("buildInvoiceXml", () => {
     expect(summary).toBeGreaterThan(details);
   });
 
-  it("escapes XML metacharacters in a description", () => {
+  it("escapes XML metacharacters in issuer-supplied text", () => {
+    // Descriptions no longer reach the payload, but the ΑΦΜ still does and
+    // comes from a free-text field, so unescaped input would produce
+    // malformed XML rather than a clean rejection.
     const escaped = buildInvoiceXml({
-      receipt: {
-        ...receipt,
-        lineItems: [
-          {
-            id: "l1",
-            student_id: null,
-            description: 'Μαθήματα <A & B> "special"',
-            amount: 10,
-            order_index: 0,
-          },
-        ],
-      },
-      business,
+      receipt,
+      business: { ...business, afm: 'A&B<"x">' },
     });
 
     expect(escaped).toContain(
-      "<itemDescr>Μαθήματα &lt;A &amp; B&gt; &quot;special&quot;</itemDescr>",
+      "<vatNumber>A&amp;B&lt;&quot;x&quot;&gt;</vatNumber>",
     );
   });
 

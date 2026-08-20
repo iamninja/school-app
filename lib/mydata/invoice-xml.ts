@@ -55,13 +55,18 @@ export function buildInvoiceXml({
     throw new Error("Business ΑΦΜ is required to transmit to myDATA");
   }
 
+  const total = Number(receipt.total_amount);
+
   const lines = receipt.lineItems
     .map((item, index) => {
       const net = Number(item.amount);
       return [
         `      <invoiceDetails>`,
         `        <lineNumber>${index + 1}</lineNumber>`,
-        `        <itemDescr>${escapeXml(item.description)}</itemDescr>`,
+        // No itemDescr: AADE's validator rejects it outright for 11.2
+        // ("itemDescr is forbidden"). Retail receipts report amounts, not
+        // an itemisation - the description still prints on the paper
+        // receipt, it just isn't transmitted.
         `        <netValue>${amount(net)}</netValue>`,
         `        <vatCategory>${VAT_CATEGORY_EXEMPT}</vatCategory>`,
         `        <vatAmount>0.00</vatAmount>`,
@@ -78,7 +83,6 @@ export function buildInvoiceXml({
     })
     .join("\n");
 
-  const total = Number(receipt.total_amount);
 
   return [
     `<?xml version="1.0" encoding="UTF-8"?>`,
@@ -100,6 +104,15 @@ export function buildInvoiceXml({
     `      <invoiceType>${INVOICE_TYPE_SERVICES_RECEIPT}</invoiceType>`,
     `      <currency>EUR</currency>`,
     `    </invoiceHeader>`,
+    // Mandatory for 11.2 per AADE's validator, despite the XSD marking it
+    // optional - the per-invoice-type rules are stricter than the schema.
+    // Sits between invoiceHeader and invoiceDetails, per the sequence.
+    `    <paymentMethods>`,
+    `      <paymentMethodDetails>`,
+    `        <type>${receipt.payment_method}</type>`,
+    `        <amount>${amount(total)}</amount>`,
+    `      </paymentMethodDetails>`,
+    `    </paymentMethods>`,
     lines,
     `    <invoiceSummary>`,
     `      <totalNetValue>${amount(total)}</totalNetValue>`,

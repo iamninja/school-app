@@ -523,6 +523,9 @@ export interface Receipt {
   family_id: string | null;
   total_amount: number;
   vat_category: string;
+  // AADE payment-method code (spec §8.12): 3 cash, 6 web banking,
+  // 7 POS/e-POS, 8 IRIS. Mandatory in the myDATA payload for type 11.2.
+  payment_method: number;
   notes: string | null;
   mydata_status: MyDataStatus;
   mydata_mark: string | null;
@@ -543,6 +546,7 @@ export interface ReceiptLineItemInput {
 
 export interface CreateReceiptInput {
   issueDate?: string;
+  paymentMethod?: number;
   recipientName: string;
   recipientAfm?: string;
   recipientAddress?: string;

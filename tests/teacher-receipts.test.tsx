@@ -47,6 +47,7 @@ const existingReceipt = {
   family_id: null,
   total_amount: 150,
   vat_category: "exempt_article_22",
+  payment_method: 3,
   notes: null,
   mydata_status: "not_submitted" as const,
   mydata_mark: null,
