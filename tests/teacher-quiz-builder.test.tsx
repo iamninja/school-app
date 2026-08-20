@@ -248,8 +248,10 @@ describe("TeacherQuizBuilder", () => {
           ],
         }),
       );
-      expect(screen.getByText("Chapter 3 Quiz")).toBeInTheDocument();
-      expect(screen.getByText("Unassigned")).toBeInTheDocument();
+      const quizRow = screen
+        .getByText("Chapter 3 Quiz")
+        .closest(".rounded-md") as HTMLElement;
+      expect(within(quizRow).getByText("Unassigned")).toBeInTheDocument();
     });
   });
 
@@ -1144,6 +1146,106 @@ describe("TeacherQuizBuilder", () => {
           }),
         );
       });
+    });
+  });
+
+  describe("search and filter", () => {
+    const quizzes = [
+      {
+        ...baseQuiz,
+        id: "quiz-1",
+        title: "Chapter 3 Quiz",
+        assignedClasses: [{ id: "class-1", name: "Algebra II" }],
+      },
+      {
+        ...baseQuiz,
+        id: "quiz-2",
+        title: "Cell Biology Basics",
+        assignedClasses: [{ id: "class-2", name: "Biology" }],
+      },
+      {
+        ...baseQuiz,
+        id: "quiz-3",
+        title: "Pop Quiz - Draft",
+        assignedClasses: [],
+      },
+    ];
+
+    it("filters the list by title as the teacher types", async () => {
+      const user = userEvent.setup();
+      render(<TeacherQuizBuilder classes={classes} initialQuizzes={quizzes} />);
+
+      await user.type(
+        screen.getByLabelText(/search quizzes by title/i),
+        "cell",
+      );
+
+      expect(screen.getByText("Cell Biology Basics")).toBeInTheDocument();
+      expect(screen.queryByText("Chapter 3 Quiz")).not.toBeInTheDocument();
+      expect(screen.queryByText("Pop Quiz - Draft")).not.toBeInTheDocument();
+    });
+
+    it("filters the list to quizzes assigned to a specific class", async () => {
+      const user = userEvent.setup();
+      render(<TeacherQuizBuilder classes={classes} initialQuizzes={quizzes} />);
+
+      await user.selectOptions(
+        screen.getByLabelText(/filter by assigned class/i),
+        "class-2",
+      );
+
+      expect(screen.getByText("Cell Biology Basics")).toBeInTheDocument();
+      expect(screen.queryByText("Chapter 3 Quiz")).not.toBeInTheDocument();
+      expect(screen.queryByText("Pop Quiz - Draft")).not.toBeInTheDocument();
+    });
+
+    it("filters the list to quizzes with no assigned class", async () => {
+      const user = userEvent.setup();
+      render(<TeacherQuizBuilder classes={classes} initialQuizzes={quizzes} />);
+
+      await user.selectOptions(
+        screen.getByLabelText(/filter by assigned class/i),
+        "unassigned",
+      );
+
+      expect(screen.getByText("Pop Quiz - Draft")).toBeInTheDocument();
+      expect(screen.queryByText("Chapter 3 Quiz")).not.toBeInTheDocument();
+      expect(screen.queryByText("Cell Biology Basics")).not.toBeInTheDocument();
+    });
+
+    it("combines the search and class filter", async () => {
+      const user = userEvent.setup();
+      render(<TeacherQuizBuilder classes={classes} initialQuizzes={quizzes} />);
+
+      await user.type(
+        screen.getByLabelText(/search quizzes by title/i),
+        "quiz",
+      );
+      await user.selectOptions(
+        screen.getByLabelText(/filter by assigned class/i),
+        "class-1",
+      );
+
+      expect(screen.getByText("Chapter 3 Quiz")).toBeInTheDocument();
+      expect(screen.queryByText("Cell Biology Basics")).not.toBeInTheDocument();
+      expect(screen.queryByText("Pop Quiz - Draft")).not.toBeInTheDocument();
+    });
+
+    it("shows a no-match message instead of the empty-state message when nothing matches", async () => {
+      const user = userEvent.setup();
+      render(<TeacherQuizBuilder classes={classes} initialQuizzes={quizzes} />);
+
+      await user.type(
+        screen.getByLabelText(/search quizzes by title/i),
+        "nonexistent quiz title",
+      );
+
+      expect(
+        screen.getByText(/no quizzes match your search/i),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText(/no quizzes created yet/i),
+      ).not.toBeInTheDocument();
     });
   });
 });

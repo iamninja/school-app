@@ -78,6 +78,8 @@ export function TeacherQuizBuilder({
 }) {
   const [quizzes, setQuizzes] =
     React.useState<TeacherQuizListItem[]>(initialQuizzes);
+  const [searchQuery, setSearchQuery] = React.useState("");
+  const [classFilter, setClassFilter] = React.useState("all");
   const [isCreateOpen, setIsCreateOpen] = React.useState(false);
   const [classIds, setClassIds] = React.useState<string[]>([]);
   const [title, setTitle] = React.useState("");
@@ -704,6 +706,19 @@ export function TeacherQuizBuilder({
     );
   }
 
+  const normalizedSearch = searchQuery.trim().toLowerCase();
+  const filteredQuizzes = quizzes.filter((quiz) => {
+    const matchesSearch =
+      normalizedSearch.length === 0 ||
+      quiz.title.toLowerCase().includes(normalizedSearch);
+    const matchesClass =
+      classFilter === "all" ||
+      (classFilter === "unassigned"
+        ? quiz.assignedClasses.length === 0
+        : quiz.assignedClasses.some((c) => c.id === classFilter));
+    return matchesSearch && matchesClass;
+  });
+
   return (
     <div className="space-y-6">
       <Card>
@@ -741,87 +756,129 @@ export function TeacherQuizBuilder({
               No quizzes created yet.
             </p>
           ) : (
-            <div className="space-y-2">
-              {quizzes.map((quiz) => (
-                <div key={quiz.id} className="space-y-2 rounded-md border p-3">
-                  <button
-                    type="button"
-                    onClick={() => handleSelectQuiz(quiz.id)}
-                    className="flex w-full items-center justify-between text-left"
-                  >
-                    <div>
-                      <p className="text-sm font-medium">
-                        <MathText text={quiz.title} />
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {quiz.assignedClasses.length > 0
-                          ? quiz.assignedClasses.map((c) => c.name).join(", ")
-                          : "Unassigned"}
-                      </p>
+            <div className="space-y-4">
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Input
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="Search by title"
+                  aria-label="Search quizzes by title"
+                  className="sm:max-w-xs"
+                />
+                <select
+                  aria-label="Filter by assigned class"
+                  value={classFilter}
+                  onChange={(event) => setClassFilter(event.target.value)}
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm sm:max-w-xs"
+                >
+                  <option value="all">All classes</option>
+                  <option value="unassigned">Unassigned</option>
+                  {classes.map((classOption) => (
+                    <option key={classOption.id} value={classOption.id}>
+                      {classOption.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {filteredQuizzes.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No quizzes match your search.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {filteredQuizzes.map((quiz) => (
+                    <div
+                      key={quiz.id}
+                      className="space-y-2 rounded-md border p-3"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => handleSelectQuiz(quiz.id)}
+                        className="flex w-full items-center justify-between text-left"
+                      >
+                        <div>
+                          <p className="text-sm font-medium">
+                            <MathText text={quiz.title} />
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {quiz.assignedClasses.length > 0
+                              ? quiz.assignedClasses
+                                  .map((c) => c.name)
+                                  .join(", ")
+                              : "Unassigned"}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {quiz.hasAttempts && (
+                            <Badge variant="secondary">Locked</Badge>
+                          )}
+                          {quiz.timeLimitMinutes !== null && (
+                            <Badge variant="outline">
+                              ⏱ {quiz.timeLimitMinutes} min
+                            </Badge>
+                          )}
+                          <Badge variant="outline">
+                            {quiz.questionCount} questions
+                          </Badge>
+                        </div>
+                      </button>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setManageQuizId(quiz.id)}
+                        >
+                          <UsersIcon className="mr-1 h-3.5 w-3.5" /> Manage
+                          classes
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openEditDialog(quiz.id)}
+                        >
+                          <PencilIcon className="mr-1 h-3.5 w-3.5" /> Edit
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleViewBreakdown(quiz.id)}
+                        >
+                          <BarChart3Icon className="mr-1 h-3.5 w-3.5" />{" "}
+                          Question breakdown
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={duplicatingQuizId === quiz.id}
+                          onClick={() => handleDuplicate(quiz.id)}
+                        >
+                          <CopyIcon className="mr-1 h-3.5 w-3.5" />
+                          {duplicatingQuizId === quiz.id
+                            ? "Copying..."
+                            : "Copy"}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={deletingQuizId === quiz.id}
+                          onClick={() => void handleDeleteQuiz(quiz.id)}
+                        >
+                          <Trash2Icon className="mr-1 h-3.5 w-3.5" />
+                          {deletingQuizId === quiz.id
+                            ? "Deleting..."
+                            : "Delete"}
+                        </Button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      {quiz.hasAttempts && (
-                        <Badge variant="secondary">Locked</Badge>
-                      )}
-                      {quiz.timeLimitMinutes !== null && (
-                        <Badge variant="outline">
-                          ⏱ {quiz.timeLimitMinutes} min
-                        </Badge>
-                      )}
-                      <Badge variant="outline">
-                        {quiz.questionCount} questions
-                      </Badge>
-                    </div>
-                  </button>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setManageQuizId(quiz.id)}
-                    >
-                      <UsersIcon className="mr-1 h-3.5 w-3.5" /> Manage classes
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => openEditDialog(quiz.id)}
-                    >
-                      <PencilIcon className="mr-1 h-3.5 w-3.5" /> Edit
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleViewBreakdown(quiz.id)}
-                    >
-                      <BarChart3Icon className="mr-1 h-3.5 w-3.5" /> Question
-                      breakdown
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={duplicatingQuizId === quiz.id}
-                      onClick={() => handleDuplicate(quiz.id)}
-                    >
-                      <CopyIcon className="mr-1 h-3.5 w-3.5" />
-                      {duplicatingQuizId === quiz.id ? "Copying..." : "Copy"}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={deletingQuizId === quiz.id}
-                      onClick={() => void handleDeleteQuiz(quiz.id)}
-                    >
-                      <Trash2Icon className="mr-1 h-3.5 w-3.5" />
-                      {deletingQuizId === quiz.id ? "Deleting..." : "Delete"}
-                    </Button>
-                  </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
           )}
         </CardContent>
