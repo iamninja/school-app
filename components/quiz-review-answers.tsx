@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { MathText } from "@/components/math-text";
+import { QuizQuestionImage } from "@/components/quiz-question-image";
 import type { QuizAttemptAnswerReview } from "@/lib/types/database";
 
 const LABELS = {
@@ -54,6 +55,11 @@ export function QuizReviewAnswers({
           <p className="text-sm font-medium">
             {index + 1}. <MathText text={answer.questionText} />
           </p>
+          {answer.imageUrl && (
+            <div className="mt-2">
+              <QuizQuestionImage imageUrl={answer.imageUrl} />
+            </div>
+          )}
           {answer.questionType === "short_answer" ? (
             <div className="mt-2 space-y-1 text-sm">
               <p>

@@ -3,6 +3,11 @@
 import { createClient } from "@/lib/supabase/server";
 import { requireTeacher } from "@/lib/auth/require-teacher";
 import { ExpectedError } from "@/lib/expected-error";
+import {
+  copyQuizImage,
+  deleteQuizImages,
+  signQuizImageUrls,
+} from "@/lib/quiz-images";
 import type {
   CreateQuizInput,
   QuizForEditing,
@@ -53,6 +58,7 @@ async function insertQuestions(
         question_type: question.questionType,
         order_index: index,
         points: question.points,
+        image_path: question.imagePath,
       })
       .select("id")
       .single();
@@ -261,7 +267,7 @@ export async function getQuizForEditingAction(
     await Promise.all([
       supabase
         .from("quiz_questions")
-        .select("id, question_text, question_type, points, order_index")
+        .select("id, question_text, question_type, points, order_index, image_path")
         .eq("quiz_id", quizId)
         .order("order_index", { ascending: true }),
       supabase
@@ -292,6 +298,11 @@ export async function getQuizForEditingAction(
     optionsByQuestion.set(option.question_id, list);
   }
 
+  const imagePaths = (questionRows ?? [])
+    .map((question) => question.image_path)
+    .filter((path): path is string => typeof path === "string");
+  const imageUrlByPath = await signQuizImageUrls(supabase, imagePaths);
+
   const questions: QuizQuestionInput[] = (questionRows ?? []).map(
     (question) => ({
       questionText: question.question_text,
@@ -301,6 +312,10 @@ export async function getQuizForEditingAction(
         optionText: option.option_text,
         isCorrect: option.is_correct,
       })),
+      imagePath: question.image_path,
+      imageUrl: question.image_path
+        ? (imageUrlByPath.get(question.image_path) ?? null)
+        : null,
     }),
   );
 
@@ -354,6 +369,11 @@ export async function updateQuizAction(
       );
     }
 
+    const { data: oldQuestionRows } = await supabase
+      .from("quiz_questions")
+      .select("image_path")
+      .eq("quiz_id", quiz.id);
+
     const { error: deleteError } = await supabase
       .from("quiz_questions")
       .delete()
@@ -364,6 +384,21 @@ export async function updateQuizAction(
     }
 
     await insertQuestions(supabase, quiz.id, data.questions);
+
+    const oldImagePaths = (oldQuestionRows ?? [])
+      .map((question) => question.image_path)
+      .filter((path): path is string => typeof path === "string");
+    const newImagePaths = new Set(
+      data.questions
+        .map((question) => question.imagePath)
+        .filter((path): path is string => typeof path === "string"),
+    );
+    const staleImagePaths = oldImagePaths.filter(
+      (path) => !newImagePaths.has(path),
+    );
+    if (staleImagePaths.length > 0) {
+      await deleteQuizImages(supabase, staleImagePaths);
+    }
   }
 
   return buildQuizListItem(supabase, updatedQuiz);
@@ -400,7 +435,18 @@ export async function duplicateQuizAction(
     throw quizError;
   }
 
-  await insertQuestions(supabase, newQuiz.id, source.questions);
+  // Each quiz's images must stay independent - reusing the source path
+  // would let editing/deleting either quiz's image break the other.
+  const copiedQuestions = await Promise.all(
+    source.questions.map(async (question) => ({
+      ...question,
+      imagePath: question.imagePath
+        ? await copyQuizImage(supabase, question.imagePath, user.id)
+        : null,
+    })),
+  );
+
+  await insertQuestions(supabase, newQuiz.id, copiedQuestions);
 
   return buildQuizListItem(supabase, newQuiz);
 }
@@ -419,6 +465,11 @@ export async function deleteQuizAction(quizId: string): Promise<void> {
 
   const quiz = await requireOwnedQuiz(supabase, quizId, user.id);
 
+  const { data: questionRows } = await supabase
+    .from("quiz_questions")
+    .select("image_path")
+    .eq("quiz_id", quiz.id);
+
   // No attempt-count guard - quiz_attempts.quiz_id is ON DELETE SET NULL
   // with quiz_title/max_score snapshotted at submission time, so a
   // student's history of taking this quiz survives the quiz itself being
@@ -427,6 +478,13 @@ export async function deleteQuizAction(quizId: string): Promise<void> {
 
   if (error) {
     throw error;
+  }
+
+  const imagePaths = (questionRows ?? [])
+    .map((question) => question.image_path)
+    .filter((path): path is string => typeof path === "string");
+  if (imagePaths.length > 0) {
+    await deleteQuizImages(supabase, imagePaths);
   }
 }
 
@@ -641,7 +699,7 @@ export async function getStudentQuizAttemptAction(
     questionIds.length > 0
       ? supabase
           .from("quiz_questions")
-          .select("id, question_text, question_type, points")
+          .select("id, question_text, question_type, points, image_path")
           .in("id", questionIds)
       : Promise.resolve({ data: [] as never[] }),
     questionIds.length > 0
@@ -655,6 +713,10 @@ export async function getStudentQuizAttemptAction(
   const questionById = new Map(
     (questionRows ?? []).map((question) => [question.id, question]),
   );
+  const imagePaths = (questionRows ?? [])
+    .map((question) => question.image_path)
+    .filter((path): path is string => typeof path === "string");
+  const imageUrlByPath = await signQuizImageUrls(supabase, imagePaths);
   const optionById = new Map(
     (options ?? []).map((option) => [option.id, option]),
   );
@@ -682,6 +744,9 @@ export async function getStudentQuizAttemptAction(
         questionText: question?.question_text ?? "",
         questionType:
           (question?.question_type as QuizQuestionType) ?? "short_answer",
+        imageUrl: question?.image_path
+          ? (imageUrlByPath.get(question.image_path) ?? null)
+          : null,
         selectedOptionId: answer.selected_option_id,
         selectedOptionText: selectedOption?.option_text ?? null,
         textAnswer: answer.text_answer,
@@ -738,7 +803,7 @@ export async function getQuizQuestionBreakdownAction(
 
   const { data: questionRows, error: questionsError } = await supabase
     .from("quiz_questions")
-    .select("id, question_text, question_type, points, order_index")
+    .select("id, question_text, question_type, points, order_index, image_path")
     .eq("quiz_id", quizId)
     .order("order_index", { ascending: true });
 
@@ -747,6 +812,13 @@ export async function getQuizQuestionBreakdownAction(
   }
 
   const questionIds = (questionRows ?? []).map((question) => question.id);
+  const breakdownImagePaths = (questionRows ?? [])
+    .map((question) => question.image_path)
+    .filter((path): path is string => typeof path === "string");
+  const breakdownImageUrlByPath = await signQuizImageUrls(
+    supabase,
+    breakdownImagePaths,
+  );
 
   const { data: options } =
     questionIds.length > 0
@@ -860,6 +932,9 @@ export async function getQuizQuestionBreakdownAction(
         questionText: question.question_text,
         questionType: question.question_type as QuizQuestionType,
         points: question.points,
+        imageUrl: question.image_path
+          ? (breakdownImageUrlByPath.get(question.image_path) ?? null)
+          : null,
         optionBreakdown,
         studentAnswers,
       };

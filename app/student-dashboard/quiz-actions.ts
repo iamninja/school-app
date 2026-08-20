@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { signQuizImageUrls } from "@/lib/quiz-images";
 import type {
   QuizForTaking,
   QuizQuestionForTaking,
@@ -85,7 +86,7 @@ export async function getQuizForTakingAction(
 
   const { data: questions, error: questionsError } = await supabase
     .from("quiz_questions")
-    .select("id, question_text, question_type, order_index, points")
+    .select("id, question_text, question_type, order_index, points, image_path")
     .eq("quiz_id", quizId)
     .order("order_index", { ascending: true });
 
@@ -94,6 +95,13 @@ export async function getQuizForTakingAction(
   }
 
   const questionIds = (questions ?? []).map((question) => question.id);
+  const takingImagePaths = (questions ?? [])
+    .map((question) => question.image_path)
+    .filter((path): path is string => typeof path === "string");
+  const takingImageUrlByPath = await signQuizImageUrls(
+    supabase,
+    takingImagePaths,
+  );
   const optionsByQuestion = new Map<
     string,
     { id: string; option_text: string; order_index: number }[]
@@ -124,6 +132,9 @@ export async function getQuizForTakingAction(
       questionType: question.question_type as QuizQuestionForTaking["questionType"],
       orderIndex: question.order_index,
       points: question.points,
+      imageUrl: question.image_path
+        ? (takingImageUrlByPath.get(question.image_path) ?? null)
+        : null,
       options: (optionsByQuestion.get(question.id) ?? []).map((option) => ({
         id: option.id,
         optionText: option.option_text,
@@ -174,7 +185,7 @@ export async function submitQuizAttemptAction(
 
   const { data: questions, error: questionsError } = await supabase
     .from("quiz_questions")
-    .select("id, question_text, question_type, points")
+    .select("id, question_text, question_type, points, image_path")
     .eq("quiz_id", quizId);
 
   if (questionsError) {
@@ -182,6 +193,13 @@ export async function submitQuizAttemptAction(
   }
 
   const questionIds = (questions ?? []).map((question) => question.id);
+  const submitImagePaths = (questions ?? [])
+    .map((question) => question.image_path)
+    .filter((path): path is string => typeof path === "string");
+  const submitImageUrlByPath = await signQuizImageUrls(
+    supabase,
+    submitImagePaths,
+  );
   const { data: options, error: optionsError } = await supabase
     .from("quiz_question_options")
     .select("id, question_id, option_text, is_correct")
@@ -219,6 +237,9 @@ export async function submitQuizAttemptAction(
     const submitted = answerByQuestion.get(question.id);
     const questionOptions = optionsByQuestion.get(question.id) ?? [];
     const correctOption = questionOptions.find((option) => option.is_correct);
+    const questionImageUrl = question.image_path
+      ? (submitImageUrlByPath.get(question.image_path) ?? null)
+      : null;
 
     if (question.question_type === "short_answer") {
       answerRows.push({
@@ -232,6 +253,7 @@ export async function submitQuizAttemptAction(
         questionId: question.id,
         questionText: question.question_text,
         questionType: "short_answer",
+        imageUrl: questionImageUrl,
         selectedOptionId: null,
         selectedOptionText: null,
         textAnswer: submitted?.textAnswer ?? null,
@@ -265,6 +287,7 @@ export async function submitQuizAttemptAction(
       questionText: question.question_text,
       questionType:
         question.question_type as QuizQuestionForTaking["questionType"],
+      imageUrl: questionImageUrl,
       selectedOptionId,
       selectedOptionText: selectedOption?.option_text ?? null,
       textAnswer: null,
@@ -393,7 +416,7 @@ export async function getQuizReviewAction(
     questionIds.length > 0
       ? supabase
           .from("quiz_questions")
-          .select("id, question_text, question_type, points")
+          .select("id, question_text, question_type, points, image_path")
           .in("id", questionIds)
       : Promise.resolve({ data: [] as never[] }),
     questionIds.length > 0
@@ -406,6 +429,13 @@ export async function getQuizReviewAction(
 
   const questionById = new Map(
     (questionRows ?? []).map((question) => [question.id, question]),
+  );
+  const reviewImagePaths = (questionRows ?? [])
+    .map((question) => question.image_path)
+    .filter((path): path is string => typeof path === "string");
+  const reviewImageUrlByPath = await signQuizImageUrls(
+    supabase,
+    reviewImagePaths,
   );
   const optionById = new Map(
     (options ?? []).map((option) => [option.id, option]),
@@ -435,6 +465,9 @@ export async function getQuizReviewAction(
         questionType:
           (question?.question_type as QuizQuestionForTaking["questionType"]) ??
           "short_answer",
+        imageUrl: question?.image_path
+          ? (reviewImageUrlByPath.get(question.image_path) ?? null)
+          : null,
         selectedOptionId: answer.selected_option_id,
         selectedOptionText: selectedOption?.option_text ?? null,
         textAnswer: answer.text_answer,

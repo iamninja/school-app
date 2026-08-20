@@ -8,6 +8,7 @@ import {
   PencilIcon,
   PlusIcon,
   Trash2Icon,
+  UploadIcon,
   UsersIcon,
 } from "lucide-react";
 
@@ -42,7 +43,14 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MathText } from "@/components/math-text";
+import { QuizQuestionImage } from "@/components/quiz-question-image";
 import { QuizReviewAnswers } from "@/components/quiz-review-answers";
+import {
+  parseQuizMarkdown,
+  QuizMarkdownParseError,
+} from "@/lib/quiz-markdown";
+import { uploadQuizImage } from "@/lib/quiz-images";
+import { createClient } from "@/lib/supabase/client";
 import {
   createBlankQuestion,
   draftsToQuestionInputs,
@@ -50,6 +58,7 @@ import {
   useQuestionDrafts,
   validateQuestionDrafts,
   QuizQuestionEditor,
+  type QuestionDraft,
 } from "@/components/quiz-question-editor";
 import type {
   QuizAttemptReview,
@@ -116,12 +125,78 @@ export function TeacherQuizBuilder({
     React.useState<QuizQuestionBreakdownResult | null>(null);
   const [isLoadingBreakdown, setIsLoadingBreakdown] = React.useState(false);
 
+  const importFileInputRef = React.useRef<HTMLInputElement>(null);
+
   const resetForm = () => {
     setTitle("");
     setDescription("");
     setTimeLimitMinutes("");
     setClassIds([]);
     createDraft.setQuestions([createBlankQuestion()]);
+  };
+
+  /** Uploads any freshly-picked image files before the drafts are turned into a create/update payload. */
+  const resolveQuestionImages = async (
+    questions: QuestionDraft[],
+  ): Promise<QuestionDraft[]> => {
+    if (!questions.some((question) => question.image.kind === "new")) {
+      return questions;
+    }
+
+    const supabase = createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      throw new Error("Not authenticated");
+    }
+
+    return Promise.all(
+      questions.map(async (question) => {
+        if (question.image.kind !== "new") {
+          return question;
+        }
+        const path = await uploadQuizImage(supabase, user.id, question.image.file);
+        return {
+          ...question,
+          image: { kind: "existing" as const, path, url: "" },
+        };
+      }),
+    );
+  };
+
+  const handleImportFileChange = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const parsed = parseQuizMarkdown(text);
+      setTitle(parsed.title);
+      setDescription(parsed.description ?? "");
+      setTimeLimitMinutes(
+        parsed.timeLimitMinutes !== undefined
+          ? String(parsed.timeLimitMinutes)
+          : "",
+      );
+      setClassIds([]);
+      createDraft.setQuestions(questionInputsToDrafts(parsed.questions));
+      setIsCreateOpen(true);
+      toast.success(
+        `Imported ${parsed.questions.length} question${
+          parsed.questions.length === 1 ? "" : "s"
+        } — review before creating`,
+      );
+    } catch (error: unknown) {
+      toast.error(
+        error instanceof QuizMarkdownParseError || error instanceof Error
+          ? error.message
+          : "Failed to parse the file",
+      );
+    }
   };
 
   const handleToggleCreateClass = (classId: string) => {
@@ -148,6 +223,9 @@ export function TeacherQuizBuilder({
 
     setIsSubmitting(true);
     try {
+      const resolvedQuestions = await resolveQuestionImages(
+        createDraft.questions,
+      );
       const created = await createQuizAction({
         classIds,
         title: title.trim(),
@@ -155,7 +233,7 @@ export function TeacherQuizBuilder({
         timeLimitMinutes: timeLimitMinutes.trim()
           ? Number.parseInt(timeLimitMinutes, 10)
           : undefined,
-        questions: draftsToQuestionInputs(createDraft.questions),
+        questions: draftsToQuestionInputs(resolvedQuestions),
       });
 
       setQuizzes((prev) => [created, ...prev]);
@@ -299,6 +377,9 @@ export function TeacherQuizBuilder({
 
     setIsSavingEdit(true);
     try {
+      const resolvedQuestions = editLocked
+        ? null
+        : await resolveQuestionImages(editDraft.questions);
       const updated = await updateQuizAction({
         quizId: editQuizId,
         title: editTitle.trim(),
@@ -306,9 +387,9 @@ export function TeacherQuizBuilder({
         timeLimitMinutes: editTimeLimitMinutes.trim()
           ? Number.parseInt(editTimeLimitMinutes, 10)
           : undefined,
-        questions: editLocked
-          ? undefined
-          : draftsToQuestionInputs(editDraft.questions),
+        questions: resolvedQuestions
+          ? draftsToQuestionInputs(resolvedQuestions)
+          : undefined,
       });
       setQuizzes((prev) =>
         prev.map((quiz) => (quiz.id === updated.id ? updated : quiz)),
@@ -459,6 +540,10 @@ export function TeacherQuizBuilder({
                         {question.points} pt{question.points === 1 ? "" : "s"}
                       </Badge>
                     </div>
+
+                    {question.imageUrl && (
+                      <QuizQuestionImage imageUrl={question.imageUrl} />
+                    )}
 
                     {respondents === 0 ? (
                       <p className="text-xs text-muted-foreground">
@@ -624,9 +709,31 @@ export function TeacherQuizBuilder({
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-2">
           <CardTitle>Your Quizzes</CardTitle>
-          <Button type="button" size="sm" onClick={() => setIsCreateOpen(true)}>
-            <PlusIcon className="mr-1 h-3.5 w-3.5" /> New quiz
-          </Button>
+          <div className="flex items-center gap-2">
+            <input
+              ref={importFileInputRef}
+              type="file"
+              accept=".md,.markdown,text/markdown"
+              aria-label="Import quiz from file"
+              className="hidden"
+              onChange={(event) => void handleImportFileChange(event)}
+            />
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => importFileInputRef.current?.click()}
+            >
+              <UploadIcon className="mr-1 h-3.5 w-3.5" /> Import from file
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => setIsCreateOpen(true)}
+            >
+              <PlusIcon className="mr-1 h-3.5 w-3.5" /> New quiz
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           {quizzes.length === 0 ? (

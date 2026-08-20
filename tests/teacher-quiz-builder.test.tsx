@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
 import { TeacherQuizBuilder } from "@/components/teacher-quiz-builder";
 import * as quizActions from "@/app/protected/teacher/quiz-actions";
+import { createClient as createBrowserClient } from "@/lib/supabase/client";
 
 vi.mock("@/app/protected/teacher/quiz-actions", () => ({
   createQuizAction: vi.fn(),
@@ -23,6 +24,10 @@ vi.mock("sonner", () => ({
     error: vi.fn(),
     success: vi.fn(),
   },
+}));
+
+vi.mock("@/lib/supabase/client", () => ({
+  createClient: vi.fn(),
 }));
 
 const classes = [
@@ -468,6 +473,7 @@ describe("TeacherQuizBuilder", () => {
           questionId: "q1",
           questionText: "2 + 2 = ?",
           questionType: "multiple_choice",
+          imageUrl: null,
           selectedOptionId: "opt-1",
           selectedOptionText: "4",
           textAnswer: null,
@@ -576,6 +582,7 @@ describe("TeacherQuizBuilder", () => {
             { optionText: "4", isCorrect: true },
             { optionText: "5", isCorrect: false },
           ],
+          imagePath: null,
         },
       ],
     });
@@ -641,6 +648,7 @@ describe("TeacherQuizBuilder", () => {
             { optionText: "4", isCorrect: true },
             { optionText: "5", isCorrect: false },
           ],
+          imagePath: null,
         },
       ],
     });
@@ -700,6 +708,7 @@ describe("TeacherQuizBuilder", () => {
             { optionText: "4", isCorrect: true },
             { optionText: "5", isCorrect: false },
           ],
+          imagePath: null,
         },
       ],
     });
@@ -812,6 +821,7 @@ describe("TeacherQuizBuilder", () => {
           questionText: "2 + 2 = ?",
           questionType: "multiple_choice",
           points: 1,
+          imageUrl: null,
           optionBreakdown: [
             { optionId: "opt-1", optionText: "4", isCorrect: true, count: 2 },
             { optionId: "opt-2", optionText: "5", isCorrect: false, count: 1 },
@@ -877,6 +887,7 @@ describe("TeacherQuizBuilder", () => {
           questionText: "Explain your reasoning",
           questionType: "short_answer",
           points: 1,
+          imageUrl: null,
           optionBreakdown: [],
           studentAnswers: [
             {
@@ -921,6 +932,7 @@ describe("TeacherQuizBuilder", () => {
           questionText: "Area of a circle?",
           questionType: "multiple_choice",
           points: 1,
+          imageUrl: null,
           optionBreakdown: [
             {
               optionId: "opt-1",
@@ -944,6 +956,7 @@ describe("TeacherQuizBuilder", () => {
           questionText: "Explain your reasoning",
           questionType: "short_answer",
           points: 1,
+          imageUrl: null,
           optionBreakdown: [],
           studentAnswers: [
             {
@@ -975,5 +988,162 @@ describe("TeacherQuizBuilder", () => {
     // short-answer text is never run through the renderer even though it
     // contains a literal "$".
     expect(container.querySelectorAll(".katex").length).toBe(2);
+  });
+
+  describe("importing a quiz from a Markdown file", () => {
+    it("parses a valid file and opens the create dialog pre-filled", async () => {
+      const user = userEvent.setup();
+      render(<TeacherQuizBuilder classes={classes} initialQuizzes={[]} />);
+
+      const file = new File(
+        [
+          [
+            "# Chapter 3 Quiz",
+            "",
+            "Covers derivatives.",
+            "",
+            "Time limit: 15",
+            "",
+            "## What is 2+2?",
+            "- [ ] 3",
+            "- [x] 4",
+          ].join("\n"),
+        ],
+        "quiz.md",
+        { type: "text/markdown" },
+      );
+
+      await user.upload(
+        screen.getByLabelText(/import quiz from file/i),
+        file,
+      );
+
+      await screen.findByRole("dialog");
+      expect(screen.getByLabelText(/title/i)).toHaveValue("Chapter 3 Quiz");
+      expect(screen.getByLabelText(/description/i)).toHaveValue(
+        "Covers derivatives.",
+      );
+      expect(screen.getByLabelText(/time limit/i)).toHaveValue(15);
+      expect(screen.getByDisplayValue("What is 2+2?")).toBeInTheDocument();
+      expect(toast.success).toHaveBeenCalledWith(
+        expect.stringMatching(/imported 1 question/i),
+      );
+    });
+
+    it("shows a friendly error and leaves the dialog closed for an invalid file", async () => {
+      const user = userEvent.setup();
+      render(<TeacherQuizBuilder classes={classes} initialQuizzes={[]} />);
+
+      const file = new File(["Not a valid quiz file"], "quiz.md", {
+        type: "text/markdown",
+      });
+
+      await user.upload(
+        screen.getByLabelText(/import quiz from file/i),
+        file,
+      );
+
+      await waitFor(() => {
+        expect(toast.error).toHaveBeenCalledWith(
+          expect.stringMatching(/no quiz title found/i),
+        );
+      });
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("question images", () => {
+    it("shows a preview after picking an image, and removes it on request", async () => {
+      const user = userEvent.setup();
+      render(<TeacherQuizBuilder classes={classes} initialQuizzes={[]} />);
+      await openCreateDialog(user);
+
+      const file = new File(["fake-bytes"], "diagram.png", {
+        type: "image/png",
+      });
+      await user.upload(screen.getByLabelText(/add image/i), file);
+
+      expect(await screen.findByAltText(/question image/i)).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: /remove image/i }));
+      expect(
+        screen.queryByAltText(/question image/i),
+      ).not.toBeInTheDocument();
+    });
+
+    it("rejects an oversized image without adding a preview", async () => {
+      const user = userEvent.setup();
+      render(<TeacherQuizBuilder classes={classes} initialQuizzes={[]} />);
+      await openCreateDialog(user);
+
+      const oversized = new File(
+        [new Uint8Array(6 * 1024 * 1024)],
+        "huge.png",
+        { type: "image/png" },
+      );
+      await user.upload(screen.getByLabelText(/add image/i), oversized);
+
+      expect(toast.error).toHaveBeenCalledWith(
+        expect.stringMatching(/5mb or smaller/i),
+      );
+      expect(
+        screen.queryByAltText(/question image/i),
+      ).not.toBeInTheDocument();
+    });
+
+    it("uploads a picked image before creating the quiz, and sends its path with the question", async () => {
+      const user = userEvent.setup();
+      const createQuizAction = vi.mocked(quizActions.createQuizAction);
+      createQuizAction.mockResolvedValue(baseQuiz);
+
+      const uploadMock = vi.fn(async () => ({
+        data: { path: "ignored" },
+        error: null,
+      }));
+      vi.mocked(createBrowserClient).mockReturnValue({
+        auth: {
+          getUser: vi.fn(async () => ({
+            data: { user: { id: "teacher-1" } },
+          })),
+        },
+        storage: { from: vi.fn(() => ({ upload: uploadMock })) },
+      } as never);
+
+      render(<TeacherQuizBuilder classes={classes} initialQuizzes={[]} />);
+      await openCreateDialog(user);
+
+      await user.type(screen.getByLabelText(/title/i), "Chapter 3 Quiz");
+      await user.type(
+        screen.getByPlaceholderText(/question text/i),
+        "What shape is this?",
+      );
+      await user.type(screen.getByPlaceholderText(/option 1/i), "Square");
+      await user.type(screen.getByPlaceholderText(/option 2/i), "Circle");
+
+      const file = new File(["fake-bytes"], "shape.png", {
+        type: "image/png",
+      });
+      await user.upload(screen.getByLabelText(/add image/i), file);
+      await screen.findByAltText(/question image/i);
+
+      await user.click(screen.getByRole("button", { name: /create quiz/i }));
+
+      await waitFor(() => {
+        expect(uploadMock).toHaveBeenCalledWith(
+          expect.stringMatching(/^teacher-1\/.+\.png$/),
+          file,
+          { contentType: "image/png" },
+        );
+        expect(createQuizAction).toHaveBeenCalledWith(
+          expect.objectContaining({
+            questions: [
+              expect.objectContaining({
+                imagePath: expect.stringMatching(/^teacher-1\/.+\.png$/),
+              }),
+            ],
+          }),
+        );
+      });
+    });
   });
 });

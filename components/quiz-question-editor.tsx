@@ -1,16 +1,27 @@
 "use client";
 
 import * as React from "react";
-import { PlusIcon, XIcon } from "lucide-react";
+import { ImageIcon, PlusIcon, XIcon } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MathText } from "@/components/math-text";
+import { QuizQuestionImage } from "@/components/quiz-question-image";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
+  ALLOWED_QUIZ_IMAGE_TYPES,
+  MAX_QUIZ_IMAGE_BYTES,
+} from "@/lib/quiz-images";
 import type { QuizQuestionInput, QuizQuestionType } from "@/lib/types/database";
 
 export type OptionDraft = { optionText: string; isCorrect: boolean };
+
+export type QuestionImageDraft =
+  | { kind: "none" }
+  | { kind: "existing"; path: string; url: string }
+  | { kind: "new"; file: File; previewUrl: string };
 
 export type QuestionDraft = {
   questionText: string;
@@ -18,6 +29,7 @@ export type QuestionDraft = {
   points: string;
   options: OptionDraft[];
   trueFalseAnswer: "true" | "false";
+  image: QuestionImageDraft;
 };
 
 export const QUESTION_TYPE_LABELS: Record<QuizQuestionType, string> = {
@@ -36,6 +48,7 @@ export function createBlankQuestion(): QuestionDraft {
       { optionText: "", isCorrect: false },
     ],
     trueFalseAnswer: "true",
+    image: { kind: "none" },
   };
 }
 
@@ -45,6 +58,7 @@ export function draftsToQuestionInputs(
 ): QuizQuestionInput[] {
   return questions.map((question) => {
     const points = Number.parseInt(question.points, 10) || 1;
+    const imagePath = question.image.kind === "existing" ? question.image.path : null;
 
     if (question.questionType === "true_false") {
       return {
@@ -55,6 +69,7 @@ export function draftsToQuestionInputs(
           { optionText: "True", isCorrect: question.trueFalseAnswer === "true" },
           { optionText: "False", isCorrect: question.trueFalseAnswer === "false" },
         ],
+        imagePath,
       };
     }
 
@@ -64,6 +79,7 @@ export function draftsToQuestionInputs(
         questionType: "short_answer" as const,
         points,
         options: [],
+        imagePath,
       };
     }
 
@@ -77,6 +93,7 @@ export function draftsToQuestionInputs(
           optionText: option.optionText.trim(),
           isCorrect: option.isCorrect,
         })),
+      imagePath,
     };
   });
 }
@@ -99,6 +116,10 @@ export function questionInputsToDrafts(
         ?.isCorrect === false
         ? "false"
         : "true",
+    image:
+      question.imagePath && question.imageUrl
+        ? { kind: "existing", path: question.imagePath, url: question.imageUrl }
+        : { kind: "none" },
   }));
 }
 
@@ -293,6 +314,78 @@ export function QuizQuestionEditor({
               <MathText text={question.questionText} />
             </p>
           )}
+
+          <div className="space-y-2">
+            <input
+              type="file"
+              id={`q${index}-image`}
+              accept={ALLOWED_QUIZ_IMAGE_TYPES.join(",")}
+              disabled={readOnly}
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                if (!file) return;
+                if (!ALLOWED_QUIZ_IMAGE_TYPES.includes(file.type)) {
+                  toast.error("Images must be JPEG, PNG, WebP, or GIF");
+                  return;
+                }
+                if (file.size > MAX_QUIZ_IMAGE_BYTES) {
+                  toast.error("Images must be 5MB or smaller");
+                  return;
+                }
+                if (question.image.kind === "new") {
+                  URL.revokeObjectURL(question.image.previewUrl);
+                }
+                onQuestionChange(index, {
+                  image: {
+                    kind: "new",
+                    file,
+                    previewUrl: URL.createObjectURL(file),
+                  },
+                });
+              }}
+            />
+            {question.image.kind !== "none" && (
+              <QuizQuestionImage
+                imageUrl={
+                  question.image.kind === "existing"
+                    ? question.image.url
+                    : question.image.previewUrl
+                }
+              />
+            )}
+            {!readOnly && (
+              <div className="flex items-center gap-2">
+                <Label
+                  htmlFor={`q${index}-image`}
+                  className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border px-3 text-xs font-medium hover:bg-accent"
+                >
+                  <ImageIcon className="h-3.5 w-3.5" />
+                  {question.image.kind === "none"
+                    ? "Add image"
+                    : "Change image"}
+                </Label>
+                {question.image.kind !== "none" && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8"
+                    onClick={() => {
+                      if (question.image.kind === "new") {
+                        URL.revokeObjectURL(question.image.previewUrl);
+                      }
+                      onQuestionChange(index, { image: { kind: "none" } });
+                    }}
+                  >
+                    Remove image
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
+
           <div className="grid grid-cols-2 gap-2">
             <select
               aria-label="Question type"

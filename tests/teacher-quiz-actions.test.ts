@@ -27,6 +27,17 @@ const quizRow = {
   created_at: "2026-08-16T00:00:00Z",
 };
 
+function findChain(
+  client: ReturnType<typeof createMockSupabaseClient>,
+  table: string,
+) {
+  const index = client.from.mock.calls.findIndex(([t]) => t === table);
+  if (index === -1) {
+    throw new Error(`"${table}" was never queried`);
+  }
+  return client.from.mock.results[index].value;
+}
+
 describe("teacher quiz actions - updateQuizAction", () => {
   it("throws ExpectedError when the quiz already has attempts and questions were provided", async () => {
     vi.mocked(requireTeacher).mockResolvedValue(undefined);
@@ -50,6 +61,7 @@ describe("teacher quiz actions - updateQuizAction", () => {
             questionType: "short_answer",
             points: 1,
             options: [],
+            imagePath: null,
           },
         ],
       }),
@@ -68,6 +80,7 @@ describe("teacher quiz actions - updateQuizAction", () => {
         { data: null, error: null, count: 0 }, // buildQuizListItem
       ],
       quiz_questions: [
+        { data: [], error: null }, // select old image_paths
         { data: null, error: null }, // delete existing
         { data: { id: "question-1" }, error: null }, // insert replacement
         { data: null, error: null, count: 1 }, // buildQuizListItem count
@@ -85,6 +98,7 @@ describe("teacher quiz actions - updateQuizAction", () => {
           questionType: "short_answer",
           points: 1,
           options: [],
+          imagePath: null,
         },
       ],
     });
@@ -245,6 +259,113 @@ describe("teacher quiz actions - getQuizResultsAction roster", () => {
     );
     expect(studentBResult).toBeDefined();
     expect(studentBResult?.completed).toBe(false);
+  });
+});
+
+describe("teacher quiz actions - question images", () => {
+  it("passes a question's image_path through to the insert", async () => {
+    vi.mocked(requireTeacher).mockResolvedValue(undefined);
+    const client = createMockSupabaseClient({
+      quizzes: { data: quizRow, error: null },
+      quiz_questions: [
+        { data: { id: "question-1" }, error: null }, // insert
+        { data: null, error: null, count: 1 }, // buildQuizListItem count
+      ],
+      quiz_assignments: { data: [], error: null },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await createQuizAction({
+      title: "Chapter 3",
+      questions: [
+        {
+          questionText: "What shape is this?",
+          questionType: "short_answer",
+          points: 1,
+          options: [],
+          imagePath: "teacher-1/shape.png",
+        },
+      ],
+    });
+
+    const chain = findChain(client, "quiz_questions");
+    expect(chain.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ image_path: "teacher-1/shape.png" }),
+    );
+  });
+
+  it("deletes a stale image that's no longer referenced after an edit, but leaves a carried-over one alone", async () => {
+    vi.mocked(requireTeacher).mockResolvedValue(undefined);
+    const client = createMockSupabaseClient({
+      quizzes: [
+        { data: quizRow, error: null }, // requireOwnedQuiz
+        { data: quizRow, error: null }, // update + select
+      ],
+      quiz_attempts: [
+        { data: null, error: null, count: 0 }, // lock check
+        { data: null, error: null, count: 0 }, // buildQuizListItem
+      ],
+      quiz_questions: [
+        {
+          data: [
+            { image_path: "teacher-1/old.png" },
+            { image_path: "teacher-1/kept.png" },
+          ],
+          error: null,
+        }, // select old image_paths
+        { data: null, error: null }, // delete existing
+        { data: { id: "question-2" }, error: null }, // insert replacement
+        { data: null, error: null, count: 1 }, // buildQuizListItem count
+      ],
+      quiz_assignments: { data: [], error: null },
+    });
+    const removeMock = vi.fn(async () => ({ data: null, error: null }));
+    client.storage = { from: vi.fn(() => ({ remove: removeMock })) };
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await updateQuizAction({
+      quizId: "quiz-1",
+      title: "Chapter 3",
+      questions: [
+        {
+          questionText: "Still has its image",
+          questionType: "short_answer",
+          points: 1,
+          options: [],
+          imagePath: "teacher-1/kept.png",
+        },
+        {
+          questionText: "New question, no image",
+          questionType: "short_answer",
+          points: 1,
+          options: [],
+          imagePath: null,
+        },
+      ],
+    });
+
+    expect(removeMock).toHaveBeenCalledWith(["teacher-1/old.png"]);
+  });
+
+  it("cleans up every referenced image when the quiz is deleted", async () => {
+    vi.mocked(requireTeacher).mockResolvedValue(undefined);
+    const client = createMockSupabaseClient({
+      quizzes: [
+        { data: quizRow, error: null }, // requireOwnedQuiz
+        { data: null, error: null }, // delete
+      ],
+      quiz_questions: {
+        data: [{ image_path: "teacher-1/a.png" }, { image_path: null }],
+        error: null,
+      },
+    });
+    const removeMock = vi.fn(async () => ({ data: null, error: null }));
+    client.storage = { from: vi.fn(() => ({ remove: removeMock })) };
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await deleteQuizAction("quiz-1");
+
+    expect(removeMock).toHaveBeenCalledWith(["teacher-1/a.png"]);
   });
 });
 

@@ -8,7 +8,7 @@
     "lint": "eslint .",
     "test": "vitest",
     "test:unit": "vitest run --config vitest.unit.config.ts",
-    "test:rls": "vitest run --config vitest.rls.config.ts tests/rls/parent-family-isolation.test.ts tests/rls/teacher-mutations.test.ts",
+    "test:rls": "vitest run --config vitest.rls.config.ts tests/rls/parent-family-isolation.test.ts tests/rls/teacher-mutations.test.ts tests/rls/quiz-images.test.ts",
     "test:seed": "vitest run --config vitest.rls.config.ts tests/rls/local-stack-reset.test.ts",
     "db:pull": "supabase db pull",
     "db:push": "supabase db push",

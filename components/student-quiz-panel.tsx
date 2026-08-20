@@ -21,6 +21,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MathText } from "@/components/math-text";
+import { QuizQuestionImage } from "@/components/quiz-question-image";
 import { QuizReviewAnswers } from "@/components/quiz-review-answers";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import type {
@@ -220,6 +221,9 @@ export function StudentQuizPanel({
               <p className="text-sm font-medium">
                 {index + 1}. <MathText text={question.questionText} />
               </p>
+              {question.imageUrl && (
+                <QuizQuestionImage imageUrl={question.imageUrl} />
+              )}
               {question.questionType === "short_answer" ? (
                 <Input
                   value={answers[question.id]?.textAnswer ?? ""}

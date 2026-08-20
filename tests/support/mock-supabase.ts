@@ -67,5 +67,8 @@ export function createMockSupabaseClient(
   return {
     from: vi.fn((table: string) => builder(table)),
     auth: { getUser: vi.fn(async () => ({ data: { user } })) },
+    // Not stubbed by default - tests that touch Storage (quiz images) set
+    // this themselves, e.g. `client.storage = { from: vi.fn(...) }`.
+    storage: undefined as unknown,
   };
 }

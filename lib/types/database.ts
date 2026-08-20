@@ -108,6 +108,7 @@ export interface QuizQuestion {
   question_type: QuizQuestionType;
   order_index: number;
   points: number;
+  image_path: string | null;
   created_at?: string;
 }
 
@@ -159,6 +160,7 @@ export interface QuizQuestionForTaking {
   questionType: QuizQuestionType;
   orderIndex: number;
   points: number;
+  imageUrl: string | null;
   options: QuizQuestionOptionForTaking[];
 }
 
@@ -182,6 +184,7 @@ export interface QuizAttemptAnswerReview {
   questionId: string;
   questionText: string;
   questionType: QuizQuestionType;
+  imageUrl: string | null;
   selectedOptionId: string | null;
   selectedOptionText: string | null;
   textAnswer: string | null;
@@ -230,6 +233,11 @@ export interface QuizQuestionInput {
   questionType: QuizQuestionType;
   points: number;
   options: QuizQuestionOptionInput[];
+  // Storage object path, round-trips through create/update/duplicate.
+  imagePath: string | null;
+  // Signed URL for display only, populated by read actions - never written
+  // back to the server (createQuizAction/updateQuizAction ignore it).
+  imageUrl?: string | null;
 }
 
 export interface CreateQuizInput {
@@ -311,6 +319,7 @@ export interface QuizQuestionBreakdown {
   questionText: string;
   questionType: QuizQuestionType;
   points: number;
+  imageUrl: string | null;
   optionBreakdown: QuizQuestionOptionBreakdown[];
   studentAnswers: QuizQuestionStudentAnswer[];
 }
