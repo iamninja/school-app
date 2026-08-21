@@ -35,6 +35,8 @@ const receipt: Receipt = {
   mydata_error: null,
   mydata_submitted_at: null,
   mydata_environment: null,
+  mydata_last_verified_at: null,
+  mydata_last_verified_ok: null,
   emailed_at: null,
   created_at: "2026-08-20T00:00:00Z",
   lineItems: [

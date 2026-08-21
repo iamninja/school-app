@@ -1,6 +1,9 @@
 import "server-only";
 
-import { getDecryptedCredential } from "@/lib/integrations/credentials";
+import {
+  getDecryptedCredential,
+  getDecryptedCredentialForEnvironment,
+} from "@/lib/integrations/credentials";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 
 /**
@@ -162,4 +165,90 @@ export async function sendInvoiceXml(xml: string): Promise<MyDataResult> {
   }
 
   return parseMyDataResponse(body);
+}
+
+export interface MyDataVerification {
+  found: boolean;
+  invoiceType: string | null;
+  grossValue: string | null;
+}
+
+/**
+ * Re-asks AADE whether it actually holds a given MARK, via
+ * RequestTransmittedDocs ("documents I myself submitted"). This is what
+ * keeps "our database says submitted" and "AADE actually has this
+ * filing" from silently drifting apart - a MARK we stored is not proof
+ * of anything until confirmed independently.
+ *
+ * Verifies against the SPECIFIC environment the receipt was filed to,
+ * never the currently active one - the two can differ (e.g. after a
+ * sandbox -> production cutover), and asking the wrong environment about
+ * an old MARK would incorrectly report it missing.
+ *
+ * mark is an EXCLUSIVE lower bound in AADE's own semantics (spec §4.2.7:
+ * "returns entries with MARK greater than the parameter"), so mark-1
+ * combined with maxMark=mark bounds the query to exactly this one record.
+ */
+export async function verifyReceiptMark(
+  mark: string,
+  environment: "sandbox" | "production",
+): Promise<MyDataResult & { verification?: MyDataVerification }> {
+  const [userId, subscriptionKey] = await Promise.all([
+    getDecryptedCredentialForEnvironment(PROVIDER, "user_id", environment),
+    getDecryptedCredentialForEnvironment(
+      PROVIDER,
+      "subscription_key",
+      environment,
+    ),
+  ]);
+
+  const from = (BigInt(mark) - BigInt(1)).toString();
+  const url = `${ENDPOINTS[environment]}/RequestTransmittedDocs?mark=${from}&maxMark=${mark}`;
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "aade-user-id": userId,
+        "ocp-apim-subscription-key": subscriptionKey,
+      },
+    });
+  } catch (error: unknown) {
+    return {
+      ok: false,
+      error: `Could not reach myDATA (${environment}): ${
+        error instanceof Error ? error.message : "network error"
+      }`,
+    };
+  }
+
+  const body = await response.text();
+
+  if (response.status === 401 || response.status === 403) {
+    return {
+      ok: false,
+      error: `myDATA rejected the credentials (HTTP ${response.status}) for the ${environment} environment.`,
+    };
+  }
+  if (!response.ok) {
+    return {
+      ok: false,
+      error: `myDATA returned HTTP ${response.status}: ${body.slice(0, 500)}`,
+    };
+  }
+
+  const found = body.includes(`<mark>${mark}</mark>`);
+
+  return {
+    ok: true,
+    mark,
+    uid: extractTag(body, "uid"),
+    qrUrl: extractTag(body, "qrCodeUrl"),
+    verification: {
+      found,
+      invoiceType: found ? extractTag(body, "invoiceType") : null,
+      grossValue: found ? extractTag(body, "totalGrossValue") : null,
+    },
+  };
 }

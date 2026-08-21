@@ -159,18 +159,24 @@ export async function getDecryptedCredential(
   provider: string,
   credentialKey: string,
 ): Promise<string> {
-  assertValidCredentialRef(provider, credentialKey);
+  const environment = await getActiveEnvironmentFor(provider);
+  return getDecryptedCredentialForEnvironment(
+    provider,
+    credentialKey,
+    environment,
+  );
+}
 
-  const serviceClient = createServiceRoleClient();
-  const { data: settings, error: settingsError } = await serviceClient
+async function getActiveEnvironmentFor(
+  provider: string,
+): Promise<IntegrationEnvironment> {
+  const { data: settings, error } = await createServiceRoleClient()
     .from("integration_settings")
     .select("active_environment, enabled")
     .eq("provider", provider)
     .maybeSingle();
 
-  if (settingsError) {
-    throw settingsError;
-  }
+  if (error) throw error;
   if (!settings) {
     throw new Error(`Integration ${provider} is not configured`);
   }
@@ -178,11 +184,25 @@ export async function getDecryptedCredential(
     throw new Error(`Integration ${provider} is disabled`);
   }
 
-  const environment = settings.active_environment as IntegrationEnvironment;
+  return settings.active_environment as IntegrationEnvironment;
+}
+
+/**
+ * Same as getDecryptedCredential, but for a caller-specified environment
+ * rather than whichever one is currently active - for operations on a
+ * PAST fact tied to a specific environment (e.g. verifying an already
+ * -filed receipt), where the active environment may have moved on since.
+ */
+export async function getDecryptedCredentialForEnvironment(
+  provider: string,
+  credentialKey: string,
+  environment: IntegrationEnvironment,
+): Promise<string> {
+  assertValidCredentialRef(provider, credentialKey);
 
   // Also stamps last_used_at, so a stale credential is visible as such in
   // the UI without a second round trip.
-  const { data, error } = await serviceClient.rpc(
+  const { data, error } = await createServiceRoleClient().rpc(
     "get_integration_credential_secret",
     {
       p_provider: provider,

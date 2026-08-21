@@ -7,6 +7,7 @@ import { buildInvoiceXml } from "@/lib/mydata/invoice-xml";
 import {
   getActiveMyDataEnvironment,
   sendInvoiceXml,
+  verifyReceiptMark,
 } from "@/lib/mydata/client";
 import type {
   BusinessProfile,
@@ -18,7 +19,7 @@ import type {
 const DEFAULT_SERIES = "Α";
 
 const RECEIPT_COLUMNS =
-  "id, series, receipt_number, issue_date, recipient_name, recipient_afm, recipient_address, family_id, total_amount, vat_category, payment_method, notes, mydata_status, mydata_mark, mydata_uid, mydata_error, mydata_submitted_at, mydata_environment, emailed_at, created_at";
+  "id, series, receipt_number, issue_date, recipient_name, recipient_afm, recipient_address, family_id, total_amount, vat_category, payment_method, notes, mydata_status, mydata_mark, mydata_uid, mydata_error, mydata_submitted_at, mydata_environment, mydata_last_verified_at, mydata_last_verified_ok, emailed_at, created_at";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -296,6 +297,92 @@ export async function submitReceiptToMyDataAction(
     // Surfaced to the teacher as a plain message rather than a crash - the
     // receipt itself is saved and retryable, this is not an app error.
     throw new ExpectedError(result.error);
+  }
+
+  return withItems;
+}
+
+/**
+ * Re-asks AADE whether it actually holds this receipt's MARK. A MARK we
+ * stored locally is not proof of anything on its own - this is what
+ * catches the case where our database says "submitted" but AADE has no
+ * record (or the reverse).
+ */
+export async function verifyReceiptWithMyDataAction(
+  receiptId: string,
+): Promise<Receipt> {
+  const supabase = await requireTeacherSession();
+
+  const { data: receiptRow, error: fetchError } = await supabase
+    .from("receipts")
+    .select(RECEIPT_COLUMNS)
+    .eq("id", receiptId)
+    .single();
+
+  if (fetchError || !receiptRow) {
+    throw new Error("Receipt not found");
+  }
+
+  const [receipt] = await attachLineItems(supabase, [
+    receiptRow as unknown as Omit<Receipt, "lineItems">,
+  ]);
+
+  if (!receipt.mydata_mark || !receipt.mydata_environment) {
+    throw new ExpectedError(
+      "This receipt has no myDATA MARK yet - send it first.",
+    );
+  }
+
+  // Always the environment this receipt was actually filed to, never
+  // whatever's currently active - they can differ after a sandbox ->
+  // production cutover, and asking the wrong one would misreport an old
+  // MARK as missing.
+  const result = await verifyReceiptMark(
+    receipt.mydata_mark,
+    receipt.mydata_environment,
+  );
+
+  await supabase.from("mydata_submission_log").insert({
+    receipt_id: receipt.id,
+    kind: "verify",
+    environment: receipt.mydata_environment,
+    success: result.ok && Boolean(result.verification?.found),
+    mark: receipt.mydata_mark,
+    error: !result.ok
+      ? result.error
+      : !result.verification?.found
+        ? "MARK not found in AADE's transmitted documents"
+        : null,
+  });
+
+  if (!result.ok) {
+    throw new ExpectedError(result.error);
+  }
+
+  const verifiedOk = result.verification?.found ?? false;
+
+  const { data: updated, error: updateError } = await supabase
+    .from("receipts")
+    .update({
+      mydata_last_verified_at: new Date().toISOString(),
+      mydata_last_verified_ok: verifiedOk,
+    })
+    .eq("id", receipt.id)
+    .select(RECEIPT_COLUMNS)
+    .single();
+
+  if (updateError) {
+    throw updateError;
+  }
+
+  const [withItems] = await attachLineItems(supabase, [
+    updated as unknown as Omit<Receipt, "lineItems">,
+  ]);
+
+  if (!verifiedOk) {
+    throw new ExpectedError(
+      `AADE has no record of MARK ${receipt.mydata_mark} in ${receipt.mydata_environment}. This receipt may need to be re-sent.`,
+    );
   }
 
   return withItems;

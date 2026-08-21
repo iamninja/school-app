@@ -9,6 +9,8 @@ vi.mock("@/app/protected/teacher/receipt-actions", () => ({
   createReceiptAction: vi.fn(),
   deleteReceiptAction: vi.fn(),
   listReceiptsAction: vi.fn(),
+  submitReceiptToMyDataAction: vi.fn(),
+  verifyReceiptWithMyDataAction: vi.fn(),
 }));
 
 vi.mock("sonner", () => ({
@@ -55,6 +57,8 @@ const existingReceipt = {
   mydata_error: null,
   mydata_submitted_at: null,
   mydata_environment: null,
+  mydata_last_verified_at: null,
+  mydata_last_verified_ok: null,
   emailed_at: null,
   created_at: "2026-08-20T00:00:00Z",
   lineItems: [
@@ -330,5 +334,145 @@ describe("TeacherReceipts", () => {
     ).not.toBeInTheDocument();
 
     confirmSpy.mockRestore();
+  });
+
+  it("sends an unsent receipt to myDATA and shows the MARK", async () => {
+    const user = userEvent.setup();
+    const submitted = {
+      ...existingReceipt,
+      mydata_status: "submitted" as const,
+      mydata_mark: "400001968145986",
+      mydata_environment: "sandbox" as const,
+    };
+    vi.mocked(receiptActions.submitReceiptToMyDataAction).mockResolvedValue(
+      submitted,
+    );
+
+    render(
+      <TeacherReceipts
+        initialReceipts={[existingReceipt]}
+        families={families}
+        business={business}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: /send to mydata/i }),
+    );
+
+    await waitFor(() => {
+      expect(receiptActions.submitReceiptToMyDataAction).toHaveBeenCalledWith(
+        "receipt-1",
+      );
+      expect(toast.success).toHaveBeenCalledWith(
+        expect.stringContaining("400001968145986"),
+      );
+    });
+    expect(screen.getByText(/myDATA sent \(sandbox\)/)).toBeInTheDocument();
+  });
+
+  it("shows a failed submission as retryable, not as sent", async () => {
+    const user = userEvent.setup();
+    vi.mocked(receiptActions.submitReceiptToMyDataAction).mockRejectedValue(
+      new Error("myDATA rejected the receipt: Payment Methods is mandatory"),
+    );
+
+    render(
+      <TeacherReceipts
+        initialReceipts={[existingReceipt]}
+        families={families}
+        business={business}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: /send to mydata/i }),
+    );
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(
+        expect.stringContaining("Payment Methods is mandatory"),
+      );
+    });
+    expect(screen.getByText("myDATA failed")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /retry mydata/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("verifies a submitted receipt and shows it confirmed", async () => {
+    const user = userEvent.setup();
+    const submitted = {
+      ...existingReceipt,
+      mydata_status: "submitted" as const,
+      mydata_mark: "400001968145986",
+      mydata_environment: "sandbox" as const,
+    };
+    const verified = {
+      ...submitted,
+      mydata_last_verified_at: "2026-08-20T18:00:00Z",
+      mydata_last_verified_ok: true,
+    };
+    vi.mocked(receiptActions.verifyReceiptWithMyDataAction).mockResolvedValue(
+      verified,
+    );
+
+    render(
+      <TeacherReceipts
+        initialReceipts={[submitted]}
+        families={families}
+        business={business}
+      />,
+    );
+
+    // The "Send" button is gone once submitted - only Verify remains.
+    expect(
+      screen.queryByRole("button", { name: /send to mydata/i }),
+    ).not.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: /verify with aade/i }),
+    );
+
+    await waitFor(() => {
+      expect(
+        receiptActions.verifyReceiptWithMyDataAction,
+      ).toHaveBeenCalledWith("receipt-1");
+    });
+    expect(screen.getByText(/myDATA verified/)).toBeInTheDocument();
+  });
+
+  it("flags a receipt AADE has no record of, without pretending it wasn't checked", async () => {
+    const user = userEvent.setup();
+    const submitted = {
+      ...existingReceipt,
+      mydata_status: "submitted" as const,
+      mydata_mark: "400001968145986",
+      mydata_environment: "sandbox" as const,
+    };
+    vi.mocked(receiptActions.verifyReceiptWithMyDataAction).mockRejectedValue(
+      new Error(
+        "AADE has no record of MARK 400001968145986 in sandbox. This receipt may need to be re-sent.",
+      ),
+    );
+
+    render(
+      <TeacherReceipts
+        initialReceipts={[submitted]}
+        families={families}
+        business={business}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: /verify with aade/i }),
+    );
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(
+        expect.stringContaining("no record"),
+      );
+    });
+    expect(screen.getByText(/myDATA sent — not confirmed/)).toBeInTheDocument();
   });
 });

@@ -7,6 +7,7 @@ import {
   PlusIcon,
   PrinterIcon,
   SendIcon,
+  ShieldCheckIcon,
   Trash2Icon,
   XIcon,
 } from "lucide-react";
@@ -15,6 +16,7 @@ import {
   createReceiptAction,
   deleteReceiptAction,
   submitReceiptToMyDataAction,
+  verifyReceiptWithMyDataAction,
 } from "@/app/protected/teacher/receipt-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -78,6 +80,7 @@ export function TeacherReceipts({
   const [viewing, setViewing] = React.useState<Receipt | null>(null);
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
   const [submittingId, setSubmittingId] = React.useState<string | null>(null);
+  const [verifyingId, setVerifyingId] = React.useState<string | null>(null);
 
   const [familyId, setFamilyId] = React.useState("");
   const [recipientName, setRecipientName] = React.useState("");
@@ -180,6 +183,40 @@ export function TeacherReceipts({
     }
   };
 
+  const handleVerify = async (receipt: Receipt) => {
+    setVerifyingId(receipt.id);
+    try {
+      const updated = await verifyReceiptWithMyDataAction(receipt.id);
+      setReceipts((prev) =>
+        prev.map((item) => (item.id === updated.id ? updated : item)),
+      );
+      if (viewing?.id === updated.id) {
+        setViewing(updated);
+      }
+      toast.success(`Confirmed on AADE — MARK ${updated.mydata_mark}`);
+    } catch (error: unknown) {
+      // A "not found" result still updates mydata_last_verified_* on the
+      // receipt (via the action), so the message here is the detail, not
+      // the whole story - the badge reflects the real outcome either way.
+      toast.error(
+        error instanceof Error ? error.message : "Could not verify with AADE",
+      );
+      setReceipts((prev) =>
+        prev.map((item) =>
+          item.id === receipt.id
+            ? {
+                ...item,
+                mydata_last_verified_at: new Date().toISOString(),
+                mydata_last_verified_ok: false,
+              }
+            : item,
+        ),
+      );
+    } finally {
+      setVerifyingId(null);
+    }
+  };
+
   const handleDelete = async (receipt: Receipt) => {
     if (
       !window.confirm(
@@ -271,8 +308,19 @@ export function TeacherReceipts({
                   </button>
                   <div className="flex items-center gap-2">
                     {receipt.mydata_status === "submitted" ? (
-                      <Badge title={`MARK ${receipt.mydata_mark ?? ""}`}>
-                        myDATA sent
+                      <Badge
+                        title={`MARK ${receipt.mydata_mark ?? ""}`}
+                        variant={
+                          receipt.mydata_last_verified_ok === false
+                            ? "destructive"
+                            : "default"
+                        }
+                      >
+                        {receipt.mydata_last_verified_ok === false
+                          ? "myDATA sent — not confirmed"
+                          : receipt.mydata_last_verified_ok === true
+                            ? "myDATA verified"
+                            : "myDATA sent"}
                         {receipt.mydata_environment === "sandbox"
                           ? " (sandbox)"
                           : ""}
@@ -296,6 +344,25 @@ export function TeacherReceipts({
                           : receipt.mydata_status === "failed"
                             ? "Retry myDATA"
                             : "Send to myDATA"}
+                      </Button>
+                    )}
+                    {receipt.mydata_status === "submitted" && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={verifyingId === receipt.id}
+                        title={
+                          receipt.mydata_last_verified_at
+                            ? `Last checked ${new Date(receipt.mydata_last_verified_at).toLocaleString()}`
+                            : "Never checked"
+                        }
+                        onClick={() => void handleVerify(receipt)}
+                      >
+                        <ShieldCheckIcon className="mr-1 h-3.5 w-3.5" />
+                        {verifyingId === receipt.id
+                          ? "Checking..."
+                          : "Verify with AADE"}
                       </Button>
                     )}
                     <Button

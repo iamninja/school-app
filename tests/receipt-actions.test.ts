@@ -5,6 +5,8 @@ import { ExpectedError } from "@/lib/expected-error";
 import {
   createReceiptAction,
   deleteReceiptAction,
+  submitReceiptToMyDataAction,
+  verifyReceiptWithMyDataAction,
 } from "@/app/protected/teacher/receipt-actions";
 import { createMockSupabaseClient } from "./support/mock-supabase";
 
@@ -14,6 +16,16 @@ vi.mock("@/lib/supabase/server", () => ({
 
 vi.mock("@/lib/auth/require-teacher", () => ({
   requireTeacher: vi.fn(),
+}));
+
+vi.mock("@/lib/mydata/client", () => ({
+  getActiveMyDataEnvironment: vi.fn(),
+  sendInvoiceXml: vi.fn(),
+  verifyReceiptMark: vi.fn(),
+}));
+
+vi.mock("@/lib/mydata/invoice-xml", () => ({
+  buildInvoiceXml: vi.fn(() => "<InvoicesDoc />"),
 }));
 
 const businessProfile = { business_name: "Modus", afm: "123456789" };
@@ -214,5 +226,276 @@ describe("deleteReceiptAction", () => {
     await expect(deleteReceiptAction("receipt-1")).rejects.toThrow(
       /cancelled through AADE/i,
     );
+  });
+});
+
+describe("submitReceiptToMyDataAction", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(requireTeacher).mockResolvedValue(undefined);
+  });
+
+  it("refuses to re-send a receipt that already has a MARK", async () => {
+    vi.mocked(createClient).mockResolvedValue(
+      createMockSupabaseClient({
+        receipts: {
+          data: { ...receiptRow, mydata_status: "submitted", mydata_mark: "400001" },
+          error: null,
+        },
+        receipt_line_items: { data: [], error: null },
+      }) as never,
+    );
+
+    await expect(submitReceiptToMyDataAction("receipt-1")).rejects.toThrow(
+      /would file it twice/i,
+    );
+
+    const mydata = await import("@/lib/mydata/client");
+    expect(mydata.sendInvoiceXml).not.toHaveBeenCalled();
+  });
+
+  it("requires the business ΑΦΜ before attempting to send", async () => {
+    vi.mocked(createClient).mockResolvedValue(
+      createMockSupabaseClient({
+        receipts: { data: receiptRow, error: null },
+        receipt_line_items: { data: [], error: null },
+        business_profile: { data: { business_name: "Modus", afm: null }, error: null },
+      }) as never,
+    );
+
+    await expect(submitReceiptToMyDataAction("receipt-1")).rejects.toThrow(
+      ExpectedError,
+    );
+
+    const mydata = await import("@/lib/mydata/client");
+    expect(mydata.sendInvoiceXml).not.toHaveBeenCalled();
+  });
+
+  it("on success, records the MARK/environment on the receipt and logs the attempt", async () => {
+    const mydata = await import("@/lib/mydata/client");
+    vi.mocked(mydata.getActiveMyDataEnvironment).mockResolvedValue("sandbox");
+    vi.mocked(mydata.sendInvoiceXml).mockResolvedValue({
+      ok: true,
+      mark: "400001968145986",
+      uid: "some-uid",
+      qrUrl: null,
+    });
+
+    const client = createMockSupabaseClient({
+      receipts: [
+        { data: receiptRow, error: null }, // fetch
+        {
+          data: {
+            ...receiptRow,
+            mydata_status: "submitted",
+            mydata_mark: "400001968145986",
+            mydata_environment: "sandbox",
+          },
+          error: null,
+        }, // update + select
+      ],
+      receipt_line_items: { data: [], error: null },
+      business_profile: { data: businessProfile, error: null },
+      mydata_submission_log: { data: null, error: null },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    const result = await submitReceiptToMyDataAction("receipt-1");
+
+    expect(result.mydata_mark).toBe("400001968145986");
+    const logChain = client.from.mock.results[
+      client.from.mock.calls.findIndex(([t]) => t === "mydata_submission_log")
+    ].value;
+    expect(logChain.insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        receipt_id: "receipt-1",
+        environment: "sandbox",
+        success: true,
+        mark: "400001968145986",
+      }),
+    );
+  });
+
+  it("on failure, saves the error and status without throwing an unhandled crash", async () => {
+    const mydata = await import("@/lib/mydata/client");
+    vi.mocked(mydata.getActiveMyDataEnvironment).mockResolvedValue("sandbox");
+    vi.mocked(mydata.sendInvoiceXml).mockResolvedValue({
+      ok: false,
+      error: "myDATA rejected the receipt: Payment Methods is mandatory",
+    });
+
+    const client = createMockSupabaseClient({
+      receipts: [
+        { data: receiptRow, error: null },
+        {
+          data: { ...receiptRow, mydata_status: "failed" },
+          error: null,
+        },
+      ],
+      receipt_line_items: { data: [], error: null },
+      business_profile: { data: businessProfile, error: null },
+      mydata_submission_log: { data: null, error: null },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await expect(submitReceiptToMyDataAction("receipt-1")).rejects.toThrow(
+      /Payment Methods is mandatory/,
+    );
+
+    const logChain = client.from.mock.results[
+      client.from.mock.calls.findIndex(([t]) => t === "mydata_submission_log")
+    ].value;
+    expect(logChain.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ success: false }),
+    );
+  });
+});
+
+describe("verifyReceiptWithMyDataAction", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(requireTeacher).mockResolvedValue(undefined);
+  });
+
+  it("refuses to verify a receipt with no MARK yet", async () => {
+    vi.mocked(createClient).mockResolvedValue(
+      createMockSupabaseClient({
+        receipts: { data: receiptRow, error: null },
+        receipt_line_items: { data: [], error: null },
+      }) as never,
+    );
+
+    await expect(verifyReceiptWithMyDataAction("receipt-1")).rejects.toThrow(
+      /send it first/i,
+    );
+  });
+
+  it("always checks the environment the receipt was actually filed to, not whatever is currently active", async () => {
+    // The whole point of storing mydata_environment: a sandbox -> production
+    // cutover must not make an old sandbox MARK look "not found".
+    const mydata = await import("@/lib/mydata/client");
+    vi.mocked(mydata.verifyReceiptMark).mockResolvedValue({
+      ok: true,
+      mark: "400001968145986",
+      uid: null,
+      qrUrl: null,
+      verification: { found: true, invoiceType: "11.2", grossValue: "50.00" },
+    });
+
+    const client = createMockSupabaseClient({
+      receipts: [
+        {
+          data: {
+            ...receiptRow,
+            mydata_status: "submitted",
+            mydata_mark: "400001968145986",
+            mydata_environment: "sandbox",
+          },
+          error: null,
+        },
+        {
+          data: {
+            ...receiptRow,
+            mydata_status: "submitted",
+            mydata_mark: "400001968145986",
+            mydata_environment: "sandbox",
+            mydata_last_verified_ok: true,
+          },
+          error: null,
+        },
+      ],
+      receipt_line_items: { data: [], error: null },
+      mydata_submission_log: { data: null, error: null },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await verifyReceiptWithMyDataAction("receipt-1");
+
+    expect(mydata.verifyReceiptMark).toHaveBeenCalledWith(
+      "400001968145986",
+      "sandbox",
+    );
+  });
+
+  it("marks a receipt unverified when AADE has no record of the MARK, and still logs it", async () => {
+    const mydata = await import("@/lib/mydata/client");
+    vi.mocked(mydata.verifyReceiptMark).mockResolvedValue({
+      ok: true,
+      mark: "400001968145986",
+      uid: null,
+      qrUrl: null,
+      verification: { found: false, invoiceType: null, grossValue: null },
+    });
+
+    const client = createMockSupabaseClient({
+      receipts: [
+        {
+          data: {
+            ...receiptRow,
+            mydata_status: "submitted",
+            mydata_mark: "400001968145986",
+            mydata_environment: "sandbox",
+          },
+          error: null,
+        },
+        {
+          data: {
+            ...receiptRow,
+            mydata_status: "submitted",
+            mydata_mark: "400001968145986",
+            mydata_environment: "sandbox",
+            mydata_last_verified_ok: false,
+          },
+          error: null,
+        },
+      ],
+      receipt_line_items: { data: [], error: null },
+      mydata_submission_log: { data: null, error: null },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await expect(verifyReceiptWithMyDataAction("receipt-1")).rejects.toThrow(
+      /no record/i,
+    );
+
+    const logChain = client.from.mock.results[
+      client.from.mock.calls.findIndex(([t]) => t === "mydata_submission_log")
+    ].value;
+    expect(logChain.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "verify", success: false }),
+    );
+  });
+
+  it("does not update mydata_last_verified_at on a request-level failure - nothing was actually answered", async () => {
+    const mydata = await import("@/lib/mydata/client");
+    vi.mocked(mydata.verifyReceiptMark).mockResolvedValue({
+      ok: false,
+      error: "Could not reach myDATA (sandbox): network error",
+    });
+
+    const client = createMockSupabaseClient({
+      receipts: {
+        data: {
+          ...receiptRow,
+          mydata_status: "submitted",
+          mydata_mark: "400001968145986",
+          mydata_environment: "sandbox",
+        },
+        error: null,
+      },
+      receipt_line_items: { data: [], error: null },
+      mydata_submission_log: { data: null, error: null },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await expect(verifyReceiptWithMyDataAction("receipt-1")).rejects.toThrow(
+      /network error/,
+    );
+
+    // Only one "receipts" query - the fetch. No update was attempted.
+    const receiptCalls = client.from.mock.calls.filter(
+      ([t]) => t === "receipts",
+    );
+    expect(receiptCalls).toHaveLength(1);
   });
 });
