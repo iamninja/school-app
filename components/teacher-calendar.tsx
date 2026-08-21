@@ -497,6 +497,32 @@ export function TeacherCalendar({
     }
   };
 
+  // A block whose time window covers a scheduled lesson (a whole-day block
+  // like a holiday covers every lesson that date; a timed block covers any
+  // lesson starting inside it - there's no stored lesson duration to check
+  // full overlap against, so "starts inside the block" is the practical
+  // approximation) should offer to cancel those lessons rather than leave
+  // them silently still bookable.
+  const findOccurrencesCoveredByBlock = (
+    blockDate: string,
+    blockStart: string | null,
+    blockEnd: string | null,
+  ): Occurrence[] => {
+    return projectOccurrences({
+      from: blockDate,
+      to: blockDate,
+      slots,
+      classes,
+      events: projectionEvents,
+      includeBlocks: false,
+    }).filter((occurrence) => {
+      if (occurrence.kind !== "recurring") return false;
+      if (blockStart === null) return true; // whole-day block
+      const time = occurrence.startTime ?? "";
+      return time >= blockStart && (blockEnd === null || time <= blockEnd);
+    });
+  };
+
   const handleSave = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!dialog) return;
@@ -504,9 +530,54 @@ export function TeacherCalendar({
     try {
       const input = formToInput(form);
       if (dialog.mode === "create") {
+        let coveredOccurrences: Occurrence[] = [];
+        if (input.eventType === "block") {
+          coveredOccurrences = findOccurrencesCoveredByBlock(
+            input.eventDate,
+            input.startTime ?? null,
+            input.endTime ?? null,
+          );
+          if (coveredOccurrences.length > 0) {
+            const summary = coveredOccurrences
+              .map((o) => `${o.startTime} ${o.className}`)
+              .join("\n");
+            const proceed = window.confirm(
+              `This will also cancel ${coveredOccurrences.length} scheduled lesson${coveredOccurrences.length === 1 ? "" : "s"} that day:\n${summary}\n\nContinue?`,
+            );
+            if (!proceed) {
+              return;
+            }
+          }
+        }
+
         const created = await createCalendarEventAction(input);
-        onEventsChange((prev) => [...prev, created]);
-        toast.success(`${TYPE_LABELS[input.eventType]} added`);
+        const createdEvents: CalendarEvent[] = [created];
+
+        let cancelledCount = 0;
+        for (const occurrence of coveredOccurrences) {
+          if (!occurrence.classId) continue;
+          try {
+            const cancellation = await createCalendarEventAction({
+              eventType: "cancellation",
+              eventDate: occurrence.date,
+              startTime: occurrence.slotTime,
+              classId: occurrence.classId,
+            });
+            createdEvents.push(cancellation);
+            cancelledCount += 1;
+          } catch {
+            // Best-effort: the block itself and any cancellations that did
+            // succeed still stand - the count in the toast below tells the
+            // teacher exactly what still needs a manual cancel.
+          }
+        }
+
+        onEventsChange((prev) => [...prev, ...createdEvents]);
+        toast.success(
+          coveredOccurrences.length > 0
+            ? `${TYPE_LABELS[input.eventType]} added — cancelled ${cancelledCount} of ${coveredOccurrences.length} lessons`
+            : `${TYPE_LABELS[input.eventType]} added`,
+        );
       } else {
         const updated = await updateCalendarEventAction(
           dialog.event.id,

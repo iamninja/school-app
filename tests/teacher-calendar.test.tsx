@@ -234,6 +234,125 @@ describe("TeacherCalendar", () => {
     expect(toast.success).toHaveBeenCalledWith("Personal block added");
   });
 
+  it("warns about and cancels a scheduled lesson when a whole-day block covers it", async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    vi.mocked(calendarActions.createCalendarEventAction).mockImplementation(
+      async (input) =>
+        ({
+          id:
+            input.eventType === "block"
+              ? "evt-holiday"
+              : "evt-cancel-auto",
+          event_type: input.eventType,
+          event_date: input.eventDate,
+          start_time: input.startTime ?? null,
+          end_time: input.endTime ?? null,
+          class_id: input.classId ?? null,
+          class_name: input.eventType === "cancellation" ? "Algebra II" : null,
+          student_id: null,
+          student_name: null,
+          contact_name: null,
+          contact_phone: null,
+          title: input.title ?? null,
+          notes: null,
+          created_at: "2026-08-01T00:00:00Z",
+        }) as CalendarEvent,
+    );
+
+    const { onEventsChange } = renderCalendar({
+      slots: [{ classId: classA.id, day: todayWeekday, time: "15:00" }],
+    });
+
+    await user.click(screen.getByRole("button", { name: /^add$/i }));
+    await user.click(screen.getByRole("menuitem", { name: /personal block/i }));
+    await screen.findByRole("dialog");
+
+    await user.type(screen.getByLabelText(/title/i), "Holiday");
+    await user.click(screen.getByLabelText(/all day/i));
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => {
+      expect(calendarActions.createCalendarEventAction).toHaveBeenCalledWith(
+        expect.objectContaining({ eventType: "cancellation", classId: "class-1" }),
+      );
+    });
+    expect(confirmSpy).toHaveBeenCalledWith(
+      expect.stringContaining("15:00 Algebra II"),
+    );
+    expect(onEventsChange).toHaveBeenCalled();
+    expect(toast.success).toHaveBeenCalledWith(
+      "Personal block added — cancelled 1 of 1 lessons",
+    );
+
+    confirmSpy.mockRestore();
+  });
+
+  it("creates nothing when the block-cancellation warning is declined", async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+
+    renderCalendar({
+      slots: [{ classId: classA.id, day: todayWeekday, time: "15:00" }],
+    });
+
+    await user.click(screen.getByRole("button", { name: /^add$/i }));
+    await user.click(screen.getByRole("menuitem", { name: /personal block/i }));
+    await screen.findByRole("dialog");
+
+    await user.type(screen.getByLabelText(/title/i), "Holiday");
+    await user.click(screen.getByLabelText(/all day/i));
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => {
+      expect(confirmSpy).toHaveBeenCalled();
+    });
+    expect(calendarActions.createCalendarEventAction).not.toHaveBeenCalled();
+
+    confirmSpy.mockRestore();
+  });
+
+  it("does not prompt for confirmation when no lessons fall on the block's day", async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(window, "confirm");
+    const created: CalendarEvent = {
+      id: "evt-block-2",
+      event_type: "block",
+      event_date: todayIso,
+      start_time: null,
+      end_time: null,
+      class_id: null,
+      class_name: null,
+      student_id: null,
+      student_name: null,
+      contact_name: null,
+      contact_phone: null,
+      title: "Dentist",
+      notes: null,
+      created_at: "2026-08-01T00:00:00Z",
+    };
+    vi.mocked(calendarActions.createCalendarEventAction).mockResolvedValue(
+      created,
+    );
+
+    renderCalendar();
+
+    await user.click(screen.getByRole("button", { name: /^add$/i }));
+    await user.click(screen.getByRole("menuitem", { name: /personal block/i }));
+    await screen.findByRole("dialog");
+
+    await user.type(screen.getByLabelText(/title/i), "Dentist");
+    await user.click(screen.getByLabelText(/all day/i));
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => {
+      expect(calendarActions.createCalendarEventAction).toHaveBeenCalled();
+    });
+    expect(confirmSpy).not.toHaveBeenCalled();
+
+    confirmSpy.mockRestore();
+  });
+
   it("adds a one-off lesson for an existing student", async () => {
     const user = userEvent.setup();
     const created: CalendarEvent = {
