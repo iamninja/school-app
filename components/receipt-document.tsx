@@ -29,41 +29,71 @@ function formatAmount(amount: number): string {
  * The `receipt-print` class is what the print stylesheet in globals.css
  * keys off: everything else on the page is hidden when printing, so
  * "print" gives paper and "save as PDF" from the same browser dialog
- * without pulling in a PDF-rendering dependency.
+ * without pulling in a PDF-rendering dependency. Always light/black-on-white
+ * regardless of the app's theme - a receipt is paper, not a UI surface, and
+ * print stylesheets force this anyway (see the .receipt-print rule).
+ *
+ * A plain <img>, not next/image's <Image>, for the logo - the print
+ * stylesheet hides everything outside .receipt-print by toggling
+ * visibility, and next/image's wrapper/lazy-loading behavior is one more
+ * thing that could interact oddly with that rather than a real benefit
+ * here (this renders once, on demand, never above the fold on a real page).
+ *
+ * `isDemo` renders a "ΔΕΙΓΜΑ" band so a preview run from the Business tab
+ * (see teacher-business-settings.tsx) can never be mistaken for a real
+ * legal document if it's printed or saved.
  */
 export function ReceiptDocument({
   receipt,
   business,
+  isDemo = false,
 }: {
   receipt: Receipt;
   business: BusinessProfile | null;
+  isDemo?: boolean;
 }) {
   return (
     <div className="receipt-print mx-auto max-w-2xl bg-white p-8 text-black">
-      <div className="flex items-start justify-between gap-6 border-b border-black/20 pb-4">
-        <div className="space-y-0.5 text-sm">
-          <p className="text-base font-bold">
-            {business?.business_name ?? "—"}
-          </p>
-          {business?.address && <p>{business.address}</p>}
-          {(business?.postal_code || business?.city) && (
-            <p>
-              {[business?.postal_code, business?.city]
-                .filter(Boolean)
-                .join(" ")}
-            </p>
-          )}
-          {business?.afm && <p>ΑΦΜ: {business.afm}</p>}
-          {business?.doy && <p>ΔΟΥ: {business.doy}</p>}
-          {business?.activity_code && <p>ΚΑΔ: {business.activity_code}</p>}
-          {business?.phone && <p>Τηλ.: {business.phone}</p>}
+      {isDemo && (
+        <div className="mb-4 border-2 border-dashed border-black/40 py-1.5 text-center text-xs font-bold tracking-[0.2em] text-black/60 print:text-black/70">
+          ΔΕΙΓΜΑ — ΔΕΝ ΑΠΟΤΕΛΕΙ ΠΡΑΓΜΑΤΙΚΟ ΠΑΡΑΣΤΑΤΙΚΟ
         </div>
-        <div className="space-y-0.5 text-right text-sm">
-          <p className="text-base font-bold">ΑΠΟΔΕΙΞΗ ΠΑΡΟΧΗΣ ΥΠΗΡΕΣΙΩΝ</p>
-          <p>
+      )}
+
+      <div className="flex items-start justify-between gap-6 border-b-2 border-brand pb-4">
+        <div className="space-y-1.5 text-sm">
+          {/* eslint-disable-next-line @next/next/no-img-element -- print document, see the file-level note on why next/image is skipped here */}
+          <img
+            src="/branding/modus-logo-horizontal.svg"
+            alt=""
+            className="h-8 w-auto"
+          />
+          <div className="space-y-0.5 pt-1">
+            <p className="text-base font-bold">
+              {business?.business_name ?? "—"}
+            </p>
+            {business?.address && <p>{business.address}</p>}
+            {(business?.postal_code || business?.city) && (
+              <p>
+                {[business?.postal_code, business?.city]
+                  .filter(Boolean)
+                  .join(" ")}
+              </p>
+            )}
+            {business?.afm && <p>ΑΦΜ: {business.afm}</p>}
+            {business?.doy && <p>ΔΟΥ: {business.doy}</p>}
+            {business?.activity_code && <p>ΚΑΔ: {business.activity_code}</p>}
+            {business?.phone && <p>Τηλ.: {business.phone}</p>}
+          </div>
+        </div>
+        <div className="space-y-1 text-right text-sm">
+          <p className="text-lg font-bold tracking-tight">
+            ΑΠΟΔΕΙΞΗ ΠΑΡΟΧΗΣ ΥΠΗΡΕΣΙΩΝ
+          </p>
+          <p className="font-medium">
             Σειρά {receipt.series} · Αρ. {receipt.receipt_number}
           </p>
-          <p>
+          <p className="text-black/70">
             {format(new Date(receipt.issue_date), "d MMMM yyyy", {
               locale: el,
             })}
@@ -80,7 +110,7 @@ export function ReceiptDocument({
 
       <table className="mt-6 w-full border-collapse text-sm">
         <thead>
-          <tr className="border-y border-black/20 text-left">
+          <tr className="border-y-2 border-brand text-left">
             <th className="py-2 font-semibold">Περιγραφή</th>
             <th className="py-2 text-right font-semibold">Ποσό</th>
           </tr>
@@ -96,7 +126,7 @@ export function ReceiptDocument({
           ))}
         </tbody>
         <tfoot>
-          <tr>
+          <tr className="border-t-2 border-brand">
             <td className="py-3 text-right font-semibold">Σύνολο</td>
             <td className="py-3 text-right text-base font-bold tabular-nums">
               {formatAmount(receipt.total_amount)}
@@ -105,7 +135,7 @@ export function ReceiptDocument({
         </tfoot>
       </table>
 
-      <p className="mt-4 text-xs">
+      <p className="mt-4 text-xs text-black/70">
         {VAT_NOTES[receipt.vat_category] ?? "Χωρίς ΦΠΑ."}
       </p>
 
@@ -114,12 +144,15 @@ export function ReceiptDocument({
       )}
 
       {receipt.mydata_mark && (
-        <p className="mt-6 text-xs">
+        <p className="mt-6 text-xs text-black/70">
           myDATA MARK: {receipt.mydata_mark}
         </p>
       )}
 
-      <div className="mt-12 flex justify-end">
+      <div className="mt-12 flex items-end justify-between gap-6">
+        <p className="text-[10px] tracking-wide text-black/40">
+          Εκδόθηκε μέσω Modus
+        </p>
         <div className="w-56 border-t border-black/40 pt-1 text-center text-xs">
           Υπογραφή / Σφραγίδα
         </div>

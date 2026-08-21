@@ -2,7 +2,14 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { CheckCircle2Icon, KeyRoundIcon, Trash2Icon } from "lucide-react";
+import {
+  CheckCircle2Icon,
+  FileTextIcon,
+  KeyRoundIcon,
+  PrinterIcon,
+  Trash2Icon,
+  XIcon,
+} from "lucide-react";
 
 import {
   deleteCredentialAction,
@@ -27,10 +34,56 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ReceiptDocument } from "@/components/receipt-document";
 import type {
   BusinessProfile,
   IntegrationSettings,
+  Receipt,
 } from "@/lib/types/database";
+
+// A fixed sample receipt - never saved, never sent anywhere - so a teacher
+// can see how their business details actually lay out on a real receipt
+// (logo, spacing, field order) before ever issuing a real one.
+const DEMO_RECEIPT: Receipt = {
+  id: "demo",
+  series: "Α",
+  receipt_number: 1,
+  issue_date: new Date().toISOString().slice(0, 10),
+  recipient_name: "Δείγμα Ονοματεπώνυμο",
+  recipient_afm: null,
+  recipient_address: null,
+  family_id: null,
+  total_amount: 50,
+  vat_category: "exempt_article_27",
+  payment_method: 3,
+  notes: null,
+  mydata_status: "not_submitted",
+  mydata_mark: null,
+  mydata_uid: null,
+  mydata_error: null,
+  mydata_submitted_at: null,
+  mydata_environment: null,
+  mydata_last_verified_at: null,
+  mydata_last_verified_ok: null,
+  emailed_at: null,
+  created_at: new Date().toISOString(),
+  lineItems: [
+    {
+      id: "demo-1",
+      student_id: null,
+      description: "Ιδιαίτερο μάθημα Άλγεβρας",
+      amount: 25,
+      order_index: 0,
+    },
+    {
+      id: "demo-2",
+      student_id: null,
+      description: "Ιδιαίτερο μάθημα Γεωμετρίας",
+      amount: 25,
+      order_index: 1,
+    },
+  ],
+};
 
 export interface CredentialStatusView {
   hasValue: boolean;
@@ -94,6 +147,7 @@ export function TeacherBusinessSettings({
   const [isSavingProfile, setIsSavingProfile] = React.useState(false);
   const [integrations, setIntegrations] = React.useState(initialIntegrations);
   const [statuses, setStatuses] = React.useState(initialCredentialStatuses);
+  const [viewingDemoReceipt, setViewingDemoReceipt] = React.useState(false);
 
   const [editing, setEditing] = React.useState<{
     provider: string;
@@ -199,6 +253,44 @@ export function TeacherBusinessSettings({
     }
   };
 
+  if (viewingDemoReceipt) {
+    // Reflects the form as currently edited, not just the last-saved
+    // profile - the point is checking layout before committing to Save.
+    const previewBusiness: BusinessProfile = {
+      id: initialProfile?.id ?? 1,
+      business_name: form.businessName || null,
+      afm: form.afm || null,
+      doy: form.doy || null,
+      activity_code: form.activityCode || null,
+      address: form.address || null,
+      city: form.city || null,
+      postal_code: form.postalCode || null,
+      phone: form.phone || null,
+      updated_at: initialProfile?.updated_at ?? new Date().toISOString(),
+    };
+    return (
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center gap-2 print:hidden">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setViewingDemoReceipt(false)}
+          >
+            <XIcon className="mr-1 h-3.5 w-3.5" /> Back to Business
+          </Button>
+          <Button size="sm" onClick={() => window.print()}>
+            <PrinterIcon className="mr-1 h-3.5 w-3.5" /> Print / Save as PDF
+          </Button>
+        </div>
+        <ReceiptDocument
+          receipt={DEMO_RECEIPT}
+          business={previewBusiness}
+          isDemo
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <Card>
@@ -229,9 +321,19 @@ export function TeacherBusinessSettings({
                 </div>
               ))}
             </div>
-            <Button type="submit" disabled={isSavingProfile}>
-              {isSavingProfile ? "Saving..." : "Save business details"}
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button type="submit" disabled={isSavingProfile}>
+                {isSavingProfile ? "Saving..." : "Save business details"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setViewingDemoReceipt(true)}
+              >
+                <FileTextIcon className="mr-1 h-3.5 w-3.5" /> Preview demo
+                receipt
+              </Button>
+            </div>
           </form>
         </CardContent>
       </Card>
