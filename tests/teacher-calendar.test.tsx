@@ -59,6 +59,19 @@ describe("TeacherCalendar", () => {
     expect(screen.getByText("Nothing scheduled.")).toBeInTheDocument();
   });
 
+  it("marks today's cell in the month view", () => {
+    renderCalendar();
+    expect(document.querySelector(".ring-sky-500")).not.toBeNull();
+  });
+
+  it("shows a Today badge on today's column in the week strip", () => {
+    renderCalendar();
+    const weekCard = screen
+      .getByText(/^week of/i)
+      .closest(".rounded-2xl") as HTMLElement;
+    expect(within(weekCard).getByText("Today")).toBeInTheDocument();
+  });
+
   it("shows today's recurring class with a Cancel action", () => {
     renderCalendar({
       slots: [{ classId: classA.id, day: todayWeekday, time: "15:00" }],
@@ -163,7 +176,7 @@ describe("TeacherCalendar", () => {
 
     const todayColumn = screen
       .getAllByText(/^\w{3} \d+$/)
-      .find((el) => el.textContent === format(fromIsoDate(todayIso), "EEE d"))
+      .find((el) => el.textContent?.startsWith(format(fromIsoDate(todayIso), "EEE d")))
       ?.closest(".rounded-md") as HTMLElement;
     expect(todayColumn.className).toContain("border-rose-500");
   });
@@ -175,7 +188,7 @@ describe("TeacherCalendar", () => {
 
     const todayColumn = screen
       .getAllByText(/^\w{3} \d+$/)
-      .find((el) => el.textContent === format(fromIsoDate(todayIso), "EEE d"))
+      .find((el) => el.textContent?.startsWith(format(fromIsoDate(todayIso), "EEE d")))
       ?.closest(".rounded-md") as HTMLElement;
     expect(todayColumn.className).not.toContain("border-rose-500");
   });

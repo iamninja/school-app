@@ -234,6 +234,7 @@ function WeeklyOverview({
   const days = eachIsoDateInRange(from, to);
   const overlaps = findOverlappingLessons(occurrencesByDate, days);
   const overlapDates = new Set(overlaps.map((overlap) => overlap.date));
+  const todayIso = toIsoDate(new Date());
 
   return (
     <Card>
@@ -259,14 +260,19 @@ function WeeklyOverview({
               >
                 <p
                   className={cn(
-                    "text-xs font-semibold text-muted-foreground",
-                    overlapDates.has(day) && "flex items-center gap-1 text-rose-600 dark:text-rose-400",
+                    "flex items-center gap-1 text-xs font-semibold text-muted-foreground",
+                    overlapDates.has(day) && "text-rose-600 dark:text-rose-400",
                   )}
                 >
                   {overlapDates.has(day) && (
                     <TriangleAlertIcon className="h-3 w-3" />
                   )}
                   {format(fromIsoDate(day), "EEE d")}
+                  {day === todayIso && (
+                    <span className="rounded-full bg-sky-500/15 px-1.5 py-0.5 text-[10px] font-medium text-sky-600 dark:text-sky-400">
+                      Today
+                    </span>
+                  )}
                 </p>
                 <div className="mt-1.5 space-y-1.5">
                   {dayOccurrences.length === 0 ? (
@@ -467,12 +473,22 @@ export function TeacherCalendar({
     [selectedDate, slots, classes, projectionEvents],
   );
 
+  const todayIso = toIsoDate(new Date());
+
   const DayButtonWithDots = React.useCallback(
     (dayButtonProps: React.ComponentProps<typeof CalendarDayButton>) => {
       const iso = toIsoDate(dayButtonProps.day.date);
       const kinds = kindsByDate.get(iso);
       return (
-        <CalendarDayButton {...dayButtonProps}>
+        <CalendarDayButton
+          {...dayButtonProps}
+          className={cn(
+            dayButtonProps.className,
+            // Independent of the selected-date fill, so today stays
+            // visibly marked even when some other date is selected.
+            iso === todayIso && "ring-1 ring-inset ring-sky-500",
+          )}
+        >
           {dayButtonProps.children}
           {kinds && kinds.size > 0 ? (
             <span className="flex gap-0.5">
@@ -490,7 +506,7 @@ export function TeacherCalendar({
         </CalendarDayButton>
       );
     },
-    [kindsByDate],
+    [kindsByDate, todayIso],
   );
 
   const openCreate = (type: AddableEventType) => {
