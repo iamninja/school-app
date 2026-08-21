@@ -22,6 +22,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { MathText } from "@/components/math-text";
+import { CLASS_GRADE_LABELS } from "@/lib/class-grades";
 import type { TeacherQuizListItem } from "@/lib/types/database";
 
 const DAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
@@ -30,6 +31,7 @@ type ClassItem = {
   id: string;
   name: string;
   hoursPerWeek: number;
+  grade: string | null;
   color: string;
   archivedAt: string | null;
 };
@@ -110,6 +112,9 @@ export function TeacherClassDetail({
             <div className="text-sm text-muted-foreground">
               {classItem.hoursPerWeek} hours/week &middot;{" "}
               {sortedSlots.length} of {classItem.hoursPerWeek} slots scheduled
+              {classItem.grade
+                ? ` · ${CLASS_GRADE_LABELS[classItem.grade] ?? classItem.grade}`
+                : ""}
             </div>
           </div>
           <div className="flex items-center gap-2">

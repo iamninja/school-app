@@ -53,6 +53,7 @@ export interface Class {
   id: string;
   name: string;
   hours_per_week: number;
+  grade: string | null;
   teacher_id: string | null;
   archived_at: string | null;
   created_at?: string;

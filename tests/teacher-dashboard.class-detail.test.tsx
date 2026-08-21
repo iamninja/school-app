@@ -253,6 +253,7 @@ describe("TeacherDashboard class detail - rendering and navigation", () => {
       id: "class-1",
       name: "Algebra II Honors",
       hoursPerWeek: 3,
+      grade: null,
     });
     archiveClassAction.mockResolvedValue({
       id: "class-1",

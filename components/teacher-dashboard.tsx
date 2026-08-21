@@ -95,6 +95,7 @@ import {
   isDateEnabledForAttendance,
 } from "@/lib/attendance-dates";
 import { SCHEDULE_ROWS } from "@/lib/schedule-grid";
+import { CLASS_GRADES, CLASS_GRADE_LABELS } from "@/lib/class-grades";
 import type {
   BusinessProfile,
   CalendarEvent,
@@ -174,6 +175,7 @@ type ClassItem = {
   id: string;
   name: string;
   hoursPerWeek: number;
+  grade: string | null;
   color: string;
   archivedAt: string | null;
 };
@@ -219,6 +221,7 @@ type TeacherDashboardProps = {
     id: string;
     name: string;
     hoursPerWeek: number;
+    grade?: string | null;
     archivedAt: string | null;
   }>;
   initialSlots: Array<{
@@ -424,6 +427,7 @@ export function TeacherDashboard({
   const [editClassId, setEditClassId] = React.useState<string | null>(null);
   const [classFormName, setClassFormName] = React.useState("");
   const [classFormHours, setClassFormHours] = React.useState("2");
+  const [classFormGrade, setClassFormGrade] = React.useState("");
   const [isSavingClass, setIsSavingClass] = React.useState(false);
   const [isMutatingEnrollment, setIsMutatingEnrollment] = React.useState(false);
   const [showArchivedClasses, setShowArchivedClasses] = React.useState(false);
@@ -433,6 +437,7 @@ export function TeacherDashboard({
   const [classes, setClasses] = React.useState<ClassItem[]>(() =>
     initialClasses.map((item, index) => ({
       ...item,
+      grade: item.grade ?? null,
       color: COLOR_CLASSES[index % COLOR_CLASSES.length],
     })),
   );
@@ -549,6 +554,7 @@ export function TeacherDashboard({
   const resetClassForm = () => {
     setClassFormName("");
     setClassFormHours("2");
+    setClassFormGrade("");
   };
 
   const handleCreateClass = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -569,6 +575,7 @@ export function TeacherDashboard({
       const created = await createClassAction({
         name: trimmed,
         hoursPerWeek: hours,
+        grade: classFormGrade || null,
       });
       setClasses((prev) => [
         ...prev,
@@ -576,6 +583,7 @@ export function TeacherDashboard({
           id: created.id,
           name: created.name,
           hoursPerWeek: created.hoursPerWeek,
+          grade: created.grade,
           color: nextColor,
           archivedAt: null,
         },
@@ -599,6 +607,7 @@ export function TeacherDashboard({
     }
     setClassFormName(classItem.name);
     setClassFormHours(String(classItem.hoursPerWeek));
+    setClassFormGrade(classItem.grade ?? "");
     setEditClassId(classId);
   };
 
@@ -627,11 +636,17 @@ export function TeacherDashboard({
         classId: editClassId,
         name: trimmed,
         hoursPerWeek: hours,
+        grade: classFormGrade || null,
       });
       setClasses((prev) =>
         prev.map((item) =>
           item.id === updated.id
-            ? { ...item, name: updated.name, hoursPerWeek: updated.hoursPerWeek }
+            ? {
+                ...item,
+                name: updated.name,
+                hoursPerWeek: updated.hoursPerWeek,
+                grade: updated.grade,
+              }
             : item,
         ),
       );
@@ -1657,7 +1672,14 @@ export function TeacherDashboard({
                               }
                               aria-hidden="true"
                             />
-                            <span className="font-medium">{item.name}</span>
+                            <div>
+                              <span className="font-medium">{item.name}</span>
+                              {item.grade && (
+                                <p className="text-xs text-muted-foreground">
+                                  {CLASS_GRADE_LABELS[item.grade] ?? item.grade}
+                                </p>
+                              )}
+                            </div>
                           </div>
                         </TableCell>
                         <TableCell className="text-muted-foreground">
@@ -1772,6 +1794,22 @@ export function TeacherDashboard({
                     placeholder="e.g. 3"
                   />
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="class-grade">Grade (optional)</Label>
+                  <select
+                    id="class-grade"
+                    value={classFormGrade}
+                    onChange={(event) => setClassFormGrade(event.target.value)}
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    <option value="">Not set</option>
+                    {CLASS_GRADES.map((grade) => (
+                      <option key={grade.code} value={grade.code}>
+                        {grade.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 <Button
                   type="submit"
                   className="w-full"
@@ -1810,6 +1848,22 @@ export function TeacherDashboard({
                     value={classFormHours}
                     onChange={(event) => setClassFormHours(event.target.value)}
                   />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-class-grade">Grade (optional)</Label>
+                  <select
+                    id="edit-class-grade"
+                    value={classFormGrade}
+                    onChange={(event) => setClassFormGrade(event.target.value)}
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    <option value="">Not set</option>
+                    {CLASS_GRADES.map((grade) => (
+                      <option key={grade.code} value={grade.code}>
+                        {grade.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
               <DialogFooter>

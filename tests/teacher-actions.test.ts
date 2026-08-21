@@ -303,6 +303,54 @@ describe("teacher actions - withdraw/restore round trip", () => {
   });
 });
 
+describe("teacher actions - createClassAction", () => {
+  beforeEach(() => {
+    vi.mocked(requireTeacher).mockResolvedValue(undefined);
+  });
+
+  it("creates a class with a grade and passes it through in the insert payload", async () => {
+    const client = createMockSupabaseClient({
+      classes: {
+        data: {
+          id: "class-1",
+          name: "Algebra II",
+          hours_per_week: 3,
+          grade: "lyk_a",
+        },
+        error: null,
+      },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    const result = await createClassAction({
+      name: "Algebra II",
+      hoursPerWeek: 3,
+      grade: "lyk_a",
+    });
+
+    expect(result.grade).toBe("lyk_a");
+    expect(client.from.mock.results[0].value.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ grade: "lyk_a" }),
+    );
+  });
+
+  it("stores a null grade when none is given", async () => {
+    const client = createMockSupabaseClient({
+      classes: {
+        data: { id: "class-1", name: "Algebra II", hours_per_week: 3, grade: null },
+        error: null,
+      },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await createClassAction({ name: "Algebra II", hoursPerWeek: 3 });
+
+    expect(client.from.mock.results[0].value.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ grade: null }),
+    );
+  });
+});
+
 describe("teacher actions - updateClassAction", () => {
   beforeEach(() => {
     vi.mocked(requireTeacher).mockResolvedValue(undefined);
@@ -329,6 +377,33 @@ describe("teacher actions - updateClassAction", () => {
       name: "Algebra I",
       hoursPerWeek: 4,
     });
+  });
+
+  it("updates the class's grade and passes it through in the update payload", async () => {
+    const client = createMockSupabaseClient({
+      classes: {
+        data: {
+          id: "class-1",
+          name: "Algebra I",
+          hours_per_week: 4,
+          grade: "epal_grad",
+        },
+        error: null,
+      },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    const result = await updateClassAction({
+      classId: "class-1",
+      name: "Algebra I",
+      hoursPerWeek: 4,
+      grade: "epal_grad",
+    });
+
+    expect(result.grade).toBe("epal_grad");
+    expect(client.from.mock.results[0].value.update).toHaveBeenCalledWith(
+      expect.objectContaining({ grade: "epal_grad" }),
+    );
   });
 });
 

@@ -9,6 +9,7 @@ type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 export async function createClassAction(data: {
   name: string;
   hoursPerWeek: number;
+  grade?: string | null;
 }) {
   const supabase = await createClient();
   const {
@@ -27,8 +28,9 @@ export async function createClassAction(data: {
       teacher_id: user.id,
       name: data.name,
       hours_per_week: data.hoursPerWeek,
+      grade: data.grade ?? null,
     })
-    .select("id, name, hours_per_week")
+    .select("id, name, hours_per_week, grade")
     .single();
 
   if (error) {
@@ -39,6 +41,7 @@ export async function createClassAction(data: {
     id: row.id,
     name: row.name,
     hoursPerWeek: row.hours_per_week,
+    grade: row.grade,
   };
 }
 
@@ -46,6 +49,7 @@ export async function updateClassAction(data: {
   classId: string;
   name: string;
   hoursPerWeek: number;
+  grade?: string | null;
 }) {
   const supabase = await createClient();
   const {
@@ -60,10 +64,14 @@ export async function updateClassAction(data: {
 
   const { data: row, error } = await supabase
     .from("classes")
-    .update({ name: data.name, hours_per_week: data.hoursPerWeek })
+    .update({
+      name: data.name,
+      hours_per_week: data.hoursPerWeek,
+      grade: data.grade ?? null,
+    })
     .eq("id", data.classId)
     .eq("teacher_id", user.id)
-    .select("id, name, hours_per_week")
+    .select("id, name, hours_per_week, grade")
     .single();
 
   if (error) {
@@ -74,6 +82,7 @@ export async function updateClassAction(data: {
     id: row.id,
     name: row.name,
     hoursPerWeek: row.hours_per_week,
+    grade: row.grade,
   };
 }
 
