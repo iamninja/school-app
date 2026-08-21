@@ -12,6 +12,7 @@ import {
   subMonths,
 } from "date-fns";
 import {
+  CalendarClockIcon,
   PencilIcon,
   PlusIcon,
   Trash2Icon,
@@ -21,6 +22,7 @@ import {
 import {
   createCalendarEventAction,
   deleteCalendarEventAction,
+  rescheduleClassOccurrenceAction,
   updateCalendarEventAction,
 } from "@/app/protected/teacher/calendar-actions";
 import { Badge } from "@/components/ui/badge";
@@ -299,6 +301,12 @@ export function TeacherCalendar({
   const [cancellingKey, setCancellingKey] = React.useState<string | null>(
     null,
   );
+  const [rescheduleTarget, setRescheduleTarget] =
+    React.useState<Occurrence | null>(null);
+  const [rescheduleDate, setRescheduleDate] = React.useState("");
+  const [rescheduleStartTime, setRescheduleStartTime] = React.useState("");
+  const [rescheduleEndTime, setRescheduleEndTime] = React.useState("");
+  const [isRescheduling, setIsRescheduling] = React.useState(false);
 
   const projectionEvents: ProjectionEvent[] = events;
   const activeClassOptions = classes.filter((item) => !item.archivedAt);
@@ -433,6 +441,59 @@ export function TeacherCalendar({
       );
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const openReschedule = (occurrence: Occurrence) => {
+    setRescheduleTarget(occurrence);
+    setRescheduleDate(occurrence.date);
+    setRescheduleStartTime(occurrence.startTime ?? "");
+    setRescheduleEndTime(occurrence.endTime ?? "");
+  };
+
+  const handleReschedule = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!rescheduleTarget) return;
+    setIsRescheduling(true);
+    try {
+      if (rescheduleTarget.kind === "recurring") {
+        if (!rescheduleTarget.classId || !rescheduleTarget.slotTime) return;
+        const result = await rescheduleClassOccurrenceAction({
+          classId: rescheduleTarget.classId,
+          fromDate: rescheduleTarget.date,
+          fromStartTime: rescheduleTarget.slotTime,
+          toDate: rescheduleDate,
+          toStartTime: rescheduleStartTime,
+          toEndTime: rescheduleEndTime || null,
+        });
+        onEventsChange((prev) => [
+          ...prev,
+          result.extraSession,
+          result.cancellation,
+        ]);
+      } else {
+        const storedEvent = rescheduleTarget.eventId
+          ? events.find((item) => item.id === rescheduleTarget.eventId)
+          : undefined;
+        if (!storedEvent) return;
+        const updated = await updateCalendarEventAction(storedEvent.id, {
+          ...formToInput(formFromEvent(storedEvent)),
+          eventDate: rescheduleDate,
+          startTime: rescheduleStartTime || null,
+          endTime: rescheduleEndTime || null,
+        });
+        onEventsChange((prev) =>
+          prev.map((item) => (item.id === updated.id ? updated : item)),
+        );
+      }
+      toast.success("Rescheduled");
+      setRescheduleTarget(null);
+    } catch (error: unknown) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to reschedule",
+      );
+    } finally {
+      setIsRescheduling(false);
     }
   };
 
@@ -589,18 +650,29 @@ export function TeacherCalendar({
 
                   <div className="flex items-center gap-2">
                     {occurrence.kind === "recurring" && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={
-                          cancellingKey ===
-                          `${occurrence.classId}|${occurrence.date}|${occurrence.slotTime ?? ""}`
-                        }
-                        onClick={() => void handleCancelOccurrence(occurrence)}
-                      >
-                        Cancel this class
-                      </Button>
+                      <>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openReschedule(occurrence)}
+                        >
+                          <CalendarClockIcon className="mr-1 h-3.5 w-3.5" />
+                          Reschedule
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={
+                            cancellingKey ===
+                            `${occurrence.classId}|${occurrence.date}|${occurrence.slotTime ?? ""}`
+                          }
+                          onClick={() => void handleCancelOccurrence(occurrence)}
+                        >
+                          Cancel this class
+                        </Button>
+                      </>
                     )}
                     {occurrence.kind === "cancelled" && occurrence.eventId && (
                       <Button
@@ -615,6 +687,18 @@ export function TeacherCalendar({
                     )}
                     {storedEvent && occurrence.kind !== "cancelled" && (
                       <>
+                        {occurrence.kind !== "block" && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            aria-label={`Reschedule ${TYPE_LABELS[storedEvent.event_type]}`}
+                            onClick={() => openReschedule(occurrence)}
+                          >
+                            <CalendarClockIcon className="mr-1 h-3.5 w-3.5" />
+                            Reschedule
+                          </Button>
+                        )}
                         <Button
                           type="button"
                           variant="ghost"
@@ -833,6 +917,59 @@ export function TeacherCalendar({
             <DialogFooter>
               <Button type="submit" disabled={isSaving} className="w-full">
                 {isSaving ? "Saving..." : "Save"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={rescheduleTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setRescheduleTarget(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reschedule</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleReschedule} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="reschedule-date">New date</Label>
+              <Input
+                id="reschedule-date"
+                type="date"
+                value={rescheduleDate}
+                onChange={(e) => setRescheduleDate(e.target.value)}
+              />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="reschedule-start">New start time</Label>
+                <Input
+                  id="reschedule-start"
+                  type="time"
+                  value={rescheduleStartTime}
+                  onChange={(e) => setRescheduleStartTime(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="reschedule-end">New end time (optional)</Label>
+                <Input
+                  id="reschedule-end"
+                  type="time"
+                  value={rescheduleEndTime}
+                  onChange={(e) => setRescheduleEndTime(e.target.value)}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                type="submit"
+                disabled={isRescheduling}
+                className="w-full"
+              >
+                {isRescheduling ? "Rescheduling..." : "Reschedule"}
               </Button>
             </DialogFooter>
           </form>

@@ -11,6 +11,7 @@ vi.mock("@/app/protected/teacher/calendar-actions", () => ({
   createCalendarEventAction: vi.fn(),
   updateCalendarEventAction: vi.fn(),
   deleteCalendarEventAction: vi.fn(),
+  rescheduleClassOccurrenceAction: vi.fn(),
 }));
 
 vi.mock("sonner", () => ({
@@ -325,5 +326,134 @@ describe("TeacherCalendar", () => {
     await screen.findByRole("dialog");
 
     expect(screen.getByLabelText(/start time/i)).toHaveValue("17:00");
+  });
+
+  it("reschedules today's recurring class to a new date and time", async () => {
+    const user = userEvent.setup();
+    const extraSession: CalendarEvent = {
+      id: "evt-new",
+      event_type: "extra_session",
+      event_date: "2026-09-12",
+      start_time: "11:00",
+      end_time: null,
+      class_id: classA.id,
+      class_name: "Algebra II",
+      student_id: null,
+      student_name: null,
+      contact_name: null,
+      contact_phone: null,
+      title: null,
+      notes: null,
+      created_at: "2026-08-01T00:00:00Z",
+    };
+    const cancellation: CalendarEvent = {
+      ...extraSession,
+      id: "evt-cancel",
+      event_type: "cancellation",
+      event_date: todayIso,
+      start_time: "15:00",
+    };
+    vi.mocked(
+      calendarActions.rescheduleClassOccurrenceAction,
+    ).mockResolvedValue({ extraSession, cancellation });
+
+    const { onEventsChange } = renderCalendar({
+      slots: [{ classId: classA.id, day: todayWeekday, time: "15:00" }],
+    });
+
+    await user.click(screen.getByRole("button", { name: /^reschedule$/i }));
+    const dialog = await screen.findByRole("dialog");
+
+    const dateInput = screen.getByLabelText(/new date/i);
+    await user.clear(dateInput);
+    await user.type(dateInput, "2026-09-12");
+    const startInput = screen.getByLabelText(/new start time/i);
+    await user.clear(startInput);
+    await user.type(startInput, "11:00");
+    await user.click(
+      within(dialog).getByRole("button", { name: /^reschedule$/i }),
+    );
+
+    await waitFor(() => {
+      expect(
+        calendarActions.rescheduleClassOccurrenceAction,
+      ).toHaveBeenCalledWith({
+        classId: classA.id,
+        fromDate: todayIso,
+        fromStartTime: "15:00",
+        toDate: "2026-09-12",
+        toStartTime: "11:00",
+        toEndTime: null,
+      });
+    });
+    expect(onEventsChange).toHaveBeenCalled();
+    expect(toast.success).toHaveBeenCalledWith("Rescheduled");
+  });
+
+  it("reschedules a stored extra session by updating its date/time only", async () => {
+    const user = userEvent.setup();
+    const updated: CalendarEvent = {
+      id: "evt-extra-1",
+      event_type: "extra_session",
+      event_date: "2026-09-12",
+      start_time: "11:00",
+      end_time: null,
+      class_id: classA.id,
+      class_name: "Algebra II",
+      student_id: null,
+      student_name: null,
+      contact_name: null,
+      contact_phone: null,
+      title: null,
+      notes: null,
+      created_at: "2026-08-01T00:00:00Z",
+    };
+    vi.mocked(calendarActions.updateCalendarEventAction).mockResolvedValue(
+      updated,
+    );
+
+    renderCalendar({
+      events: [
+        {
+          id: "evt-extra-1",
+          event_type: "extra_session",
+          event_date: todayIso,
+          start_time: "17:00",
+          end_time: null,
+          class_id: classA.id,
+          class_name: "Algebra II",
+          student_id: null,
+          student_name: null,
+          contact_name: null,
+          contact_phone: null,
+          title: null,
+          notes: null,
+          created_at: "2026-08-01T00:00:00Z",
+        },
+      ],
+    });
+
+    await user.click(
+      screen.getByRole("button", { name: /reschedule extra session/i }),
+    );
+    const dialog = await screen.findByRole("dialog");
+
+    const startInput = screen.getByLabelText(/new start time/i);
+    await user.clear(startInput);
+    await user.type(startInput, "11:00");
+    await user.click(
+      within(dialog).getByRole("button", { name: /^reschedule$/i }),
+    );
+
+    await waitFor(() => {
+      expect(calendarActions.updateCalendarEventAction).toHaveBeenCalledWith(
+        "evt-extra-1",
+        expect.objectContaining({
+          eventType: "extra_session",
+          classId: classA.id,
+          startTime: "11:00",
+        }),
+      );
+    });
   });
 });

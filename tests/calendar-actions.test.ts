@@ -5,6 +5,7 @@ import { ExpectedError } from "@/lib/expected-error";
 import {
   createCalendarEventAction,
   deleteCalendarEventAction,
+  rescheduleClassOccurrenceAction,
   updateCalendarEventAction,
 } from "@/app/protected/teacher/calendar-actions";
 import { createMockSupabaseClient } from "./support/mock-supabase";
@@ -256,5 +257,126 @@ describe("calendar event actions", () => {
         title: "Dentist",
       }),
     ).rejects.toThrow("Not authorized as a teacher");
+  });
+});
+
+describe("rescheduleClassOccurrenceAction", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(requireTeacher).mockResolvedValue(undefined);
+  });
+
+  it("rejects rescheduling to the exact same date and time", async () => {
+    const client = createMockSupabaseClient({});
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await expect(
+      rescheduleClassOccurrenceAction({
+        classId: "class-1",
+        fromDate: "2026-09-07",
+        fromStartTime: "15:00",
+        toDate: "2026-09-07",
+        toStartTime: "15:00",
+      }),
+    ).rejects.toThrow(ExpectedError);
+  });
+
+  it("inserts the new extra session before cancelling the original slot, both with the right payloads", async () => {
+    const extraSessionRow = {
+      id: "evt-extra",
+      event_type: "extra_session",
+      event_date: "2026-09-12",
+      start_time: "11:00",
+    };
+    const cancellationRow = {
+      id: "evt-cancel",
+      event_type: "cancellation",
+      event_date: "2026-09-07",
+      start_time: "17:00",
+    };
+    const client = createMockSupabaseClient({
+      classes: { data: CLASS_ROW, error: null },
+      calendar_events: [
+        { data: extraSessionRow, error: null },
+        { data: cancellationRow, error: null },
+      ],
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    const result = await rescheduleClassOccurrenceAction({
+      classId: "class-1",
+      fromDate: "2026-09-07",
+      fromStartTime: "17:00",
+      toDate: "2026-09-12",
+      toStartTime: "11:00",
+    });
+
+    expect(result.extraSession).toEqual(extraSessionRow);
+    expect(result.cancellation).toEqual(cancellationRow);
+
+    const calendarEventsCalls = client.from.mock.calls
+      .map((call, i) => ({ table: call[0], index: i }))
+      .filter((c) => c.table === "calendar_events");
+    const firstInsert =
+      client.from.mock.results[calendarEventsCalls[0].index].value.insert.mock
+        .calls[0][0];
+    const secondInsert =
+      client.from.mock.results[calendarEventsCalls[1].index].value.insert.mock
+        .calls[0][0];
+
+    expect(firstInsert).toEqual(
+      expect.objectContaining({
+        event_type: "extra_session",
+        event_date: "2026-09-12",
+        start_time: "11:00",
+        class_id: "class-1",
+      }),
+    );
+    expect(secondInsert).toEqual(
+      expect.objectContaining({
+        event_type: "cancellation",
+        event_date: "2026-09-07",
+        start_time: "17:00",
+        class_id: "class-1",
+      }),
+    );
+  });
+
+  it("surfaces a clear partial-failure message when the cancellation insert fails after the extra session succeeded", async () => {
+    const client = createMockSupabaseClient({
+      classes: { data: CLASS_ROW, error: null },
+      calendar_events: [
+        { data: { id: "evt-extra" }, error: null },
+        { data: null, error: new Error("db exploded") },
+      ],
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await expect(
+      rescheduleClassOccurrenceAction({
+        classId: "class-1",
+        fromDate: "2026-09-07",
+        fromStartTime: "17:00",
+        toDate: "2026-09-12",
+        toStartTime: "11:00",
+      }),
+    ).rejects.toThrow(/couldn't cancel the original slot/i);
+  });
+
+  it("rejects a classId that doesn't belong to this teacher", async () => {
+    const client = createMockSupabaseClient({
+      classes: { data: null, error: null },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await expect(
+      rescheduleClassOccurrenceAction({
+        classId: "class-not-mine",
+        fromDate: "2026-09-07",
+        fromStartTime: "17:00",
+        toDate: "2026-09-12",
+        toStartTime: "11:00",
+      }),
+    ).rejects.toThrow(ExpectedError);
   });
 });

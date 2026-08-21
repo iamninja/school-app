@@ -256,3 +256,67 @@ export async function deleteCalendarEventAction(
     throw error;
   }
 }
+
+// Moving a single occurrence of a recurring class to a different date/time
+// (same day or a different day entirely) - there's no dedicated "moved"
+// event type or link between the two rows (deliberate v1 scope: no schema
+// change, reuses the existing cancellation/extra_session shapes exactly as
+// if the teacher had cancelled the old slot and separately added an extra
+// session). The replacement is inserted BEFORE the cancellation on purpose:
+// if the cancellation insert then fails, the lesson still exists (briefly
+// duplicated) rather than silently vanishing.
+export async function rescheduleClassOccurrenceAction(input: {
+  classId: string;
+  fromDate: string;
+  fromStartTime: string;
+  toDate: string;
+  toStartTime: string;
+  toEndTime?: string | null;
+}): Promise<{ extraSession: CalendarEvent; cancellation: CalendarEvent }> {
+  const { supabase, userId } = await requireTeacherSession();
+
+  if (
+    input.fromDate === input.toDate &&
+    input.fromStartTime === input.toStartTime
+  ) {
+    throw new ExpectedError("Pick a different date or time to reschedule to");
+  }
+
+  const extraRow = await resolveEventRow(supabase, userId, {
+    eventType: "extra_session",
+    eventDate: input.toDate,
+    startTime: input.toStartTime,
+    endTime: input.toEndTime ?? null,
+    classId: input.classId,
+  });
+  const { data: extraSession, error: extraError } = await supabase
+    .from("calendar_events")
+    .insert(extraRow)
+    .select(CALENDAR_EVENT_COLUMNS)
+    .single();
+  if (extraError) {
+    throw extraError;
+  }
+
+  const cancellationRow = await resolveEventRow(supabase, userId, {
+    eventType: "cancellation",
+    eventDate: input.fromDate,
+    startTime: input.fromStartTime,
+    classId: input.classId,
+  });
+  const { data: cancellation, error: cancelError } = await supabase
+    .from("calendar_events")
+    .insert(cancellationRow)
+    .select(CALENDAR_EVENT_COLUMNS)
+    .single();
+  if (cancelError) {
+    throw new ExpectedError(
+      "Added the new time, but couldn't cancel the original slot - cancel it manually from the Calendar tab.",
+    );
+  }
+
+  return {
+    extraSession: extraSession as unknown as CalendarEvent,
+    cancellation: cancellation as unknown as CalendarEvent,
+  };
+}
