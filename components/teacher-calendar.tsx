@@ -45,7 +45,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import {
+  eachIsoDateInRange,
   fromIsoDate,
+  groupOccurrencesByDate,
   projectOccurrences,
   toIsoDate,
   type Occurrence,
@@ -95,6 +97,116 @@ const KIND_DOT_CLASSES: Record<OccurrenceKind, string> = {
   trial_lesson: "bg-amber-500",
   block: "bg-sky-500",
 };
+
+const WEEK_ROW_CLASSES: Record<OccurrenceKind, string> = {
+  recurring: "border-border bg-muted/40",
+  cancelled:
+    "border-rose-500/30 bg-rose-500/10 text-muted-foreground line-through",
+  extra_session: "border-teal-500/30 bg-teal-500/10",
+  ad_hoc_lesson: "border-violet-500/30 bg-violet-500/10",
+  trial_lesson: "border-amber-500/30 bg-amber-500/10",
+  block: "border-sky-500/30 bg-sky-500/10",
+};
+
+const WEEK_KIND_LABELS: Partial<Record<OccurrenceKind, string>> = {
+  cancelled: "Cancelled",
+  extra_session: "Extra",
+  ad_hoc_lesson: "One-off",
+  trial_lesson: "Trial",
+  block: "Personal",
+};
+
+// Read-only week strip shown below the month view: whatever week the
+// selected date falls in, Monday-first (matching the Schedule tab's
+// weekday convention), with cancelled/extra/one-off occurrences all
+// visible alongside the recurring template - no per-row actions here,
+// deliberately, per explicit request. Cancelling/adding still happens via
+// the day-detail panel above.
+function WeeklyOverview({
+  selectedDate,
+  slots,
+  classes,
+  events,
+}: {
+  selectedDate: string;
+  slots: ProjectionSlot[];
+  classes: ProjectionClass[];
+  events: ProjectionEvent[];
+}) {
+  const weekStart = startOfWeek(fromIsoDate(selectedDate), {
+    weekStartsOn: 1,
+  });
+  const weekEnd = endOfWeek(fromIsoDate(selectedDate), { weekStartsOn: 1 });
+  const from = toIsoDate(weekStart);
+  const to = toIsoDate(weekEnd);
+
+  // React Compiler auto-memoizes this component - no manual useMemo needed.
+  const occurrencesByDate = groupOccurrencesByDate(
+    projectOccurrences({ from, to, slots, classes, events, includeBlocks: true }),
+  );
+  const days = eachIsoDateInRange(from, to);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">
+          Week of {format(weekStart, "d MMM")} – {format(weekEnd, "d MMM yyyy")}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-7">
+          {days.map((day) => {
+            const dayOccurrences = occurrencesByDate.get(day) ?? [];
+            return (
+              <div
+                key={day}
+                className={cn(
+                  "rounded-md border p-2",
+                  day === selectedDate && "border-primary ring-1 ring-primary",
+                )}
+              >
+                <p className="text-xs font-semibold text-muted-foreground">
+                  {format(fromIsoDate(day), "EEE d")}
+                </p>
+                <div className="mt-1.5 space-y-1.5">
+                  {dayOccurrences.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">—</p>
+                  ) : (
+                    dayOccurrences.map((occurrence, idx) => (
+                      <div
+                        key={idx}
+                        className={cn(
+                          "rounded border px-1.5 py-1 text-xs",
+                          WEEK_ROW_CLASSES[occurrence.kind],
+                        )}
+                      >
+                        <p className="font-medium">
+                          {occurrence.startTime ?? "All day"}
+                        </p>
+                        <p className="truncate">
+                          {occurrence.className ??
+                            occurrence.studentName ??
+                            occurrence.contactName ??
+                            occurrence.title ??
+                            "Untitled"}
+                        </p>
+                        {WEEK_KIND_LABELS[occurrence.kind] ? (
+                          <p className="text-[10px] tracking-wide uppercase opacity-70">
+                            {WEEK_KIND_LABELS[occurrence.kind]}
+                          </p>
+                        ) : null}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 type FormState = {
   eventType: AddableEventType;
@@ -355,6 +467,7 @@ export function TeacherCalendar({
   };
 
   return (
+    <div className="space-y-4">
     <div className="grid gap-4 lg:grid-cols-[auto_1fr]">
       <Card className="w-fit">
         <CardContent className="p-3">
@@ -530,6 +643,14 @@ export function TeacherCalendar({
           )}
         </CardContent>
       </Card>
+    </div>
+
+    <WeeklyOverview
+      selectedDate={selectedDate}
+      slots={slots}
+      classes={classes}
+      events={projectionEvents}
+    />
 
       <Dialog
         open={dialog !== null}

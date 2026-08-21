@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
 import { TeacherCalendar } from "@/components/teacher-calendar";
@@ -60,6 +60,51 @@ describe("TeacherCalendar", () => {
     expect(
       screen.getByRole("button", { name: /cancel this class/i }),
     ).toBeInTheDocument();
+  });
+
+  it("shows the same recurring class in the read-only week strip below", () => {
+    renderCalendar({
+      slots: [{ classId: classA.id, day: todayWeekday, time: "15:00" }],
+    });
+
+    const weekCard = screen
+      .getByText(/^week of/i)
+      .closest(".rounded-2xl") as HTMLElement;
+    expect(within(weekCard).getByText("15:00")).toBeInTheDocument();
+    expect(within(weekCard).getByText("Algebra II")).toBeInTheDocument();
+    // Read-only: no Cancel/Edit/Delete controls inside the week strip itself.
+    expect(
+      within(weekCard).queryByRole("button"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows a cancelled occurrence struck through in the week strip", async () => {
+    renderCalendar({
+      slots: [{ classId: classA.id, day: todayWeekday, time: "15:00" }],
+      events: [
+        {
+          id: "evt-cancel-1",
+          event_type: "cancellation",
+          event_date: todayIso,
+          start_time: "15:00",
+          end_time: null,
+          class_id: classA.id,
+          class_name: "Algebra II",
+          student_id: null,
+          student_name: null,
+          contact_name: null,
+          contact_phone: null,
+          title: null,
+          notes: null,
+          created_at: "2026-08-01T00:00:00Z",
+        },
+      ],
+    });
+
+    const weekCard = screen
+      .getByText(/^week of/i)
+      .closest(".rounded-2xl") as HTMLElement;
+    expect(within(weekCard).getByText("Cancelled")).toBeInTheDocument();
   });
 
   it("cancels today's recurring occurrence", async () => {
