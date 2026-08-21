@@ -24,3 +24,15 @@ export const TUITION_STATUS_LABELS_EL: Record<string, string> = {
   "past-due": "Σε καθυστέρηση",
   scholarship: "Υποτροφία",
 };
+
+// Kept total over CalendarEventType even though "trial_lesson"/"block" are
+// unreachable in the portals (RLS excludes them by construction) - a
+// partial map would risk an undefined render if that assumption ever
+// changes.
+export const CALENDAR_EVENT_TYPE_LABELS_EL: Record<string, string> = {
+  cancellation: "Ακύρωση",
+  extra_session: "Έκτακτο μάθημα",
+  ad_hoc_lesson: "Ιδιαίτερο μάθημα",
+  trial_lesson: "Δοκιμαστικό μάθημα",
+  block: "Προσωπικό",
+};

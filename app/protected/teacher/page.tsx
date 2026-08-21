@@ -51,6 +51,7 @@ export default async function TeacherPage() {
     { data: students, error: studentsError },
     { data: attendance, error: attendanceError },
     { data: quizzes, error: quizzesError },
+    { data: calendarEvents, error: calendarError },
   ] = await Promise.all([
     supabase
       .from("classes")
@@ -78,6 +79,16 @@ export default async function TeacherPage() {
       .select("id, title, description, time_limit_minutes, created_at")
       .eq("teacher_id", user.id)
       .order("created_at", { ascending: false }),
+    // Unbounded, same deliberate v1 call as attendance_records above - a
+    // handful of exceptions a month for one teacher. Revisit with a
+    // .gte("event_date", ...) window if this ever grows large.
+    supabase
+      .from("calendar_events")
+      .select(
+        "id, event_type, event_date, start_time, end_time, class_id, class_name, student_id, student_name, contact_name, contact_phone, title, notes, created_at"
+      )
+      .eq("teacher_id", user.id)
+      .order("event_date", { ascending: true }),
   ]);
 
   const loadErrors = [
@@ -86,6 +97,7 @@ export default async function TeacherPage() {
     studentsError?.message,
     attendanceError?.message,
     quizzesError?.message,
+    calendarError?.message,
   ].filter(Boolean) as string[];
 
   const initialClasses = (classes ?? []).map((item) => ({
@@ -231,6 +243,7 @@ export default async function TeacherPage() {
       credentialStatuses={businessSettings.credentialStatuses}
       initialReceipts={initialReceipts}
       initialExpenses={initialExpenses}
+      initialCalendarEvents={calendarEvents ?? []}
       loadErrors={loadErrors}
     />
   );

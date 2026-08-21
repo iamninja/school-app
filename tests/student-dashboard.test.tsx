@@ -2,6 +2,7 @@
 
 import { render, screen, within } from "@testing-library/react";
 import { vi } from "vitest";
+import { addDays, format } from "date-fns";
 import { StudentDashboard } from "@/components/student-dashboard";
 
 const signOut = vi.fn();
@@ -34,6 +35,7 @@ const baseProps = {
   schedules: [],
   attendance: [],
   quizzes: [],
+  calendarEvents: [],
 };
 
 describe("StudentDashboard", () => {
@@ -87,5 +89,30 @@ describe("StudentDashboard", () => {
     );
 
     expect(screen.getByText("Old Trigonometry")).toBeInTheDocument();
+  });
+
+  it("shows an upcoming cancellation with its Greek label", () => {
+    render(
+      <StudentDashboard
+        {...baseProps}
+        calendarEvents={[
+          {
+            id: "evt-1",
+            event_type: "cancellation",
+            event_date: format(addDays(new Date(), 3), "yyyy-MM-dd"),
+            start_time: "15:00",
+            end_time: null,
+            class_id: "class-1",
+            class_name: "Algebra II",
+            notes: null,
+          },
+        ]}
+      />,
+    );
+
+    const upcomingCard = screen
+      .getByText("Επόμενα μαθήματα")
+      .closest(".rounded-2xl") as HTMLElement;
+    expect(within(upcomingCard).getByText("Ακύρωση")).toBeInTheDocument();
   });
 });

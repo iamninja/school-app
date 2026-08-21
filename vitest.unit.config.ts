@@ -24,6 +24,7 @@ export default defineConfig({
       "tests/receipt-actions.test.ts",
       "tests/mydata-invoice-xml.test.ts",
       "tests/expense-actions.test.ts",
+      "tests/calendar-actions.test.ts",
     ],
   },
   resolve: {

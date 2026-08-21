@@ -19,6 +19,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MathText } from "@/components/math-text";
+import { PortalUpcomingCard } from "@/components/portal-upcoming-card";
 import type { ParentDashboardChild } from "@/lib/types/database";
 import {
   ATTENDANCE_STATUS_LABELS_EL,
@@ -54,6 +55,7 @@ function ChildSection({
   schedules,
   attendance,
   quizzes,
+  calendarEvents,
 }: ParentDashboardChild) {
   const schedulesByClass = schedules.reduce(
     (acc, schedule) => {
@@ -265,7 +267,13 @@ function ChildSection({
           </Card>
         </div>
 
-        {/* Right: recent attendance */}
+        {/* Right: upcoming + recent attendance */}
+        <div className="flex flex-col gap-6">
+        <PortalUpcomingCard
+          classes={classes}
+          schedules={schedules}
+          calendarEvents={calendarEvents}
+        />
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
@@ -315,6 +323,7 @@ function ChildSection({
             )}
           </CardContent>
         </Card>
+        </div>
       </div>
     </section>
   );

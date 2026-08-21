@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { addDays, format } from "date-fns";
 import { ParentDashboard } from "@/components/parent-dashboard";
 import type { ParentDashboardChild } from "@/lib/types/database";
 
@@ -33,6 +34,7 @@ function makeChild(overrides: Partial<ParentDashboardChild> = {}): ParentDashboa
     schedules: [],
     attendance: [],
     quizzes: [],
+    calendarEvents: [],
     ...overrides,
   };
 }
@@ -91,9 +93,52 @@ describe("ParentDashboard", () => {
       />,
     );
 
-    expect(screen.getByText("Algebra II")).toBeInTheDocument();
-    expect(screen.getByText(/3 ώρες\/εβδομάδα/i)).toBeInTheDocument();
-    expect(screen.getByText(/δευ στις 10:00/i)).toBeInTheDocument();
+    // "Algebra II" now also appears in the new Upcoming card, so scope to
+    // the Classes & Schedule card specifically.
+    const classesCard = screen
+      .getByText("Τμήματα & Πρόγραμμα")
+      .closest(".rounded-2xl") as HTMLElement;
+    expect(within(classesCard).getByText("Algebra II")).toBeInTheDocument();
+    expect(
+      within(classesCard).getByText(/3 ώρες\/εβδομάδα/i),
+    ).toBeInTheDocument();
+    expect(
+      within(classesCard).getByText(/δευ στις 10:00/i),
+    ).toBeInTheDocument();
+  });
+
+  it("shows an upcoming extra session with its Greek label", () => {
+    render(
+      <ParentDashboard
+        {...baseProps}
+        kids={[
+          makeChild({
+            classes: [
+              { id: "class-1", name: "Algebra II", hoursPerWeek: 3, archivedAt: null },
+            ],
+            calendarEvents: [
+              {
+                id: "evt-1",
+                event_type: "extra_session",
+                event_date: format(addDays(new Date(), 3), "yyyy-MM-dd"),
+                start_time: "17:00",
+                end_time: null,
+                class_id: "class-1",
+                class_name: "Algebra II",
+                notes: null,
+              },
+            ],
+          }),
+        ]}
+      />,
+    );
+
+    const upcomingCard = screen
+      .getByText("Επόμενα μαθήματα")
+      .closest(".rounded-2xl") as HTMLElement;
+    expect(
+      within(upcomingCard).getByText("Έκτακτο μάθημα"),
+    ).toBeInTheDocument();
   });
 
   it("shows a message when there are no attendance records", () => {

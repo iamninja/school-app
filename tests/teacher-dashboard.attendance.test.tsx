@@ -333,4 +333,74 @@ describe("TeacherDashboard attendance validation", () => {
     });
     expect(presentButtons).toHaveLength(2);
   });
+
+  it("does not show the 'no scheduled days' error for a class whose only occurrence is an extra session", async () => {
+    const user = userEvent.setup();
+    const classWithNoTemplate = {
+      id: "class-4",
+      name: "Chemistry 101",
+      hoursPerWeek: 2,
+      archivedAt: null,
+    };
+
+    render(
+      <TeacherDashboard
+        initialClasses={[classWithNoTemplate]}
+        initialSlots={[]}
+        initialStudents={[assignedStudent]}
+        initialAttendance={[]}
+        initialCalendarEvents={[
+          {
+            id: "evt-extra-1",
+            event_type: "extra_session",
+            event_date: "2026-09-10",
+            start_time: "16:00",
+            end_time: null,
+            class_id: "class-4",
+            class_name: "Chemistry 101",
+            student_id: null,
+            student_name: null,
+            contact_name: null,
+            contact_phone: null,
+            title: null,
+            notes: null,
+            created_at: "2026-09-01T00:00:00Z",
+          },
+        ]}
+      />,
+    );
+
+    await user.click(screen.getByRole("tab", { name: /attendance/i }));
+    await user.selectOptions(screen.getByLabelText(/^class$/i), "class-4");
+
+    expect(
+      screen.queryByText(/this class has no scheduled days yet/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it("still shows the 'no scheduled days' error for a class with no template and no calendar events at all", async () => {
+    const user = userEvent.setup();
+    const classWithNothing = {
+      id: "class-5",
+      name: "Empty Class",
+      hoursPerWeek: 2,
+      archivedAt: null,
+    };
+
+    render(
+      <TeacherDashboard
+        initialClasses={[classWithNothing]}
+        initialSlots={[]}
+        initialStudents={[assignedStudent]}
+        initialAttendance={[]}
+      />,
+    );
+
+    await user.click(screen.getByRole("tab", { name: /attendance/i }));
+    await user.selectOptions(screen.getByLabelText(/^class$/i), "class-5");
+
+    expect(
+      screen.getByText(/this class has no scheduled days yet/i),
+    ).toBeInTheDocument();
+  });
 });

@@ -365,6 +365,7 @@ export interface StudentDashboardData {
     status: string;
   }>;
   quizzes: QuizSummary[];
+  calendarEvents: PortalCalendarEvent[];
 }
 
 export interface ParentDashboardChild {
@@ -396,6 +397,7 @@ export interface ParentDashboardChild {
     status: string;
   }>;
   quizzes: QuizSummary[];
+  calendarEvents: PortalCalendarEvent[];
 }
 
 export interface ParentDashboardData {
@@ -584,4 +586,63 @@ export interface ExpenseInput {
   category?: string;
   paymentMethod?: number;
   notes?: string;
+}
+
+// Calendar events - the override layer on top of the recurring
+// class_schedule_slots template. class_id/student_id are ON DELETE SET
+// NULL with class_name/student_name snapshotted at write time (see the
+// migration comment for why the shape CHECK is written against the
+// snapshot columns, not the FK columns).
+export type CalendarEventType =
+  | "cancellation"
+  | "extra_session"
+  | "ad_hoc_lesson"
+  | "trial_lesson"
+  | "block";
+
+export interface CalendarEvent {
+  id: string;
+  event_type: CalendarEventType;
+  event_date: string;
+  start_time: string | null;
+  end_time: string | null;
+  class_id: string | null;
+  class_name: string | null;
+  student_id: string | null;
+  student_name: string | null;
+  contact_name: string | null;
+  contact_phone: string | null;
+  title: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
+// className/studentName are deliberately absent - the server action
+// resolves those from a fresh classes/students lookup it already has to do
+// for the ownership check, never from client input.
+export interface CalendarEventInput {
+  eventType: CalendarEventType;
+  eventDate: string;
+  startTime?: string | null;
+  endTime?: string | null;
+  classId?: string | null;
+  studentId?: string | null;
+  contactName?: string;
+  contactPhone?: string;
+  title?: string;
+  notes?: string;
+}
+
+// The narrowed shape the parent/student portals receive - "block" and
+// "trial_lesson" are structurally unreachable there (RLS), and the portals
+// never need contact/title fields.
+export interface PortalCalendarEvent {
+  id: string;
+  event_type: "cancellation" | "extra_session" | "ad_hoc_lesson";
+  event_date: string;
+  start_time: string | null;
+  end_time: string | null;
+  class_id: string | null;
+  class_name: string | null;
+  notes: string | null;
 }

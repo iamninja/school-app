@@ -10,6 +10,7 @@ import type {
   AttendanceRecord,
   ActionResult,
   QuizSummary,
+  PortalCalendarEvent,
 } from "@/lib/types/database";
 import {
   createRoleAuthUser,
@@ -140,6 +141,25 @@ export async function getParentDashboardDataAction(): Promise<
     };
   }
 
+  // One query for every upcoming calendar event RLS lets this parent see,
+  // partitioned per child below - cheaper than one query per child, and RLS
+  // (is_parent_of_class / is_parent_of_student) already scopes this to
+  // their own family, so the per-child filter here is belt-and-braces
+  // (needed regardless for a multi-child parent, so one child's card
+  // doesn't show a sibling's events) rather than a security boundary.
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const { data: calendarEventRows } = await supabase
+    .from("calendar_events")
+    .select(
+      "id, event_type, event_date, start_time, end_time, class_id, class_name, student_id, notes",
+    )
+    .gte("event_date", todayIso)
+    .order("event_date", { ascending: true })
+    .limit(100);
+  const upcomingCalendarEvents = (calendarEventRows ?? []) as unknown as Array<
+    PortalCalendarEvent & { student_id: string | null }
+  >;
+
   const children: ParentDashboardChild[] = await Promise.all(
     studentRows.map(async (student) => {
       const { data: classAssignments } = await supabase
@@ -160,6 +180,23 @@ export async function getParentDashboardDataAction(): Promise<
         (classAssignments as StudentClassAssignmentWithClass[] | null)
           ?.map((a) => a.class_id)
           .filter(Boolean) || [];
+
+      const calendarEvents: PortalCalendarEvent[] = upcomingCalendarEvents
+        .filter(
+          (event) =>
+            (event.class_id && classIds.includes(event.class_id)) ||
+            event.student_id === student.id,
+        )
+        .map((event) => ({
+          id: event.id,
+          event_type: event.event_type,
+          event_date: event.event_date,
+          start_time: event.start_time,
+          end_time: event.end_time,
+          class_id: event.class_id,
+          class_name: event.class_name,
+          notes: event.notes,
+        }));
 
       let schedules: ClassScheduleSlot[] = [];
       if (classIds.length > 0) {
@@ -291,6 +328,7 @@ export async function getParentDashboardDataAction(): Promise<
         schedules,
         attendance: (attendance as AttendanceRecord[] | null) || [],
         quizzes,
+        calendarEvents,
       };
     }),
   );

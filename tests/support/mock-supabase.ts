@@ -30,6 +30,8 @@ const CHAIN_METHODS = [
   "is",
   "match",
   "in",
+  "gte",
+  "lte",
   "order",
   "limit",
   "single",

@@ -13,7 +13,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StudentQuizPanel } from "@/components/student-quiz-panel";
-import type { QuizSummary } from "@/lib/types/database";
+import { PortalUpcomingCard } from "@/components/portal-upcoming-card";
+import type { PortalCalendarEvent, QuizSummary } from "@/lib/types/database";
 import {
   ATTENDANCE_STATUS_LABELS_EL,
   DAY_LABELS_EL,
@@ -54,6 +55,7 @@ type StudentDashboardProps = {
     status: string;
   }>;
   quizzes: QuizSummary[];
+  calendarEvents: PortalCalendarEvent[];
 };
 
 const DAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -217,6 +219,15 @@ export function StudentDashboard(props: StudentDashboardProps) {
 
           {/* Right column */}
           <div className="flex flex-col gap-6">
+            <div className="space-y-3">
+              <SectionLabel>Επόμενα</SectionLabel>
+              <PortalUpcomingCard
+                classes={props.classes}
+                schedules={props.schedules}
+                calendarEvents={props.calendarEvents}
+              />
+            </div>
+
             <div className="space-y-3">
               <SectionLabel>Παρουσίες</SectionLabel>
               <Card>

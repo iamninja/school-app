@@ -15,6 +15,7 @@ import type {
   AttendanceRecord,
   ActionResult,
   QuizSummary,
+  PortalCalendarEvent,
 } from "@/lib/types/database";
 
 /**
@@ -249,6 +250,39 @@ export async function getStudentDashboardDataAction(): Promise<
     });
   }
 
+  // RLS (is_student_of_class / the student's own ad_hoc_lesson) already
+  // scopes this to their own classes and record - the event_type/student_id
+  // filter here is belt-and-braces, not the security boundary.
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const { data: calendarEventRows } = await supabase
+    .from("calendar_events")
+    .select(
+      "id, event_type, event_date, start_time, end_time, class_id, class_name, student_id, notes",
+    )
+    .gte("event_date", todayIso)
+    .order("event_date", { ascending: true })
+    .limit(100);
+  const calendarEvents: PortalCalendarEvent[] = (
+    (calendarEventRows ?? []) as unknown as Array<
+      PortalCalendarEvent & { student_id: string | null }
+    >
+  )
+    .filter(
+      (event) =>
+        (event.class_id && classIds.includes(event.class_id)) ||
+        event.student_id === student.id,
+    )
+    .map((event) => ({
+      id: event.id,
+      event_type: event.event_type,
+      event_date: event.event_date,
+      start_time: event.start_time,
+      end_time: event.end_time,
+      class_id: event.class_id,
+      class_name: event.class_name,
+      notes: event.notes,
+    }));
+
   return {
     student: {
       id: student.id,
@@ -272,5 +306,6 @@ export async function getStudentDashboardDataAction(): Promise<
     schedules: (schedules as ClassScheduleSlot[] | null) || [],
     attendance: (attendance as AttendanceRecord[] | null) || [],
     quizzes,
+    calendarEvents,
   };
 }

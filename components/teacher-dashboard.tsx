@@ -16,6 +16,7 @@ import {
   ArchiveIcon,
   Building2Icon,
   CalendarDaysIcon,
+  CalendarRangeIcon,
   ClipboardCheckIcon,
   FileTextIcon,
   LayersIcon,
@@ -86,9 +87,16 @@ import {
 } from "@/components/teacher-business-settings";
 import { TeacherReceipts } from "@/components/teacher-receipts";
 import { TeacherExpenses } from "@/components/teacher-expenses";
+import { TeacherCalendar } from "@/components/teacher-calendar";
 import { ThemeSwitcher } from "@/components/theme-switcher";
+import {
+  buildAttendanceDateSets,
+  findNextEnabledDate,
+  isDateEnabledForAttendance,
+} from "@/lib/attendance-dates";
 import type {
   BusinessProfile,
+  CalendarEvent,
   Expense,
   IntegrationSettings,
   Receipt,
@@ -96,7 +104,6 @@ import type {
 } from "@/lib/types/database";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
-const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 // One row per schedule grid row: `time` is the Mon-Fri slot time (and the
 // row's own key/label); `satTime` is the real Saturday clock time for that
 // same row. There's no school on Saturday, so cram classes can start in the
@@ -121,6 +128,12 @@ const SECTIONS = [
     label: "Schedule",
     description: "Drag classes onto the weekly grid",
     icon: CalendarDaysIcon,
+  },
+  {
+    value: "calendar",
+    label: "Calendar",
+    description: "Cancellations, extra sessions, and one-off lessons",
+    icon: CalendarRangeIcon,
   },
   {
     value: "classes",
@@ -239,6 +252,7 @@ type TeacherDashboardProps = {
   credentialStatuses?: Record<string, CredentialStatusView>;
   initialReceipts?: Receipt[];
   initialExpenses?: Expense[];
+  initialCalendarEvents?: CalendarEvent[];
   loadErrors?: string[];
 };
 
@@ -249,25 +263,6 @@ function createSlotId(day: string, time: string) {
 function parseSlotId(slotId: string) {
   const [day, time] = slotId.split("-");
   return { day, time };
-}
-
-function getDayLabelFromDate(date: Date) {
-  return DAY_LABELS[date.getDay()] ?? "";
-}
-
-function findNextValidDate(start: Date, allowedDays: Set<string>) {
-  if (allowedDays.size === 0) {
-    return start;
-  }
-  let date = new Date(start.getTime());
-  for (let i = 0; i < 14; i += 1) {
-    const label = DAY_LABELS[date.getDay()] ?? "";
-    if (allowedDays.has(label)) {
-      return date;
-    }
-    date = new Date(date.getTime() + 24 * 60 * 60 * 1000);
-  }
-  return start;
 }
 
 function DraggableClassChip({
@@ -423,6 +418,7 @@ export function TeacherDashboard({
   credentialStatuses = {},
   initialReceipts = [],
   initialExpenses = [],
+  initialCalendarEvents = [],
   loadErrors = [],
 }: TeacherDashboardProps) {
   const sensors = useSensors(
@@ -535,6 +531,12 @@ export function TeacherDashboard({
   const [attendanceDateError, setAttendanceDateError] = React.useState("");
   const [attendanceRecords, setAttendanceRecords] =
     React.useState<AttendanceRecord[]>(initialAttendance);
+  // Hoisted here rather than owned inside <TeacherCalendar> - adding an
+  // extra session or a cancellation must unlock/lock the Attendance tab's
+  // date picker immediately, not after a page reload.
+  const [calendarEvents, setCalendarEvents] = React.useState<CalendarEvent[]>(
+    initialCalendarEvents,
+  );
 
   const scheduledCounts = React.useMemo(() => {
     const counts = new Map<string, number>();
@@ -1213,20 +1215,34 @@ export function TeacherDashboard({
     );
   }, [attendanceClassId, students]);
 
-  const attendanceAllowedDays = React.useMemo(() => {
-    if (!attendanceClassId) {
-      return new Set<string>();
-    }
-    const allowed = new Set<string>();
-    Object.entries(schedule).forEach(([slotId, classId]) => {
-      if (classId !== attendanceClassId) {
-        return;
-      }
-      const { day } = parseSlotId(slotId);
-      allowed.add(day);
-    });
-    return allowed;
-  }, [attendanceClassId, schedule]);
+  // Flattened once, shared by the attendance date-gating logic below and by
+  // the Calendar tab's month projection.
+  const scheduleSlotList = React.useMemo(
+    () =>
+      Object.entries(schedule)
+        .filter((entry): entry is [string, string] => entry[1] !== null)
+        .map(([slotId, classId]) => ({ ...parseSlotId(slotId), classId })),
+    [schedule],
+  );
+
+  const attendanceDateSets = React.useMemo(
+    () =>
+      buildAttendanceDateSets({
+        classId: attendanceClassId,
+        slots: scheduleSlotList,
+        events: calendarEvents.map((event) => ({
+          event_type: event.event_type,
+          class_id: event.class_id,
+          event_date: event.event_date,
+          start_time: event.start_time,
+        })),
+        attendance: attendanceRecords.map((record) => ({
+          classId: record.classId,
+          attendanceDate: record.attendanceDate,
+        })),
+      }),
+    [attendanceClassId, scheduleSlotList, calendarEvents, attendanceRecords],
+  );
 
   const attendanceDateKey = React.useMemo(() => {
     return format(attendanceDate, "yyyy-MM-dd");
@@ -1304,14 +1320,21 @@ export function TeacherDashboard({
       return;
     }
 
-    if (attendanceAllowedDays.size === 0) {
+    if (
+      attendanceDateSets.scheduleWeekdays.size === 0 &&
+      attendanceDateSets.extraSessionDates.size === 0 &&
+      attendanceDateSets.datesWithAttendance.size === 0
+    ) {
       setAttendanceDateError("This class has no scheduled days yet.");
       return;
     }
 
-    const dayLabel = getDayLabelFromDate(value);
-    if (!attendanceAllowedDays.has(dayLabel)) {
-      setAttendanceDateError("Pick a date that matches a scheduled class day.");
+    if (!isDateEnabledForAttendance(value, attendanceDateSets)) {
+      setAttendanceDateError(
+        attendanceDateSets.cancelledDates.has(format(value, "yyyy-MM-dd"))
+          ? "That class is cancelled on this date."
+          : "Pick a scheduled class date, or add an extra session in the Calendar tab.",
+      );
       return;
     }
 
@@ -1520,6 +1543,16 @@ export function TeacherDashboard({
               </div>
             </div>
           </DndContext>
+        </TabsContent>
+
+        <TabsContent value="calendar" className="mt-0">
+          <TeacherCalendar
+            events={calendarEvents}
+            onEventsChange={setCalendarEvents}
+            classes={classes}
+            students={students}
+            slots={scheduleSlotList}
+          />
         </TabsContent>
 
         <TabsContent value="classes" className="mt-0">
@@ -2953,11 +2986,10 @@ export function TeacherDashboard({
                           if (!attendanceClassId) {
                             return true;
                           }
-                          if (attendanceAllowedDays.size === 0) {
-                            return true;
-                          }
-                          const label = getDayLabelFromDate(date);
-                          return !attendanceAllowedDays.has(label);
+                          return !isDateEnabledForAttendance(
+                            date,
+                            attendanceDateSets,
+                          );
                         }}
                         initialFocus
                       />
@@ -2982,25 +3014,34 @@ export function TeacherDashboard({
                         setAttendanceDateError("");
                         return;
                       }
-                      const allowed = new Set<string>();
-                      Object.entries(schedule).forEach(([slotId, classId]) => {
-                        if (classId !== nextClassId) {
-                          return;
-                        }
-                        const { day } = parseSlotId(slotId);
-                        allowed.add(day);
+                      const nextSets = buildAttendanceDateSets({
+                        classId: nextClassId,
+                        slots: scheduleSlotList,
+                        events: calendarEvents.map((calendarEvent) => ({
+                          event_type: calendarEvent.event_type,
+                          class_id: calendarEvent.class_id,
+                          event_date: calendarEvent.event_date,
+                          start_time: calendarEvent.start_time,
+                        })),
+                        attendance: attendanceRecords.map((record) => ({
+                          classId: record.classId,
+                          attendanceDate: record.attendanceDate,
+                        })),
                       });
-                      if (allowed.size === 0) {
+                      if (
+                        nextSets.scheduleWeekdays.size === 0 &&
+                        nextSets.extraSessionDates.size === 0 &&
+                        nextSets.datesWithAttendance.size === 0
+                      ) {
                         setAttendanceDateError(
                           "This class has no scheduled days yet.",
                         );
                         return;
                       }
-                      const currentDay = getDayLabelFromDate(attendanceDate);
-                      if (!allowed.has(currentDay)) {
-                        const nextDate = findNextValidDate(
+                      if (!isDateEnabledForAttendance(attendanceDate, nextSets)) {
+                        const nextDate = findNextEnabledDate(
                           attendanceDate,
-                          allowed,
+                          nextSets,
                         );
                         setAttendanceDate(nextDate);
                         setAttendanceDateError("");
