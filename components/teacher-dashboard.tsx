@@ -94,6 +94,7 @@ import {
   findNextEnabledDate,
   isDateEnabledForAttendance,
 } from "@/lib/attendance-dates";
+import { SCHEDULE_ROWS } from "@/lib/schedule-grid";
 import type {
   BusinessProfile,
   CalendarEvent,
@@ -104,24 +105,6 @@ import type {
 } from "@/lib/types/database";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
-// One row per schedule grid row: `time` is the Mon-Fri slot time (and the
-// row's own key/label); `satTime` is the real Saturday clock time for that
-// same row. There's no school on Saturday, so cram classes can start in the
-// morning — satTime isn't just a display offset, it's the actual value
-// stored for Saturday slots, so the two columns don't move in lockstep
-// (e.g. the 14:30 row pairs with 8:00, not a uniform 6h gap like the rest).
-const SCHEDULE_ROWS = [
-  { time: "14:30", satTime: "08:00" },
-  { time: "15:15", satTime: "09:00" },
-  { time: "16:00", satTime: "10:00" },
-  { time: "17:00", satTime: "11:00" },
-  { time: "18:00", satTime: "12:00" },
-  { time: "19:00", satTime: "13:00" },
-  { time: "20:00", satTime: "14:00" },
-  { time: "21:00", satTime: "15:00" },
-  { time: "22:00", satTime: "16:00" },
-  { time: "23:00", satTime: "17:00" },
-];
 const SECTIONS = [
   {
     value: "schedule",

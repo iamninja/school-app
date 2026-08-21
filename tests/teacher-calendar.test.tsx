@@ -2,9 +2,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
+import { format } from "date-fns";
 import { TeacherCalendar } from "@/components/teacher-calendar";
 import * as calendarActions from "@/app/protected/teacher/calendar-actions";
-import { toIsoDate, weekdayLabelFromDate } from "@/lib/calendar-projection";
+import {
+  fromIsoDate,
+  toIsoDate,
+  weekdayLabelFromDate,
+} from "@/lib/calendar-projection";
 import type { CalendarEvent } from "@/lib/types/database";
 
 vi.mock("@/app/protected/teacher/calendar-actions", () => ({
@@ -22,11 +27,13 @@ const todayIso = toIsoDate(new Date());
 const todayWeekday = weekdayLabelFromDate(new Date());
 
 const classA = { id: "class-1", name: "Algebra II", archivedAt: null };
+const classB = { id: "class-2", name: "Geometry", archivedAt: null };
 const studentA = { id: "student-1", firstName: "Ada", lastName: "Lovelace" };
 
 function renderCalendar(overrides: {
   events?: CalendarEvent[];
   slots?: Array<{ classId: string; day: string; time: string }>;
+  classes?: Array<{ id: string; name: string; archivedAt: string | null }>;
 } = {}) {
   const events = overrides.events ?? [];
   const onEventsChange = vi.fn();
@@ -34,7 +41,7 @@ function renderCalendar(overrides: {
     <TeacherCalendar
       events={events}
       onEventsChange={onEventsChange}
-      classes={[classA]}
+      classes={overrides.classes ?? [classA]}
       students={[studentA]}
       slots={overrides.slots ?? []}
     />,
@@ -106,6 +113,280 @@ describe("TeacherCalendar", () => {
       .getByText(/^week of/i)
       .closest(".rounded-2xl") as HTMLElement;
     expect(within(weekCard).getByText("Cancelled")).toBeInTheDocument();
+  });
+
+  it("shows no overlap warning when nothing collides", () => {
+    renderCalendar({
+      slots: [{ classId: classA.id, day: todayWeekday, time: "15:00" }],
+    });
+
+    expect(
+      screen.queryByText(/overlapping lessons this week/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it("warns when two lessons land on the same day and time", () => {
+    renderCalendar({
+      classes: [classA, classB],
+      slots: [{ classId: classA.id, day: todayWeekday, time: "15:00" }],
+      events: [
+        {
+          id: "evt-extra-1",
+          event_type: "extra_session",
+          event_date: todayIso,
+          start_time: "15:00",
+          end_time: null,
+          class_id: classB.id,
+          class_name: "Geometry",
+          student_id: null,
+          student_name: null,
+          contact_name: null,
+          contact_phone: null,
+          title: null,
+          notes: null,
+          created_at: "2026-08-01T00:00:00Z",
+        },
+      ],
+    });
+
+    const weekCard = screen
+      .getByText(/^week of/i)
+      .closest(".rounded-2xl") as HTMLElement;
+    expect(
+      within(weekCard).getByText(/overlapping lessons this week/i),
+    ).toBeInTheDocument();
+    expect(
+      within(weekCard).getByText(
+        /Algebra II \(15:15–16:00\) overlaps Geometry \(15:00–15:45\)/,
+      ),
+    ).toBeInTheDocument();
+
+    const todayColumn = screen
+      .getAllByText(/^\w{3} \d+$/)
+      .find((el) => el.textContent === format(fromIsoDate(todayIso), "EEE d"))
+      ?.closest(".rounded-md") as HTMLElement;
+    expect(todayColumn.className).toContain("border-rose-500");
+  });
+
+  it("does not highlight a day's border when it has no overlap", () => {
+    renderCalendar({
+      slots: [{ classId: classA.id, day: todayWeekday, time: "15:00" }],
+    });
+
+    const todayColumn = screen
+      .getAllByText(/^\w{3} \d+$/)
+      .find((el) => el.textContent === format(fromIsoDate(todayIso), "EEE d"))
+      ?.closest(".rounded-md") as HTMLElement;
+    expect(todayColumn.className).not.toContain("border-rose-500");
+  });
+
+  it("derives a recurring class's real teaching window from the schedule grid when flagging an overlap", () => {
+    // 18:00 is a real weekday grid slot with a 15-minute break baked in, so
+    // its actual teaching window is 18:15-19:00 - an extra session starting
+    // at 18:30 (no end time, so a flat 45-minute lesson) genuinely overlaps
+    // it even though neither row has an explicit end time stored anywhere.
+    renderCalendar({
+      classes: [classA, classB],
+      slots: [{ classId: classA.id, day: todayWeekday, time: "18:00" }],
+      events: [
+        {
+          id: "evt-extra-1",
+          event_type: "extra_session",
+          event_date: todayIso,
+          start_time: "18:30",
+          end_time: null,
+          class_id: classB.id,
+          class_name: "Geometry",
+          student_id: null,
+          student_name: null,
+          contact_name: null,
+          contact_phone: null,
+          title: null,
+          notes: null,
+          created_at: "2026-08-01T00:00:00Z",
+        },
+      ],
+    });
+
+    const weekCard = screen
+      .getByText(/^week of/i)
+      .closest(".rounded-2xl") as HTMLElement;
+    expect(
+      within(weekCard).getByText(
+        /Algebra II \(18:15–19:00\) overlaps Geometry \(18:30–19:15\)/,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("does not flag a recurring class against a lesson scheduled during its break", () => {
+    // 18:00 slot's break runs 18:00-18:15 - a 10-minute extra session
+    // starting right at 18:00 ends before the actual lesson (18:15) begins.
+    renderCalendar({
+      classes: [classA, classB],
+      slots: [{ classId: classA.id, day: todayWeekday, time: "18:00" }],
+      events: [
+        {
+          id: "evt-extra-1",
+          event_type: "extra_session",
+          event_date: todayIso,
+          start_time: "18:00",
+          end_time: "18:10",
+          class_id: classB.id,
+          class_name: "Geometry",
+          student_id: null,
+          student_name: null,
+          contact_name: null,
+          contact_phone: null,
+          title: null,
+          notes: null,
+          created_at: "2026-08-01T00:00:00Z",
+        },
+      ],
+    });
+
+    expect(
+      screen.queryByText(/overlapping lessons this week/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it("flags a genuine time-range overlap even with different start times", () => {
+    renderCalendar({
+      classes: [classA, classB],
+      slots: [],
+      events: [
+        {
+          id: "evt-extra-1",
+          event_type: "extra_session",
+          event_date: todayIso,
+          start_time: "15:00",
+          end_time: "16:00",
+          class_id: classA.id,
+          class_name: "Algebra II",
+          student_id: null,
+          student_name: null,
+          contact_name: null,
+          contact_phone: null,
+          title: null,
+          notes: null,
+          created_at: "2026-08-01T00:00:00Z",
+        },
+        {
+          id: "evt-extra-2",
+          event_type: "extra_session",
+          event_date: todayIso,
+          start_time: "15:30",
+          end_time: "18:00",
+          class_id: classB.id,
+          class_name: "Geometry",
+          student_id: null,
+          student_name: null,
+          contact_name: null,
+          contact_phone: null,
+          title: null,
+          notes: null,
+          created_at: "2026-08-01T00:00:00Z",
+        },
+      ],
+    });
+
+    const weekCard = screen
+      .getByText(/^week of/i)
+      .closest(".rounded-2xl") as HTMLElement;
+    expect(
+      within(weekCard).getByText(
+        /Algebra II \(15:00–16:00\) overlaps Geometry \(15:30–18:00\)/,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("does not flag back-to-back lessons that only touch at the boundary", () => {
+    renderCalendar({
+      classes: [classA, classB],
+      slots: [],
+      events: [
+        {
+          id: "evt-extra-1",
+          event_type: "extra_session",
+          event_date: todayIso,
+          start_time: "15:00",
+          end_time: "16:00",
+          class_id: classA.id,
+          class_name: "Algebra II",
+          student_id: null,
+          student_name: null,
+          contact_name: null,
+          contact_phone: null,
+          title: null,
+          notes: null,
+          created_at: "2026-08-01T00:00:00Z",
+        },
+        {
+          id: "evt-extra-2",
+          event_type: "extra_session",
+          event_date: todayIso,
+          start_time: "16:00",
+          end_time: "17:00",
+          class_id: classB.id,
+          class_name: "Geometry",
+          student_id: null,
+          student_name: null,
+          contact_name: null,
+          contact_phone: null,
+          title: null,
+          notes: null,
+          created_at: "2026-08-01T00:00:00Z",
+        },
+      ],
+    });
+
+    expect(
+      screen.queryByText(/overlapping lessons this week/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not treat a cancelled occurrence as part of an overlap", () => {
+    renderCalendar({
+      classes: [classA, classB],
+      slots: [{ classId: classA.id, day: todayWeekday, time: "15:00" }],
+      events: [
+        {
+          id: "evt-cancel-1",
+          event_type: "cancellation",
+          event_date: todayIso,
+          start_time: "15:00",
+          end_time: null,
+          class_id: classA.id,
+          class_name: "Algebra II",
+          student_id: null,
+          student_name: null,
+          contact_name: null,
+          contact_phone: null,
+          title: null,
+          notes: null,
+          created_at: "2026-08-01T00:00:00Z",
+        },
+        {
+          id: "evt-extra-1",
+          event_type: "extra_session",
+          event_date: todayIso,
+          start_time: "15:00",
+          end_time: null,
+          class_id: classB.id,
+          class_name: "Geometry",
+          student_id: null,
+          student_name: null,
+          contact_name: null,
+          contact_phone: null,
+          title: null,
+          notes: null,
+          created_at: "2026-08-01T00:00:00Z",
+        },
+      ],
+    });
+
+    expect(
+      screen.queryByText(/overlapping lessons this week/i),
+    ).not.toBeInTheDocument();
   });
 
   it("cancels today's recurring occurrence", async () => {

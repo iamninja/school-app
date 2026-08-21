@@ -15,6 +15,7 @@ import {
   CalendarClockIcon,
   PencilIcon,
   PlusIcon,
+  TriangleAlertIcon,
   Trash2Icon,
   UndoIcon,
 } from "lucide-react";
@@ -25,6 +26,7 @@ import {
   rescheduleClassOccurrenceAction,
   updateCalendarEventAction,
 } from "@/app/protected/teacher/calendar-actions";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar, CalendarDayButton } from "@/components/ui/calendar";
@@ -52,12 +54,14 @@ import {
   groupOccurrencesByDate,
   projectOccurrences,
   toIsoDate,
+  weekdayLabelFromDate,
   type Occurrence,
   type OccurrenceKind,
   type ProjectionClass,
   type ProjectionEvent,
   type ProjectionSlot,
 } from "@/lib/calendar-projection";
+import { recurringLessonWindow } from "@/lib/schedule-grid";
 import type {
   CalendarEvent,
   CalendarEventInput,
@@ -124,6 +128,87 @@ const WEEK_KIND_LABELS: Partial<Record<OccurrenceKind, string>> = {
 // visible alongside the recurring template - no per-row actions here,
 // deliberately, per explicit request. Cancelling/adding still happens via
 // the day-detail panel above.
+type OverlapPair = {
+  date: string;
+  a: { name: string; startTime: string; endTime: string | null };
+  b: { name: string; startTime: string; endTime: string | null };
+};
+
+function lessonLabel(occurrence: Occurrence): string {
+  return (
+    occurrence.className ??
+    occurrence.studentName ??
+    occurrence.contactName ??
+    "Untitled"
+  );
+}
+
+function formatTimeRange(startTime: string, endTime: string | null): string {
+  return endTime ? `${startTime}–${endTime}` : startTime;
+}
+
+// A stored end_time wins when present. Otherwise: a recurring class
+// occurrence's real teaching window comes from the schedule grid's own row
+// spacing (confirmed with the user - every lesson is 45 minutes, with a
+// 15-minute break baked into most slots except the grid's first two rows,
+// which run back to back). Any other lesson type left without an end time
+// gets the same flat 45-minute assumption, just not grid-aligned.
+const DEFAULT_LESSON_MINUTES = 45;
+
+function effectiveWindow(
+  occurrence: Occurrence,
+): { start: string; end: string } | null {
+  if (occurrence.startTime === null) return null;
+  if (occurrence.endTime) {
+    return { start: occurrence.startTime, end: occurrence.endTime };
+  }
+  if (occurrence.kind === "recurring") {
+    const weekday = weekdayLabelFromDate(fromIsoDate(occurrence.date));
+    return recurringLessonWindow(weekday, occurrence.startTime);
+  }
+  const [hours, minutes] = occurrence.startTime.split(":").map(Number);
+  const endTotal = hours * 60 + minutes + DEFAULT_LESSON_MINUTES;
+  const endHours = String(Math.floor(endTotal / 60) % 24).padStart(2, "0");
+  const endMinutes = String(endTotal % 60).padStart(2, "0");
+  return { start: occurrence.startTime, end: `${endHours}:${endMinutes}` };
+}
+
+
+// Cancelled occurrences and blocks are excluded - a cancelled lesson
+// doesn't happen, and a block isn't a class. Reported pairwise rather than
+// grouped, since interval overlap isn't guaranteed transitive across three
+// or more lessons.
+function findOverlappingLessons(
+  occurrencesByDate: Map<string, Occurrence[]>,
+  days: string[],
+): OverlapPair[] {
+  const overlaps: OverlapPair[] = [];
+  for (const day of days) {
+    const dayOccurrences = (occurrencesByDate.get(day) ?? []).filter(
+      (occurrence) =>
+        occurrence.kind !== "cancelled" &&
+        occurrence.kind !== "block" &&
+        occurrence.startTime !== null,
+    );
+    for (let i = 0; i < dayOccurrences.length; i += 1) {
+      for (let j = i + 1; j < dayOccurrences.length; j += 1) {
+        const a = dayOccurrences[i];
+        const b = dayOccurrences[j];
+        const winA = effectiveWindow(a);
+        const winB = effectiveWindow(b);
+        if (!winA || !winB) continue;
+        if (!(winA.start < winB.end && winB.start < winA.end)) continue;
+        overlaps.push({
+          date: day,
+          a: { name: lessonLabel(a), startTime: winA.start, endTime: winA.end },
+          b: { name: lessonLabel(b), startTime: winB.start, endTime: winB.end },
+        });
+      }
+    }
+  }
+  return overlaps;
+}
+
 function WeeklyOverview({
   selectedDate,
   slots,
@@ -147,6 +232,8 @@ function WeeklyOverview({
     projectOccurrences({ from, to, slots, classes, events, includeBlocks: true }),
   );
   const days = eachIsoDateInRange(from, to);
+  const overlaps = findOverlappingLessons(occurrencesByDate, days);
+  const overlapDates = new Set(overlaps.map((overlap) => overlap.date));
 
   return (
     <Card>
@@ -164,10 +251,21 @@ function WeeklyOverview({
                 key={day}
                 className={cn(
                   "rounded-md border p-2",
-                  day === selectedDate && "border-primary ring-1 ring-primary",
+                  overlapDates.has(day)
+                    ? "border-rose-500 ring-1 ring-rose-500"
+                    : day === selectedDate &&
+                        "border-primary ring-1 ring-primary",
                 )}
               >
-                <p className="text-xs font-semibold text-muted-foreground">
+                <p
+                  className={cn(
+                    "text-xs font-semibold text-muted-foreground",
+                    overlapDates.has(day) && "flex items-center gap-1 text-rose-600 dark:text-rose-400",
+                  )}
+                >
+                  {overlapDates.has(day) && (
+                    <TriangleAlertIcon className="h-3 w-3" />
+                  )}
                   {format(fromIsoDate(day), "EEE d")}
                 </p>
                 <div className="mt-1.5 space-y-1.5">
@@ -205,6 +303,26 @@ function WeeklyOverview({
             );
           })}
         </div>
+
+        {overlaps.length > 0 && (
+          <Alert variant="destructive" className="mt-4">
+            <TriangleAlertIcon />
+            <AlertTitle>Overlapping lessons this week</AlertTitle>
+            <AlertDescription>
+              <ul className="space-y-0.5">
+                {overlaps.map((overlap, idx) => (
+                  <li key={idx}>
+                    {format(fromIsoDate(overlap.date), "EEE d MMM")}:{" "}
+                    {overlap.a.name} (
+                    {formatTimeRange(overlap.a.startTime, overlap.a.endTime)})
+                    overlaps {overlap.b.name} (
+                    {formatTimeRange(overlap.b.startTime, overlap.b.endTime)})
+                  </li>
+                ))}
+              </ul>
+            </AlertDescription>
+          </Alert>
+        )}
       </CardContent>
     </Card>
   );
