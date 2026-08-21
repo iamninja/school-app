@@ -26,6 +26,7 @@ import {
   SearchIcon,
   Trash2Icon,
   UsersIcon,
+  WalletIcon,
   XIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -84,9 +85,11 @@ import {
   type CredentialStatusView,
 } from "@/components/teacher-business-settings";
 import { TeacherReceipts } from "@/components/teacher-receipts";
+import { TeacherExpenses } from "@/components/teacher-expenses";
 import { ThemeSwitcher } from "@/components/theme-switcher";
 import type {
   BusinessProfile,
+  Expense,
   IntegrationSettings,
   Receipt,
   TeacherQuizListItem,
@@ -148,6 +151,12 @@ const SECTIONS = [
     label: "Receipts",
     description: "Issue and print receipts",
     icon: ReceiptTextIcon,
+  },
+  {
+    value: "expenses",
+    label: "Expenses",
+    description: "Log business expenses",
+    icon: WalletIcon,
   },
   {
     value: "business",
@@ -229,6 +238,7 @@ type TeacherDashboardProps = {
   integrationSettings?: IntegrationSettings[];
   credentialStatuses?: Record<string, CredentialStatusView>;
   initialReceipts?: Receipt[];
+  initialExpenses?: Expense[];
   loadErrors?: string[];
 };
 
@@ -412,6 +422,7 @@ export function TeacherDashboard({
   integrationSettings = [],
   credentialStatuses = {},
   initialReceipts = [],
+  initialExpenses = [],
   loadErrors = [],
 }: TeacherDashboardProps) {
   const sensors = useSensors(
@@ -3190,6 +3201,10 @@ export function TeacherDashboard({
             families={initialFamilies}
             business={businessProfile}
           />
+        </TabsContent>
+
+        <TabsContent value="expenses" className="mt-0">
+          <TeacherExpenses initialExpenses={initialExpenses} />
         </TabsContent>
 
         <TabsContent value="business" className="mt-0">

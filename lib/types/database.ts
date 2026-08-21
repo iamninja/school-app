@@ -556,3 +556,32 @@ export interface CreateReceiptInput {
   notes?: string;
   lineItems: ReceiptLineItemInput[];
 }
+
+// Business expenses - internal bookkeeping, no myDATA transmission (see
+// the migration comment for why: SendExpensesClassification classifies a
+// document that already exists in myDATA, it doesn't create one).
+export interface Expense {
+  id: string;
+  expense_date: string;
+  supplier_name: string;
+  supplier_afm: string | null;
+  description: string;
+  amount: number;
+  vat_amount: number | null;
+  category: string | null;
+  payment_method: number | null;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface ExpenseInput {
+  expenseDate?: string;
+  supplierName: string;
+  supplierAfm?: string;
+  description: string;
+  amount: number;
+  vatAmount?: number;
+  category?: string;
+  paymentMethod?: number;
+  notes?: string;
+}

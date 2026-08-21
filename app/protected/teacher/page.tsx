@@ -4,6 +4,7 @@ import { TeacherDashboard } from "@/components/teacher-dashboard";
 import { createClient } from "@/lib/supabase/server";
 import { getBusinessSettingsAction } from "@/app/protected/teacher/business-settings-actions";
 import { listReceiptsAction } from "@/app/protected/teacher/receipt-actions";
+import { listExpensesAction } from "@/app/protected/teacher/expense-actions";
 
 // The Supabase client has no Database generic here, so its select-string
 // parser can't determine embed cardinality and infers every embed as an
@@ -215,6 +216,7 @@ export default async function TeacherPage() {
   // getBusinessSettingsAction never returns a decrypted value.
   const businessSettings = await getBusinessSettingsAction();
   const initialReceipts = await listReceiptsAction();
+  const initialExpenses = await listExpensesAction();
 
   return (
     <TeacherDashboard
@@ -228,6 +230,7 @@ export default async function TeacherPage() {
       integrationSettings={businessSettings.integrations}
       credentialStatuses={businessSettings.credentialStatuses}
       initialReceipts={initialReceipts}
+      initialExpenses={initialExpenses}
       loadErrors={loadErrors}
     />
   );
