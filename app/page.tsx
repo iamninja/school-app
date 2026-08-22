@@ -5,6 +5,7 @@ import {
   ClipboardCheck,
   MapPin,
   PenLine,
+  Phone,
   Sigma,
   Users,
 } from "lucide-react";
@@ -112,11 +113,24 @@ export default function Home() {
               </span>
               .
             </p>
-            <p className="mt-5 inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-sm font-medium shadow-xs">
-              <MapPin className="size-4 text-brand" aria-hidden="true" />
-              Ηρώων Πολυτεχνείου 3, 1ος όροφος, Καρδίτσα
+            <div className="mt-5 flex flex-wrap items-center gap-3">
+              <p className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-sm font-medium shadow-xs">
+                <MapPin className="size-4 text-brand" aria-hidden="true" />
+                Ηρώων Πολυτεχνείου 3, 1ος όροφος, Καρδίτσα
+              </p>
+              <a
+                href="tel:+306947846590"
+                className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-sm font-medium shadow-xs transition-colors hover:border-brand/60"
+              >
+                <Phone className="size-4 text-brand" aria-hidden="true" />
+                694 784 6590
+              </a>
+            </div>
+            <p className="mt-8 inline-flex items-center gap-2 rounded-full border border-brand/40 bg-brand/10 px-4 py-2 text-sm font-semibold">
+              <CalendarDays className="size-4 text-brand" aria-hidden="true" />
+              Εγγραφές από 24/8
             </p>
-            <div className="mt-10 flex flex-wrap items-center gap-3">
+            <div className="mt-4 flex flex-wrap items-center gap-3">
               <Button asChild size="lg">
                 <Link href="/auth/student-login">
                   Είσοδος μαθητή
@@ -221,6 +235,13 @@ export default function Home() {
               Φροντιστήριο Μαθηματικών · Βάγιος Βλάχος
               <br />
               Ηρώων Πολυτεχνείου 3, 1ος όροφος, Καρδίτσα
+              <br />
+              <a
+                href="tel:+306947846590"
+                className="transition-colors hover:text-foreground"
+              >
+                694 784 6590
+              </a>
             </p>
           </div>
           <div className="flex items-center gap-4">
