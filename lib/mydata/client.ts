@@ -56,6 +56,29 @@ function extractAllTags(xml: string, tag: string): string[] {
 }
 
 /**
+ * Pulls every <tag>...</tag> INNER XML (not just leaf text) out of a
+ * string, for scoping a nested extraction - e.g. RequestedDoc's
+ * <issuer><vatNumber> and <counterpart><vatNumber> share a tag name, so
+ * extractTag alone can't tell them apart. Extract the block first, then
+ * extractTag *within* that substring.
+ */
+function extractBlocks(xml: string, tag: string): string[] {
+  const matches = xml.matchAll(
+    new RegExp(
+      `<(?:[a-zA-Z0-9]+:)?${tag}>([\\s\\S]*?)</(?:[a-zA-Z0-9]+:)?${tag}>`,
+      "g",
+    ),
+  );
+  return [...matches].map((match) => match[1]);
+}
+
+function toNumberOrNull(value: string | null): number | null {
+  if (value === null) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/**
  * Parses a ResponseDoc. AADE returns HTTP 200 even for rejected invoices -
  * the real outcome is in statusCode, so a naive `response.ok` check would
  * record a failed filing as a success.
@@ -165,6 +188,159 @@ export async function sendInvoiceXml(xml: string): Promise<MyDataResult> {
   }
 
   return parseMyDataResponse(body);
+}
+
+export interface RequestedInvoice {
+  uid: string;
+  mark: string;
+  issuerVatNumber: string | null;
+  counterpartVatNumber: string | null;
+  /** As returned by AADE - yyyy-MM-dd. */
+  issueDate: string | null;
+  invoiceType: string | null;
+  currency: string | null;
+  totalNetValue: number | null;
+  totalVatAmount: number | null;
+  totalGrossValue: number | null;
+  paymentMethods: { type: number; amount: number }[];
+  qrCodeUrl: string | null;
+  downloadingInvoiceUrl: string | null;
+}
+
+export interface RequestDocsResult {
+  ok: boolean;
+  status?: number;
+  error?: string;
+  invoices?: RequestedInvoice[];
+}
+
+/**
+ * Parses RequestedDoc's <invoicesDoc><invoice>...</invoice></invoicesDoc>
+ * list. Verified against a real production response (2026-08-24): every
+ * field here was present in that document, but several are declared
+ * optional in the schema (§6.2), so each lookup tolerates being absent
+ * rather than throwing.
+ */
+export function parseRequestedDocs(xml: string): RequestedInvoice[] {
+  const invoicesDocBlocks = extractBlocks(xml, "invoicesDoc");
+
+  return invoicesDocBlocks.flatMap((invoicesDocXml) =>
+    extractBlocks(invoicesDocXml, "invoice").map((invoiceXml) => {
+      const issuerBlock = extractBlocks(invoiceXml, "issuer")[0] ?? "";
+      const counterpartBlock = extractBlocks(invoiceXml, "counterpart")[0] ?? "";
+      const headerBlock = extractBlocks(invoiceXml, "invoiceHeader")[0] ?? "";
+      const summaryBlock = extractBlocks(invoiceXml, "invoiceSummary")[0] ?? "";
+      const paymentMethods = extractBlocks(
+        invoiceXml,
+        "paymentMethodDetails",
+      ).map((block) => ({
+        type: Number(extractTag(block, "type")),
+        amount: Number(extractTag(block, "amount")),
+      }));
+
+      return {
+        uid: extractTag(invoiceXml, "uid") ?? "",
+        mark: extractTag(invoiceXml, "mark") ?? "",
+        issuerVatNumber: extractTag(issuerBlock, "vatNumber"),
+        counterpartVatNumber: extractTag(counterpartBlock, "vatNumber"),
+        issueDate: extractTag(headerBlock, "issueDate"),
+        invoiceType: extractTag(headerBlock, "invoiceType"),
+        currency: extractTag(headerBlock, "currency"),
+        totalNetValue: toNumberOrNull(extractTag(summaryBlock, "totalNetValue")),
+        totalVatAmount: toNumberOrNull(
+          extractTag(summaryBlock, "totalVatAmount"),
+        ),
+        totalGrossValue: toNumberOrNull(
+          extractTag(summaryBlock, "totalGrossValue"),
+        ),
+        paymentMethods,
+        qrCodeUrl: extractTag(invoiceXml, "qrCodeUrl"),
+        downloadingInvoiceUrl: extractTag(invoiceXml, "downloadingInvoiceUrl"),
+      };
+    }),
+  );
+}
+
+/**
+ * GET RequestDocs - documents OTHER parties (suppliers, customers) have
+ * submitted to myDATA that reference this business's ΑΦΜ, i.e. what a
+ * supplier's own invoice-to-us looks like from AADE's side with no manual
+ * upload on our end. `mark` is an exclusive lower bound (same semantics
+ * as verifyReceiptMark above) - pass "0" to fetch everything.
+ *
+ * Verified against production (2026-08-24) - see parseRequestedDocs.
+ */
+export async function requestDocs(params: {
+  mark: string;
+  dateFrom?: string; // dd/MM/yyyy
+  dateTo?: string; // dd/MM/yyyy
+  environment: "sandbox" | "production";
+}): Promise<RequestDocsResult> {
+  const { mark, dateFrom, dateTo, environment } = params;
+
+  const [userId, subscriptionKey] = await Promise.all([
+    getDecryptedCredentialForEnvironment(PROVIDER, "user_id", environment),
+    getDecryptedCredentialForEnvironment(
+      PROVIDER,
+      "subscription_key",
+      environment,
+    ),
+  ]);
+
+  const query = new URLSearchParams({ mark });
+  if (dateFrom) query.set("dateFrom", dateFrom);
+  if (dateTo) query.set("dateTo", dateTo);
+
+  // Confirmed against the official spec: production's RequestDocs sits
+  // under a /myDATA path prefix that SendInvoices/RequestTransmittedDocs
+  // don't use; sandbox has no such prefix (both the spec's own sandbox
+  // test-URL note and test_urls_0.pdf agree on that, inconsistently with
+  // the production URL directly above it in the same section).
+  const base =
+    environment === "production"
+      ? `${ENDPOINTS.production}/myDATA`
+      : ENDPOINTS.sandbox;
+
+  let response: Response;
+  try {
+    response = await fetch(`${base}/RequestDocs?${query.toString()}`, {
+      method: "GET",
+      headers: {
+        "aade-user-id": userId,
+        "ocp-apim-subscription-key": subscriptionKey,
+      },
+    });
+  } catch (error: unknown) {
+    return {
+      ok: false,
+      error: `Could not reach myDATA (${environment}): ${
+        error instanceof Error ? error.message : "network error"
+      }`,
+    };
+  }
+
+  const body = await response.text();
+
+  if (response.status === 401 || response.status === 403) {
+    return {
+      ok: false,
+      status: response.status,
+      error: `myDATA rejected the credentials (HTTP ${response.status}) for the ${environment} environment.`,
+    };
+  }
+  if (!response.ok) {
+    return {
+      ok: false,
+      status: response.status,
+      error: `myDATA returned HTTP ${response.status}: ${body.slice(0, 500)}`,
+    };
+  }
+
+  return {
+    ok: true,
+    status: response.status,
+    invoices: parseRequestedDocs(body),
+  };
 }
 
 export interface MyDataVerification {

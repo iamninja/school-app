@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { format } from "date-fns";
+import { format, subDays } from "date-fns";
 import { PencilIcon, PlusIcon, Trash2Icon, XIcon } from "lucide-react";
 
 import {
@@ -10,6 +10,7 @@ import {
   deleteExpenseAction,
   updateExpenseAction,
 } from "@/app/protected/teacher/expense-actions";
+import { listMyDataDocumentsAction } from "@/app/protected/teacher/mydata-documents-actions";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -25,7 +26,42 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import type { Expense, ExpenseInput } from "@/lib/types/database";
+// Type-only - erased at compile time, so this never triggers the
+// server-only guard in lib/mydata/client.ts at runtime in this client
+// component.
+import type { RequestedInvoice } from "@/lib/mydata/client";
+
+// AADE's own payment-method codes (spec §8.12) - a supplier's document can
+// carry any of these, unlike our own receipts which narrow to the ones a
+// tutoring centre realistically gets paid by (teacher-receipts.tsx).
+const PAYMENT_METHOD_LABELS: Record<number, string> = {
+  1: "Επιταγή",
+  2: "Τραπεζικό έμβασμα",
+  3: "Μετρητά",
+  4: "Πιστωτική κάρτα (χωρίς POS)",
+  5: "Χρεωστική κάρτα (χωρίς POS)",
+  6: "Web Banking",
+  7: "POS / e-POS",
+  8: "IRIS",
+};
+
+function defaultMyDataDateRange() {
+  const to = new Date();
+  const from = subDays(to, 90);
+  return {
+    dateFrom: from.toISOString().slice(0, 10),
+    dateTo: to.toISOString().slice(0, 10),
+  };
+}
 
 // AADE's own category2_x identifiers (spec §8.10), stored as the value so
 // a future myDATA classification pass isn't starting from a blank field -
@@ -122,7 +158,29 @@ export function TeacherExpenses({
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
 
+  const [myDataRange, setMyDataRange] = React.useState(defaultMyDataDateRange);
+  const [myDataDocuments, setMyDataDocuments] = React.useState<
+    RequestedInvoice[]
+  >([]);
+  const [hasCheckedMyData, setHasCheckedMyData] = React.useState(false);
+  const [isCheckingMyData, setIsCheckingMyData] = React.useState(false);
+
   const total = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+
+  const handleCheckMyData = async () => {
+    setIsCheckingMyData(true);
+    try {
+      const documents = await listMyDataDocumentsAction(myDataRange);
+      setMyDataDocuments(documents);
+      setHasCheckedMyData(true);
+    } catch (error: unknown) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to check myDATA",
+      );
+    } finally {
+      setIsCheckingMyData(false);
+    }
+  };
 
   const openCreate = () => {
     setEditingId(null);
@@ -251,6 +309,135 @@ export function TeacherExpenses({
               <p className="pt-2 text-right text-sm font-medium">
                 Total: {formatAmount(total)}
               </p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>myDATA Documents</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Documents your suppliers have transmitted to AADE myDATA that
+            reference this business. Read-only — not linked to the expenses
+            above.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="space-y-2">
+              <Label htmlFor="mydata-date-from">From</Label>
+              <Input
+                id="mydata-date-from"
+                type="date"
+                value={myDataRange.dateFrom}
+                onChange={(event) =>
+                  setMyDataRange((prev) => ({
+                    ...prev,
+                    dateFrom: event.target.value,
+                  }))
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="mydata-date-to">To</Label>
+              <Input
+                id="mydata-date-to"
+                type="date"
+                value={myDataRange.dateTo}
+                onChange={(event) =>
+                  setMyDataRange((prev) => ({
+                    ...prev,
+                    dateTo: event.target.value,
+                  }))
+                }
+              />
+            </div>
+            <Button
+              type="button"
+              onClick={() => void handleCheckMyData()}
+              disabled={isCheckingMyData}
+            >
+              {isCheckingMyData ? "Checking..." : "Check myDATA"}
+            </Button>
+          </div>
+
+          {!hasCheckedMyData ? (
+            <p className="text-sm text-muted-foreground">
+              Set a date range and click &quot;Check myDATA&quot; to see
+              what&apos;s on file.
+            </p>
+          ) : myDataDocuments.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No documents found for this period.
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Supplier ΑΦΜ</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead className="text-right">Net</TableHead>
+                    <TableHead className="text-right">VAT</TableHead>
+                    <TableHead className="text-right">Gross</TableHead>
+                    <TableHead>Payment</TableHead>
+                    <TableHead />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {myDataDocuments.map((doc) => (
+                    <TableRow key={doc.uid || doc.mark}>
+                      <TableCell>
+                        {doc.issueDate
+                          ? format(new Date(doc.issueDate), "d MMM yyyy")
+                          : "—"}
+                      </TableCell>
+                      <TableCell>{doc.issuerVatNumber ?? "—"}</TableCell>
+                      <TableCell>{doc.invoiceType ?? "—"}</TableCell>
+                      <TableCell className="text-right">
+                        {doc.totalNetValue !== null
+                          ? formatAmount(doc.totalNetValue)
+                          : "—"}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {doc.totalVatAmount !== null
+                          ? formatAmount(doc.totalVatAmount)
+                          : "—"}
+                      </TableCell>
+                      <TableCell className="text-right font-medium">
+                        {doc.totalGrossValue !== null
+                          ? formatAmount(doc.totalGrossValue)
+                          : "—"}
+                      </TableCell>
+                      <TableCell>
+                        {doc.paymentMethods.length > 0
+                          ? doc.paymentMethods
+                              .map(
+                                (pm) =>
+                                  PAYMENT_METHOD_LABELS[pm.type] ??
+                                  `Type ${pm.type}`,
+                              )
+                              .join(", ")
+                          : "—"}
+                      </TableCell>
+                      <TableCell>
+                        {doc.downloadingInvoiceUrl && (
+                          <a
+                            href={doc.downloadingInvoiceUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-sm text-primary underline"
+                          >
+                            View
+                          </a>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </div>
           )}
         </CardContent>

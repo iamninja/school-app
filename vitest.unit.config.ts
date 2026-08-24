@@ -23,6 +23,7 @@ export default defineConfig({
       "tests/business-settings-actions.test.ts",
       "tests/receipt-actions.test.ts",
       "tests/mydata-invoice-xml.test.ts",
+      "tests/mydata-documents-actions.test.ts",
       "tests/expense-actions.test.ts",
       "tests/calendar-actions.test.ts",
     ],

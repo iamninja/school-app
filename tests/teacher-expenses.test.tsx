@@ -4,12 +4,17 @@ import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
 import { TeacherExpenses } from "@/components/teacher-expenses";
 import * as expenseActions from "@/app/protected/teacher/expense-actions";
+import * as myDataDocumentsActions from "@/app/protected/teacher/mydata-documents-actions";
 
 vi.mock("@/app/protected/teacher/expense-actions", () => ({
   createExpenseAction: vi.fn(),
   updateExpenseAction: vi.fn(),
   deleteExpenseAction: vi.fn(),
   listExpensesAction: vi.fn(),
+}));
+
+vi.mock("@/app/protected/teacher/mydata-documents-actions", () => ({
+  listMyDataDocumentsAction: vi.fn(),
 }));
 
 vi.mock("sonner", () => ({
@@ -155,5 +160,88 @@ describe("TeacherExpenses", () => {
       );
     });
     expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+});
+
+describe("TeacherExpenses - myDATA Documents", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("shows a prompt before the first check, not an empty-results message", () => {
+    render(<TeacherExpenses initialExpenses={[]} />);
+    expect(
+      screen.getByText(/click "check mydata" to see what's on file/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/no documents found for this period/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders retrieved documents after clicking Check myDATA", async () => {
+    const user = userEvent.setup();
+    vi.mocked(myDataDocumentsActions.listMyDataDocumentsAction).mockResolvedValue([
+      {
+        uid: "U1",
+        mark: "1",
+        issuerVatNumber: "999082935",
+        counterpartVatNumber: "133341926",
+        issueDate: "2026-08-24",
+        invoiceType: "2.1",
+        currency: "EUR",
+        totalNetValue: 7.5,
+        totalVatAmount: 1.8,
+        totalGrossValue: 9.3,
+        paymentMethods: [{ type: 7, amount: 9.3 }],
+        qrCodeUrl: null,
+        downloadingInvoiceUrl: "https://e-invoicing.gr/view/1",
+      },
+    ]);
+
+    render(<TeacherExpenses initialExpenses={[]} />);
+    await user.click(screen.getByRole("button", { name: /check mydata/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("999082935")).toBeInTheDocument();
+    });
+    expect(screen.getByText(/POS \/ e-POS/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /view/i })).toHaveAttribute(
+      "href",
+      "https://e-invoicing.gr/view/1",
+    );
+  });
+
+  it("shows an empty-results message when nothing is found for the period", async () => {
+    const user = userEvent.setup();
+    vi.mocked(
+      myDataDocumentsActions.listMyDataDocumentsAction,
+    ).mockResolvedValue([]);
+
+    render(<TeacherExpenses initialExpenses={[]} />);
+    await user.click(screen.getByRole("button", { name: /check mydata/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/no documents found for this period/i),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("surfaces a failure (e.g. myDATA not configured) as an error toast", async () => {
+    const user = userEvent.setup();
+    vi.mocked(
+      myDataDocumentsActions.listMyDataDocumentsAction,
+    ).mockRejectedValue(
+      new Error('No "user_id" credential set for production'),
+    );
+
+    render(<TeacherExpenses initialExpenses={[]} />);
+    await user.click(screen.getByRole("button", { name: /check mydata/i }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(
+        'No "user_id" credential set for production',
+      );
+    });
   });
 });
