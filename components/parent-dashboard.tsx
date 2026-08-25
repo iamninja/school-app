@@ -6,6 +6,7 @@ import {
   CalendarDays,
   ClipboardCheck,
   ClockIcon,
+  EuroIcon,
   PenLine,
   UsersRound,
 } from "lucide-react";
@@ -20,11 +21,12 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MathText } from "@/components/math-text";
 import { PortalUpcomingCard } from "@/components/portal-upcoming-card";
-import type { ParentDashboardChild } from "@/lib/types/database";
+import type { ParentDashboardChild, ParentDashboardData } from "@/lib/types/database";
+import { formatEuro } from "@/lib/format-currency";
 import {
   ATTENDANCE_STATUS_LABELS_EL,
+  BALANCE_TRANSACTION_TYPE_LABELS_EL,
   DAY_LABELS_EL,
-  TUITION_STATUS_LABELS_EL,
 } from "@/lib/greek-labels";
 
 type ParentDashboardProps = {
@@ -45,6 +47,7 @@ type ParentDashboardProps = {
   // name (react/no-children-prop) and would collide when passed as a JSX
   // attribute.
   kids: ParentDashboardChild[];
+  balance: ParentDashboardData["balance"];
 };
 
 const DAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -118,20 +121,6 @@ function ChildSection({
               .join(" · ") || "Μαθητής/-τρια του φροντιστηρίου"}
           </p>
         </div>
-        {student.tuitionStatus && (
-          <Badge
-            variant={
-              student.tuitionStatus === "current"
-                ? "default"
-                : student.tuitionStatus === "scholarship"
-                  ? "secondary"
-                  : "destructive"
-            }
-          >
-            {TUITION_STATUS_LABELS_EL[student.tuitionStatus] ??
-              student.tuitionStatus}
-          </Badge>
-        )}
       </div>
 
       {/* Attendance stats */}
@@ -352,6 +341,73 @@ export function ParentDashboard(props: ParentDashboardProps) {
               ? "Τμήματα, πρόγραμμα και παρουσίες των παιδιών σας, με μια ματιά."
               : `Τμήματα, πρόγραμμα και παρουσίες: ${props.kids[0]?.student.firstName ?? "το παιδί σας"}.`}
           </p>
+        </div>
+
+        <div className="space-y-3">
+          <SectionLabel>Λογαριασμός</SectionLabel>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <EuroIcon className="size-4 text-brand" aria-hidden="true" />
+                Υπόλοιπο διδάκτρων
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <p
+                  className={`text-2xl font-bold ${
+                    props.balance.amount > 0
+                      ? "text-destructive"
+                      : props.balance.amount < 0
+                        ? "text-emerald-600 dark:text-emerald-400"
+                        : ""
+                  }`}
+                >
+                  {formatEuro(Math.abs(props.balance.amount))}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {props.balance.amount > 0
+                    ? "Οφειλή"
+                    : props.balance.amount < 0
+                      ? "Πίστωση"
+                      : "Εξοφλημένο"}
+                  {props.balance.monthlyAmount > 0 &&
+                    ` · ${formatEuro(props.balance.monthlyAmount)}/μήνα`}
+                </p>
+              </div>
+              {props.balance.recentTransactions.length > 0 && (
+                <div className="space-y-2 border-t border-border/70 pt-3">
+                  {props.balance.recentTransactions.slice(0, 5).map((txn) => (
+                    <div
+                      key={txn.id}
+                      className="flex items-center justify-between gap-3 text-sm"
+                    >
+                      <div>
+                        <p className="font-medium">{txn.description}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {format(new Date(txn.createdAt), "d MMM yyyy", {
+                            locale: el,
+                          })}
+                          {" · "}
+                          {BALANCE_TRANSACTION_TYPE_LABELS_EL[txn.type] ??
+                            txn.type}
+                        </p>
+                      </div>
+                      <span
+                        className={
+                          txn.amount > 0
+                            ? "text-destructive"
+                            : "text-emerald-600 dark:text-emerald-400"
+                        }
+                      >
+                        {formatEuro(txn.amount)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
 
         {otherParents.length > 0 && (

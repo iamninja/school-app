@@ -15,11 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StudentQuizPanel } from "@/components/student-quiz-panel";
 import { PortalUpcomingCard } from "@/components/portal-upcoming-card";
 import type { PortalCalendarEvent, QuizSummary } from "@/lib/types/database";
-import {
-  ATTENDANCE_STATUS_LABELS_EL,
-  DAY_LABELS_EL,
-  TUITION_STATUS_LABELS_EL,
-} from "@/lib/greek-labels";
+import { ATTENDANCE_STATUS_LABELS_EL, DAY_LABELS_EL } from "@/lib/greek-labels";
 
 type StudentDashboardProps = {
   student: {
@@ -29,7 +25,6 @@ type StudentDashboardProps = {
     gradeLevel: string | null;
     email: string | null;
     tuitionAmount: number | null;
-    tuitionStatus: string;
   };
   parents: Array<{
     name: string | null;
@@ -314,28 +309,6 @@ export function StudentDashboard(props: StudentDashboardProps) {
                         <dt className="text-muted-foreground">Email</dt>
                         <dd className="truncate font-medium">
                           {props.student.email}
-                        </dd>
-                      </div>
-                    )}
-                    {props.student.tuitionStatus && (
-                      <div className="flex items-center justify-between gap-3">
-                        <dt className="text-muted-foreground">
-                          Κατάσταση διδάκτρων
-                        </dt>
-                        <dd>
-                          <Badge
-                            variant={
-                              props.student.tuitionStatus === "current"
-                                ? "default"
-                                : props.student.tuitionStatus === "scholarship"
-                                  ? "secondary"
-                                  : "destructive"
-                            }
-                          >
-                            {TUITION_STATUS_LABELS_EL[
-                              props.student.tuitionStatus
-                            ] ?? props.student.tuitionStatus}
-                          </Badge>
                         </dd>
                       </div>
                     )}

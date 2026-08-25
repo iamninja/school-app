@@ -5,6 +5,10 @@ import { createClient } from "@/lib/supabase/server";
 import { getBusinessSettingsAction } from "@/app/protected/teacher/business-settings-actions";
 import { listReceiptsAction } from "@/app/protected/teacher/receipt-actions";
 import { listExpensesAction } from "@/app/protected/teacher/expense-actions";
+import {
+  listChargeRunsAction,
+  listFamilyBalancesAction,
+} from "@/app/protected/teacher/billing-actions";
 
 // The Supabase client has no Database generic here, so its select-string
 // parser can't determine embed cardinality and infers every embed as an
@@ -65,7 +69,7 @@ export default async function TeacherPage() {
     supabase
       .from("students")
       .select(
-        "id, first_name, last_name, grade_level, email, tuition_amount, tuition_status, created_at, family_id, withdrawn_at, families(id, family_parents(id, name, email, phone, is_primary)), student_class_assignments(class_id)"
+        "id, first_name, last_name, grade_level, email, tuition_amount, created_at, family_id, withdrawn_at, families(id, family_parents(id, name, email, phone, is_primary)), student_class_assignments(class_id)"
       )
       .eq("teacher_id", user.id)
       .order("created_at", { ascending: false }),
@@ -138,7 +142,6 @@ export default async function TeacherPage() {
         student.tuition_amount === null || student.tuition_amount === undefined
           ? ""
           : String(student.tuition_amount),
-      tuitionStatus: student.tuition_status,
       assignedClassIds:
         student.student_class_assignments?.map((row) => row.class_id) ?? [],
     };
@@ -230,6 +233,8 @@ export default async function TeacherPage() {
   const businessSettings = await getBusinessSettingsAction();
   const initialReceipts = await listReceiptsAction();
   const initialExpenses = await listExpensesAction();
+  const initialFamilyBalances = await listFamilyBalancesAction();
+  const initialChargeRuns = await listChargeRunsAction();
 
   return (
     <TeacherDashboard
@@ -244,6 +249,8 @@ export default async function TeacherPage() {
       credentialStatuses={businessSettings.credentialStatuses}
       initialReceipts={initialReceipts}
       initialExpenses={initialExpenses}
+      initialFamilyBalances={initialFamilyBalances}
+      initialChargeRuns={initialChargeRuns}
       initialCalendarEvents={calendarEvents ?? []}
       loadErrors={loadErrors}
     />

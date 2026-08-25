@@ -35,6 +35,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ReceiptDocument } from "@/components/receipt-document";
+import { formatEuro } from "@/lib/format-currency";
+import { PAYMENT_METHODS } from "@/lib/payment-methods";
 import type { BusinessProfile, Receipt } from "@/lib/types/database";
 
 type FamilyOption = {
@@ -43,27 +45,13 @@ type FamilyOption = {
   studentNames: string[];
 };
 
-// AADE payment-method codes (spec §8.12), narrowed to the ones a tutoring
-// centre realistically gets paid by rather than the full list.
-const PAYMENT_METHODS = [
-  { code: 3, label: "Μετρητά (cash)" },
-  { code: 7, label: "POS / e-POS (card)" },
-  { code: 6, label: "Web banking / transfer" },
-  { code: 8, label: "IRIS" },
-] as const;
-
 type LineDraft = { description: string; amount: string };
 
 function blankLine(): LineDraft {
   return { description: "", amount: "" };
 }
 
-function formatAmount(amount: number): string {
-  return new Intl.NumberFormat("el-GR", {
-    style: "currency",
-    currency: "EUR",
-  }).format(amount);
-}
+const formatAmount = formatEuro;
 
 export function TeacherReceipts({
   initialReceipts,

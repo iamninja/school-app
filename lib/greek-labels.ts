@@ -19,10 +19,14 @@ export const ATTENDANCE_STATUS_LABELS_EL: Record<string, string> = {
   absent: "Απουσία",
 };
 
-export const TUITION_STATUS_LABELS_EL: Record<string, string> = {
-  current: "Ενημερωμένος",
-  "past-due": "Σε καθυστέρηση",
-  scholarship: "Υποτροφία",
+// Replaces the retired tuition_status - see lib/billing/tuition-status.ts
+// (deriveTuitionStatus) for the English teacher-facing equivalent.
+export const BALANCE_TRANSACTION_TYPE_LABELS_EL: Record<string, string> = {
+  monthly_charge: "Χρέωση μήνα",
+  payment: "Πληρωμή",
+  receipt: "Απόδειξη",
+  prepayment: "Προκαταβολή",
+  adjustment: "Διόρθωση",
 };
 
 // Kept total over CalendarEventType even though "trial_lesson"/"block" are

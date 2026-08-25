@@ -61,7 +61,6 @@ describe("TeacherDashboard student detail - edit", () => {
         parentEmail: "parent@example.com",
         parentPhone: "(555) 123-4567",
         tuitionAmount: "420",
-        tuitionStatus: "current" as const,
         assignedClassIds: ["class-1", "class-3"],
       },
       {
@@ -75,7 +74,6 @@ describe("TeacherDashboard student detail - edit", () => {
         parentEmail: "parent@example.com",
         parentPhone: "(555) 123-4567",
         tuitionAmount: "400",
-        tuitionStatus: "current" as const,
         assignedClassIds: [],
       },
     ],
@@ -186,7 +184,6 @@ describe("TeacherDashboard student detail - edit", () => {
       parentTwoEmail: "",
       parentTwoPhone: "",
       tuitionAmount: "500",
-      tuitionStatus: "current",
     });
 
     await openMayaDetail(user);
@@ -228,7 +225,6 @@ describe("TeacherDashboard student detail - edit", () => {
       parentTwoEmail: "jamie@example.com",
       parentTwoPhone: "(555) 999-1111",
       tuitionAmount: "450",
-      tuitionStatus: "past-due",
     });
 
     await openMayaDetail(user);
@@ -253,13 +249,9 @@ describe("TeacherDashboard student detail - edit", () => {
       "(555) 999-1111",
     );
 
-    const tuitionAmountInput = within(dialog).getByLabelText(/amount/i);
+    const tuitionAmountInput = within(dialog).getByLabelText(/monthly tuition/i);
     await user.clear(tuitionAmountInput);
     await user.type(tuitionAmountInput, "450");
-    await user.selectOptions(
-      within(dialog).getByLabelText(/status/i),
-      "past-due",
-    );
 
     await user.click(within(dialog).getByRole("button", { name: /save/i }));
 
@@ -271,7 +263,6 @@ describe("TeacherDashboard student detail - edit", () => {
           parentTwoEmail: "jamie@example.com",
           parentTwoPhone: "(555) 999-1111",
           tuitionAmount: "450",
-          tuitionStatus: "past-due",
         }),
       );
     });
@@ -294,7 +285,6 @@ describe("TeacherDashboard student detail - edit", () => {
       parentTwoEmail: "",
       parentTwoPhone: "",
       tuitionAmount: "420",
-      tuitionStatus: "current",
     });
 
     await openMayaDetail(user);

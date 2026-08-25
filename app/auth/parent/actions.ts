@@ -113,6 +113,22 @@ export async function getParentDashboardDataAction(): Promise<
     .eq("family_id", parent.family_id)
     .order("is_primary", { ascending: false });
 
+  // Family balance card. RLS-scoped, same client as everything else here
+  // (no service-role bypass) - "Parents view own family" and "Parents
+  // view own family balance transactions" already cover this.
+  const { data: familyRow } = await supabase
+    .from("families")
+    .select("balance")
+    .eq("id", parent.family_id)
+    .maybeSingle();
+
+  const { data: recentTransactionRows } = await supabase
+    .from("family_balance_transactions")
+    .select("id, type, amount, description, created_at")
+    .eq("family_id", parent.family_id)
+    .order("created_at", { ascending: false })
+    .limit(12);
+
   // Every non-withdrawn child in this family - hidden by default, matching
   // the teacher dashboard's "hidden unless toggled" withdrawn-student
   // behavior.
@@ -126,7 +142,6 @@ export async function getParentDashboardDataAction(): Promise<
       grade_level,
       email,
       tuition_amount,
-      tuition_status,
       withdrawn_at
     `,
     )
@@ -313,7 +328,6 @@ export async function getParentDashboardDataAction(): Promise<
           gradeLevel: student.grade_level,
           email: student.email,
           tuitionAmount: student.tuition_amount,
-          tuitionStatus: student.tuition_status,
           withdrawnAt: student.withdrawn_at,
         },
         classes:
@@ -333,6 +347,11 @@ export async function getParentDashboardDataAction(): Promise<
     }),
   );
 
+  const monthlyAmount = studentRows.reduce(
+    (sum, student) => sum + Number(student.tuition_amount ?? 0),
+    0,
+  );
+
   return {
     success: true,
     data: {
@@ -345,6 +364,17 @@ export async function getParentDashboardDataAction(): Promise<
       },
       allParents: allParents || [],
       kids: children,
+      balance: {
+        amount: Number(familyRow?.balance ?? 0),
+        monthlyAmount,
+        recentTransactions: (recentTransactionRows ?? []).map((row) => ({
+          id: row.id,
+          type: row.type,
+          amount: Number(row.amount),
+          description: row.description,
+          createdAt: row.created_at,
+        })),
+      },
     },
   };
 }

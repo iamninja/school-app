@@ -18,6 +18,7 @@ import {
   CalendarDaysIcon,
   CalendarRangeIcon,
   ClipboardCheckIcon,
+  EuroIcon,
   FileTextIcon,
   LayersIcon,
   PencilIcon,
@@ -87,6 +88,7 @@ import {
 } from "@/components/teacher-business-settings";
 import { TeacherReceipts } from "@/components/teacher-receipts";
 import { TeacherExpenses } from "@/components/teacher-expenses";
+import { TeacherBilling } from "@/components/teacher-billing";
 import { TeacherCalendar } from "@/components/teacher-calendar";
 import { ThemeSwitcher } from "@/components/theme-switcher";
 import {
@@ -96,10 +98,17 @@ import {
 } from "@/lib/attendance-dates";
 import { SCHEDULE_ROWS } from "@/lib/schedule-grid";
 import { CLASS_GRADES, CLASS_GRADE_LABELS } from "@/lib/class-grades";
+import { formatEuro } from "@/lib/format-currency";
+import {
+  deriveTuitionStatus,
+  TUITION_STATUS_LABELS_EN,
+} from "@/lib/billing/tuition-status";
 import type {
   BusinessProfile,
   CalendarEvent,
+  ChargeRun,
   Expense,
+  FamilyBalanceSummary,
   IntegrationSettings,
   Receipt,
   TeacherQuizListItem,
@@ -142,6 +151,12 @@ const SECTIONS = [
     label: "Quizzes",
     description: "Build and assign quizzes",
     icon: FileTextIcon,
+  },
+  {
+    value: "billing",
+    label: "Billing",
+    description: "Family balances, payments, and monthly charges",
+    icon: EuroIcon,
   },
   {
     value: "receipts",
@@ -197,7 +212,6 @@ type StudentItem = {
   parentTwoEmail?: string;
   parentTwoPhone?: string;
   tuitionAmount: string;
-  tuitionStatus: "current" | "past-due" | "scholarship";
   assignedClassIds: string[];
 };
 
@@ -238,6 +252,8 @@ type TeacherDashboardProps = {
   credentialStatuses?: Record<string, CredentialStatusView>;
   initialReceipts?: Receipt[];
   initialExpenses?: Expense[];
+  initialFamilyBalances?: FamilyBalanceSummary[];
+  initialChargeRuns?: ChargeRun[];
   initialCalendarEvents?: CalendarEvent[];
   loadErrors?: string[];
 };
@@ -404,11 +420,33 @@ export function TeacherDashboard({
   credentialStatuses = {},
   initialReceipts = [],
   initialExpenses = [],
+  initialFamilyBalances = [],
+  initialChargeRuns = [],
   initialCalendarEvents = [],
   loadErrors = [],
 }: TeacherDashboardProps) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+  );
+  // Replaces the old hand-maintained tuition_status: derived from the
+  // real family_balance_transactions ledger (see lib/billing), keyed by
+  // family so the Students tab can show it without its own balance query.
+  const familyBalanceById = React.useMemo(
+    () => new Map(initialFamilyBalances.map((family) => [family.id, family])),
+    [initialFamilyBalances],
+  );
+  const studentTuitionStatus = React.useCallback(
+    (student: { familyId?: string }) => {
+      const family = student.familyId
+        ? familyBalanceById.get(student.familyId)
+        : undefined;
+      if (!family) return null;
+      return deriveTuitionStatus({
+        balance: family.balance,
+        monthlyAmount: family.monthlyAmount,
+      });
+    },
+    [familyBalanceById],
   );
   const [section, setSection] = React.useState<string>("schedule");
   const [isAddStudentOpen, setIsAddStudentOpen] = React.useState(false);
@@ -469,7 +507,6 @@ export function TeacherDashboard({
     parentTwoEmail: "",
     parentTwoPhone: "",
     tuitionAmount: "",
-    tuitionStatus: "current" as StudentItem["tuitionStatus"],
     assignedClassIds: [] as string[],
   });
   const [students, setStudents] =
@@ -501,7 +538,6 @@ export function TeacherDashboard({
     parentTwoEmail: "",
     parentTwoPhone: "",
     tuitionAmount: "",
-    tuitionStatus: "current" as StudentItem["tuitionStatus"],
   });
   const [showEditSecondParent, setShowEditSecondParent] =
     React.useState(false);
@@ -930,7 +966,6 @@ export function TeacherDashboard({
               gradeLevel: studentForm.gradeLevel.trim(),
               email: studentForm.email.trim(),
               tuitionAmount: studentForm.tuitionAmount.trim(),
-              tuitionStatus: studentForm.tuitionStatus,
               assignedClassIds: studentForm.assignedClassIds,
             }
           : {
@@ -946,7 +981,6 @@ export function TeacherDashboard({
               parentTwoEmail: studentForm.parentTwoEmail.trim(),
               parentTwoPhone: studentForm.parentTwoPhone.trim(),
               tuitionAmount: studentForm.tuitionAmount.trim(),
-              tuitionStatus: studentForm.tuitionStatus,
               assignedClassIds: studentForm.assignedClassIds,
             },
       );
@@ -1000,7 +1034,6 @@ export function TeacherDashboard({
       parentTwoEmail: "",
       parentTwoPhone: "",
       tuitionAmount: "",
-      tuitionStatus: "current",
       assignedClassIds: [],
     });
     setStudentFormErrors({});
@@ -1053,7 +1086,6 @@ export function TeacherDashboard({
       parentTwoEmail: student.parentTwoEmail ?? "",
       parentTwoPhone: student.parentTwoPhone ?? "",
       tuitionAmount: student.tuitionAmount,
-      tuitionStatus: student.tuitionStatus,
     });
     setShowEditSecondParent(
       Boolean(
@@ -1123,7 +1155,6 @@ export function TeacherDashboard({
         gradeLevel: editStudentForm.gradeLevel.trim(),
         email: editStudentForm.email.trim(),
         tuitionAmount: editStudentForm.tuitionAmount.trim(),
-        tuitionStatus: editStudentForm.tuitionStatus,
         parentName: editStudentForm.parentName.trim(),
         parentEmail: editStudentForm.parentEmail.trim(),
         parentPhone: editStudentForm.parentPhone.trim(),
@@ -1155,7 +1186,6 @@ export function TeacherDashboard({
             parentTwoEmail: updated.parentTwoEmail,
             parentTwoPhone: updated.parentTwoPhone,
             tuitionAmount: updated.tuitionAmount,
-            tuitionStatus: updated.tuitionStatus,
           };
         }
         // A sibling in the same family shares the same parent contact
@@ -1972,12 +2002,15 @@ export function TeacherDashboard({
                           </div>
                           <div className="mt-3 text-sm font-medium">
                             {student.tuitionAmount
-                              ? `$${student.tuitionAmount}`
+                              ? formatEuro(Number(student.tuitionAmount))
                               : "No amount"}
                           </div>
-                          <div className="text-xs text-muted-foreground">
-                            Status: {student.tuitionStatus.replace("-", " ")}
-                          </div>
+                          {studentTuitionStatus(student) && (
+                            <div className="text-xs text-muted-foreground">
+                              Status:{" "}
+                              {TUITION_STATUS_LABELS_EN[studentTuitionStatus(student)!]}
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -2083,9 +2116,15 @@ export function TeacherDashboard({
                             Tuition status
                           </div>
                           <div className="mt-3">
-                            <Badge variant="secondary">
-                              {student.tuitionStatus.replace("-", " ")}
-                            </Badge>
+                            {studentTuitionStatus(student) ? (
+                              <Badge variant="secondary">
+                                {TUITION_STATUS_LABELS_EN[studentTuitionStatus(student)!]}
+                              </Badge>
+                            ) : (
+                              <span className="text-sm text-muted-foreground">
+                                See the Billing tab
+                              </span>
+                            )}
                           </div>
                         </div>
 
@@ -2416,41 +2455,27 @@ export function TeacherDashboard({
 
                     <div className="rounded-lg border p-4">
                       <div className="text-sm font-medium">Tuition</div>
-                      <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                        <div className="space-y-2">
-                          <Label htmlFor="tuition-amount">Amount</Label>
-                          <Input
-                            id="tuition-amount"
-                            type="number"
-                            min={0}
-                            value={studentForm.tuitionAmount}
-                            onChange={(event) =>
-                              handleStudentChange(
-                                "tuitionAmount",
-                                event.target.value,
-                              )
-                            }
-                            placeholder="e.g. 420"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="tuition-status">Status</Label>
-                          <select
-                            id="tuition-status"
-                            value={studentForm.tuitionStatus}
-                            onChange={(event) =>
-                              handleStudentChange(
-                                "tuitionStatus",
-                                event.target.value,
-                              )
-                            }
-                            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                          >
-                            <option value="current">Current</option>
-                            <option value="past-due">Past due</option>
-                            <option value="scholarship">Scholarship</option>
-                          </select>
-                        </div>
+                      <div className="mt-3 space-y-2">
+                        <Label htmlFor="tuition-amount">
+                          Monthly tuition (€)
+                        </Label>
+                        <Input
+                          id="tuition-amount"
+                          type="number"
+                          min={0}
+                          value={studentForm.tuitionAmount}
+                          onChange={(event) =>
+                            handleStudentChange(
+                              "tuitionAmount",
+                              event.target.value,
+                            )
+                          }
+                          placeholder="e.g. 120"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Added to this family&apos;s monthly charge in the
+                          Billing tab.
+                        </p>
                       </div>
                     </div>
 
@@ -2601,12 +2626,14 @@ export function TeacherDashboard({
                           <TableCell>
                             <div>
                               {student.tuitionAmount
-                                ? `$${student.tuitionAmount}`
+                                ? formatEuro(Number(student.tuitionAmount))
                                 : "—"}
                             </div>
-                            <div className="text-xs text-muted-foreground">
-                              {student.tuitionStatus.replace("-", " ")}
-                            </div>
+                            {studentTuitionStatus(student) && (
+                              <div className="text-xs text-muted-foreground">
+                                {TUITION_STATUS_LABELS_EN[studentTuitionStatus(student)!]}
+                              </div>
+                            )}
                           </TableCell>
                           <TableCell className="text-right">
                             {student.withdrawnAt ? (
@@ -2895,41 +2922,27 @@ export function TeacherDashboard({
 
                     <div className="rounded-lg border p-4">
                       <div className="text-sm font-medium">Tuition</div>
-                      <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                        <div className="space-y-2">
-                          <Label htmlFor="edit-tuition-amount">Amount</Label>
-                          <Input
-                            id="edit-tuition-amount"
-                            type="number"
-                            min={0}
-                            value={editStudentForm.tuitionAmount}
-                            onChange={(event) =>
-                              handleEditStudentChange(
-                                "tuitionAmount",
-                                event.target.value,
-                              )
-                            }
-                            placeholder="e.g. 420"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="edit-tuition-status">Status</Label>
-                          <select
-                            id="edit-tuition-status"
-                            value={editStudentForm.tuitionStatus}
-                            onChange={(event) =>
-                              handleEditStudentChange(
-                                "tuitionStatus",
-                                event.target.value,
-                              )
-                            }
-                            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                          >
-                            <option value="current">Current</option>
-                            <option value="past-due">Past due</option>
-                            <option value="scholarship">Scholarship</option>
-                          </select>
-                        </div>
+                      <div className="mt-3 space-y-2">
+                        <Label htmlFor="edit-tuition-amount">
+                          Monthly tuition (€)
+                        </Label>
+                        <Input
+                          id="edit-tuition-amount"
+                          type="number"
+                          min={0}
+                          value={editStudentForm.tuitionAmount}
+                          onChange={(event) =>
+                            handleEditStudentChange(
+                              "tuitionAmount",
+                              event.target.value,
+                            )
+                          }
+                          placeholder="e.g. 120"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Added to this family&apos;s monthly charge in the
+                          Billing tab.
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -3270,6 +3283,13 @@ export function TeacherDashboard({
           <TeacherQuizBuilder
             classes={activeClasses.map(({ id, name }) => ({ id, name }))}
             initialQuizzes={initialQuizzes}
+          />
+        </TabsContent>
+
+        <TabsContent value="billing" className="mt-0">
+          <TeacherBilling
+            initialFamilyBalances={initialFamilyBalances}
+            initialChargeRuns={initialChargeRuns}
           />
         </TabsContent>
 

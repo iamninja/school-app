@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { formatEuro } from "@/lib/format-currency";
 import type { Expense, ExpenseInput } from "@/lib/types/database";
 
 // AADE's own category2_x identifiers (spec §8.10), stored as the value so
@@ -53,12 +54,7 @@ const CATEGORY_LABELS: Record<string, string> = Object.fromEntries(
   EXPENSE_CATEGORIES.map((c) => [c.code, c.label]),
 );
 
-function formatAmount(amount: number): string {
-  return new Intl.NumberFormat("el-GR", {
-    style: "currency",
-    currency: "EUR",
-  }).format(amount);
-}
+const formatAmount = formatEuro;
 
 type ExpenseForm = {
   expenseDate: string;

@@ -109,7 +109,6 @@ export async function getStudentDashboardDataAction(): Promise<
       grade_level,
       email,
       tuition_amount,
-      tuition_status,
       family_id
     `,
     )
@@ -291,7 +290,6 @@ export async function getStudentDashboardDataAction(): Promise<
       gradeLevel: student.grade_level,
       email: student.email,
       tuitionAmount: student.tuition_amount,
-      tuitionStatus: student.tuition_status,
     },
     parents: parents || [],
     classes:

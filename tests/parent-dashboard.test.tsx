@@ -3,7 +3,10 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { addDays, format } from "date-fns";
 import { ParentDashboard } from "@/components/parent-dashboard";
-import type { ParentDashboardChild } from "@/lib/types/database";
+import type {
+  ParentDashboardChild,
+  ParentDashboardData,
+} from "@/lib/types/database";
 
 const signOut = vi.fn();
 const push = vi.fn();
@@ -27,7 +30,6 @@ function makeChild(overrides: Partial<ParentDashboardChild> = {}): ParentDashboa
       gradeLevel: "8th",
       email: "john@example.com",
       tuitionAmount: 500,
-      tuitionStatus: "current",
       withdrawnAt: null,
     },
     classes: [],
@@ -56,6 +58,11 @@ const baseProps = {
     },
   ],
   kids: [makeChild()],
+  balance: {
+    amount: 0,
+    monthlyAmount: 500,
+    recentTransactions: [] as ParentDashboardData["balance"]["recentTransactions"],
+  },
 };
 
 describe("ParentDashboard", () => {
@@ -69,7 +76,7 @@ describe("ParentDashboard", () => {
     expect(screen.getByText(/καλωσήρθατε, jane/i)).toBeInTheDocument();
     expect(screen.getAllByText("John Smith").length).toBeGreaterThan(0);
     expect(screen.getByText(/τάξη: 8th/i)).toBeInTheDocument();
-    expect(screen.getByText("Ενημερωμένος")).toBeInTheDocument();
+    expect(screen.getByText(/εξοφλημένο/i)).toBeInTheDocument();
   });
 
   it("shows a message when the student has no classes", () => {
@@ -368,7 +375,6 @@ describe("ParentDashboard", () => {
               gradeLevel: "8th",
               email: "john@example.com",
               tuitionAmount: 500,
-              tuitionStatus: "current",
               withdrawnAt: null,
             },
             classes: [{ id: "class-1", name: "Algebra II", hoursPerWeek: 3, archivedAt: null }],
@@ -393,7 +399,6 @@ describe("ParentDashboard", () => {
               gradeLevel: "5th",
               email: "emma@example.com",
               tuitionAmount: 400,
-              tuitionStatus: "scholarship",
               withdrawnAt: null,
             },
             classes: [{ id: "class-2", name: "Biology", hoursPerWeek: 2, archivedAt: null }],

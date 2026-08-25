@@ -41,7 +41,6 @@ type StudentItem = {
   firstName: string;
   lastName: string;
   gradeLevel: string;
-  tuitionStatus: "current" | "past-due" | "scholarship";
 };
 
 type TeacherClassDetailProps = {
@@ -196,9 +195,6 @@ export function TeacherClassDetail({
                         </span>
                         <span className="flex items-center gap-2 text-xs text-muted-foreground">
                           Grade {student.gradeLevel || "N/A"}
-                          <Badge variant="outline">
-                            {student.tuitionStatus.replace("-", " ")}
-                          </Badge>
                         </span>
                       </button>
                       <Button
