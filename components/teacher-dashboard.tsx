@@ -111,6 +111,7 @@ import type {
   FamilyBalanceSummary,
   IntegrationSettings,
   Receipt,
+  ReceiptPrefill,
   TeacherQuizListItem,
 } from "@/lib/types/database";
 
@@ -449,6 +450,10 @@ export function TeacherDashboard({
     [familyBalanceById],
   );
   const [section, setSection] = React.useState<string>("schedule");
+  // Hand-off from Billing's "Issue a receipt for this" to the Receipts
+  // tab's create-form - see TeacherReceipts' prefill prop.
+  const [receiptPrefill, setReceiptPrefill] =
+    React.useState<ReceiptPrefill | null>(null);
   const [isAddStudentOpen, setIsAddStudentOpen] = React.useState(false);
   const [studentQuery, setStudentQuery] = React.useState("");
   const [isCreateClassOpen, setIsCreateClassOpen] = React.useState(false);
@@ -3290,6 +3295,10 @@ export function TeacherDashboard({
           <TeacherBilling
             initialFamilyBalances={initialFamilyBalances}
             initialChargeRuns={initialChargeRuns}
+            onIssueReceipt={(prefill) => {
+              setReceiptPrefill(prefill);
+              setSection("receipts");
+            }}
           />
         </TabsContent>
 
@@ -3298,6 +3307,8 @@ export function TeacherDashboard({
             initialReceipts={initialReceipts}
             families={initialFamilies}
             business={businessProfile}
+            prefill={receiptPrefill}
+            onPrefillConsumed={() => setReceiptPrefill(null)}
           />
         </TabsContent>
 

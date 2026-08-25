@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
 import { TeacherBilling } from "@/components/teacher-billing";
@@ -57,6 +57,7 @@ describe("TeacherBilling", () => {
       <TeacherBilling
         initialFamilyBalances={[owingFamily, creditFamily]}
         initialChargeRuns={[]}
+        onIssueReceipt={vi.fn()}
       />,
     );
 
@@ -73,6 +74,7 @@ describe("TeacherBilling", () => {
       <TeacherBilling
         initialFamilyBalances={[owingFamily, zeroFamily]}
         initialChargeRuns={[]}
+        onIssueReceipt={vi.fn()}
       />,
     );
 
@@ -91,7 +93,8 @@ describe("TeacherBilling", () => {
     if (billableNow) return;
 
     render(
-      <TeacherBilling initialFamilyBalances={[]} initialChargeRuns={[]} />,
+      <TeacherBilling initialFamilyBalances={[]} initialChargeRuns={[]}
+        onIssueReceipt={vi.fn()} />,
     );
 
     const button = screen.getByRole("button", {
@@ -114,7 +117,8 @@ describe("TeacherBilling", () => {
     });
 
     render(
-      <TeacherBilling initialFamilyBalances={[]} initialChargeRuns={[]} />,
+      <TeacherBilling initialFamilyBalances={[]} initialChargeRuns={[]}
+        onIssueReceipt={vi.fn()} />,
     );
 
     const button = screen.getByRole("button", {
@@ -149,6 +153,7 @@ describe("TeacherBilling", () => {
       <TeacherBilling
         initialFamilyBalances={[owingFamily]}
         initialChargeRuns={[]}
+        onIssueReceipt={vi.fn()}
       />,
     );
 
@@ -192,6 +197,7 @@ describe("TeacherBilling", () => {
       <TeacherBilling
         initialFamilyBalances={[owingFamily]}
         initialChargeRuns={[]}
+        onIssueReceipt={vi.fn()}
       />,
     );
 
@@ -208,5 +214,101 @@ describe("TeacherBilling", () => {
       "title",
       "Delete the receipt instead",
     );
+  });
+
+  it("offers to issue a receipt right after logging a payment, with the right prefill", async () => {
+    const user = userEvent.setup();
+    vi.mocked(billingActions.listFamilyBalancesAction).mockResolvedValue([owingFamily]);
+    vi.mocked(billingActions.getFamilyLedgerAction).mockResolvedValue({
+      familyId: "family-1",
+      balance: 100,
+      monthlyAmount: 100,
+      transactions: [],
+    });
+    vi.mocked(billingActions.logFamilyPaymentAction).mockResolvedValue({
+      id: "txn-new",
+      family_id: "family-1",
+      type: "payment",
+      amount: -45,
+      period: null,
+      period_end: null,
+      covers_months: null,
+      description: "Πληρωμή",
+      receipt_id: null,
+      payment_method: 7,
+      source: "manual",
+      created_by: "teacher-1",
+      created_at: "2026-08-25T00:00:00Z",
+    });
+    const onIssueReceipt = vi.fn();
+
+    render(
+      <TeacherBilling
+        initialFamilyBalances={[owingFamily]}
+        initialChargeRuns={[]}
+        onIssueReceipt={onIssueReceipt}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /manage/i }));
+    const dialog = await screen.findByRole("dialog");
+
+    await user.type(within(dialog).getByPlaceholderText("Amount"), "45");
+    await user.click(within(dialog).getByRole("button", { name: /^log payment$/i }));
+
+    await screen.findByText(/45,00 €.*receipt for it/i);
+    await user.click(screen.getByRole("button", { name: /issue a receipt/i }));
+
+    expect(onIssueReceipt).toHaveBeenCalledWith({
+      familyId: "family-1",
+      amount: 45,
+      paymentMethod: 3,
+    });
+  });
+
+  it("dismisses the issue-a-receipt offer without calling onIssueReceipt", async () => {
+    const user = userEvent.setup();
+    vi.mocked(billingActions.listFamilyBalancesAction).mockResolvedValue([owingFamily]);
+    vi.mocked(billingActions.getFamilyLedgerAction).mockResolvedValue({
+      familyId: "family-1",
+      balance: 100,
+      monthlyAmount: 100,
+      transactions: [],
+    });
+    vi.mocked(billingActions.logFamilyPaymentAction).mockResolvedValue({
+      id: "txn-new",
+      family_id: "family-1",
+      type: "payment",
+      amount: -45,
+      period: null,
+      period_end: null,
+      covers_months: null,
+      description: "Πληρωμή",
+      receipt_id: null,
+      payment_method: 3,
+      source: "manual",
+      created_by: "teacher-1",
+      created_at: "2026-08-25T00:00:00Z",
+    });
+    const onIssueReceipt = vi.fn();
+
+    render(
+      <TeacherBilling
+        initialFamilyBalances={[owingFamily]}
+        initialChargeRuns={[]}
+        onIssueReceipt={onIssueReceipt}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /manage/i }));
+    const dialog = await screen.findByRole("dialog");
+
+    await user.type(within(dialog).getByPlaceholderText("Amount"), "45");
+    await user.click(within(dialog).getByRole("button", { name: /^log payment$/i }));
+
+    await user.click(await screen.findByRole("button", { name: /not now/i }));
+
+    expect(onIssueReceipt).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: /issue a receipt/i })).not.toBeInTheDocument();
   });
 });

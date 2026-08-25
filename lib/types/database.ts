@@ -700,6 +700,15 @@ export interface FamilyLedger {
   transactions: Array<FamilyBalanceTransaction & { runningBalance: number }>;
 }
 
+// Carries a just-logged informal payment over to the Receipts tab so the
+// teacher can optionally turn it into a real myDATA receipt without
+// re-entering the family/amount/payment method.
+export interface ReceiptPrefill {
+  familyId: string;
+  amount: number;
+  paymentMethod: number;
+}
+
 export interface ChargeRun {
   id: string;
   period: string;

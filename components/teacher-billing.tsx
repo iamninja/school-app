@@ -47,6 +47,7 @@ import type {
   FamilyBalanceSummary,
   FamilyBalanceTransaction,
   FamilyLedger,
+  ReceiptPrefill,
 } from "@/lib/types/database";
 
 const TRANSACTION_TYPE_LABELS: Record<
@@ -89,9 +90,14 @@ function balanceClassName(balance: number): string {
 export function TeacherBilling({
   initialFamilyBalances,
   initialChargeRuns,
+  onIssueReceipt,
 }: {
   initialFamilyBalances: FamilyBalanceSummary[];
   initialChargeRuns: ChargeRun[];
+  // Hands off to the Receipts tab (switches section + pre-fills the
+  // create-receipt form) - optional, since a receipt is never required
+  // for an informal payment.
+  onIssueReceipt: (prefill: ReceiptPrefill) => void;
 }) {
   const [families, setFamilies] = React.useState(initialFamilyBalances);
   const [chargeRuns, setChargeRuns] = React.useState(initialChargeRuns);
@@ -324,6 +330,12 @@ export function TeacherBilling({
             <FamilyBillingDetail
               family={activeFamily}
               onChanged={refreshLists}
+              onIssueReceipt={(prefill) => {
+                // Leaving the Billing tab entirely, so close this dialog
+                // rather than leave it open behind the Receipts view.
+                setActiveFamilyId(null);
+                onIssueReceipt(prefill);
+              }}
             />
           )}
         </DialogContent>
@@ -335,9 +347,11 @@ export function TeacherBilling({
 function FamilyBillingDetail({
   family,
   onChanged,
+  onIssueReceipt,
 }: {
   family: FamilyBalanceSummary;
   onChanged: () => Promise<void>;
+  onIssueReceipt: (prefill: ReceiptPrefill) => void;
 }) {
   const [ledger, setLedger] = React.useState<FamilyLedger | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
@@ -346,6 +360,13 @@ function FamilyBillingDetail({
   const [paymentMethod, setPaymentMethod] = React.useState<string>("3");
   const [paymentNotes, setPaymentNotes] = React.useState("");
   const [isSubmittingPayment, setIsSubmittingPayment] = React.useState(false);
+  // Set right after a payment is logged, so the "Issue a receipt for
+  // this" offer only appears immediately after, not on every render -
+  // clears itself once the teacher starts a new payment.
+  const [justLoggedPayment, setJustLoggedPayment] = React.useState<{
+    amount: number;
+    paymentMethod: number;
+  } | null>(null);
 
   const [prepayMonths, setPrepayMonths] = React.useState("3");
   const [prepayPreview, setPrepayPreview] = React.useState<{
@@ -421,6 +442,7 @@ function FamilyBillingDetail({
         notes: paymentNotes.trim() || undefined,
       });
       toast.success("Payment logged");
+      setJustLoggedPayment({ amount, paymentMethod: Number(paymentMethod) });
       setPaymentAmount("");
       setPaymentNotes("");
       await loadLedger();
@@ -532,8 +554,7 @@ function FamilyBillingDetail({
         <form onSubmit={handleLogPayment} className="space-y-2 rounded-md border p-3">
           <p className="text-sm font-medium">Log a payment</p>
           <p className="text-xs text-muted-foreground">
-            Records the money, not a tax document — use the Receipts tab to
-            issue a myDATA receipt instead.
+            Records the money, not a tax document.
           </p>
           <Input
             type="number"
@@ -541,7 +562,10 @@ function FamilyBillingDetail({
             step="0.01"
             placeholder="Amount"
             value={paymentAmount}
-            onChange={(event) => setPaymentAmount(event.target.value)}
+            onChange={(event) => {
+              setPaymentAmount(event.target.value);
+              setJustLoggedPayment(null);
+            }}
           />
           <select
             value={paymentMethod}
@@ -562,6 +586,38 @@ function FamilyBillingDetail({
           <Button type="submit" size="sm" disabled={isSubmittingPayment}>
             {isSubmittingPayment ? "Saving…" : "Log payment"}
           </Button>
+          {justLoggedPayment && (
+            <div className="flex items-center justify-between gap-2 rounded-md bg-muted p-2 text-xs">
+              <span>
+                {formatEuro(justLoggedPayment.amount)} logged. Want a real
+                receipt for it?
+              </span>
+              <div className="flex shrink-0 items-center gap-1">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() =>
+                    onIssueReceipt({
+                      familyId: family.id,
+                      amount: justLoggedPayment.amount,
+                      paymentMethod: justLoggedPayment.paymentMethod,
+                    })
+                  }
+                >
+                  Issue a receipt
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setJustLoggedPayment(null)}
+                >
+                  Not now
+                </Button>
+              </div>
+            </div>
+          )}
         </form>
 
         <div className="space-y-2 rounded-md border p-3">

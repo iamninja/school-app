@@ -476,3 +476,55 @@ describe("TeacherReceipts", () => {
     expect(screen.getByText(/myDATA sent — not confirmed/)).toBeInTheDocument();
   });
 });
+
+describe("TeacherReceipts - prefill hand-off from Billing", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("opens the create dialog pre-filled with the family, amount, and payment method", () => {
+    render(
+      <TeacherReceipts
+        initialReceipts={[]}
+        families={families}
+        business={business}
+        prefill={{ familyId: "family-1", amount: 45, paymentMethod: 7 }}
+        onPrefillConsumed={vi.fn()}
+      />,
+    );
+
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByLabelText(/issued to/i)).toHaveValue(
+      "Μαρία Παπαδοπούλου",
+    );
+    expect(within(dialog).getByLabelText(/line 1 amount/i)).toHaveValue(45);
+  });
+
+  it("calls onPrefillConsumed exactly once so the parent can clear it", () => {
+    const onPrefillConsumed = vi.fn();
+    render(
+      <TeacherReceipts
+        initialReceipts={[]}
+        families={families}
+        business={business}
+        prefill={{ familyId: "family-1", amount: 45, paymentMethod: 7 }}
+        onPrefillConsumed={onPrefillConsumed}
+      />,
+    );
+
+    expect(onPrefillConsumed).toHaveBeenCalledTimes(1);
+  });
+
+  it("does nothing when prefill is null", () => {
+    render(
+      <TeacherReceipts
+        initialReceipts={[]}
+        families={families}
+        business={business}
+        prefill={null}
+      />,
+    );
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+});
