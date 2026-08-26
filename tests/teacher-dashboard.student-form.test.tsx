@@ -218,7 +218,6 @@ describe("TeacherDashboard student form", () => {
       parentTwoEmail: "",
       parentTwoPhone: "",
       tuitionAmount: "420",
-      tuitionStatus: "current",
       assignedClassIds: [],
     });
 
@@ -449,7 +448,6 @@ describe("TeacherDashboard student form", () => {
       parentTwoEmail: "",
       parentTwoPhone: "",
       tuitionAmount: "420",
-      tuitionStatus: "current",
       assignedClassIds: [],
     });
 
@@ -536,7 +534,6 @@ describe("TeacherDashboard student form", () => {
       parentTwoEmail: undefined,
       parentTwoPhone: undefined,
       tuitionAmount: "",
-      tuitionStatus: "current",
       assignedClassIds: [],
     });
 
@@ -634,7 +631,6 @@ describe("TeacherDashboard student form", () => {
             parentEmail: "parent@example.com",
             parentPhone: "(555) 123-4567",
             tuitionAmount: "420",
-            tuitionStatus: "current",
             assignedClassIds: [],
           },
         ]}

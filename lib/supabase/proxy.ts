@@ -50,11 +50,13 @@ export async function updateSession(request: NextRequest) {
   if (
     request.nextUrl.pathname !== "/" &&
     !user &&
-    !request.nextUrl.pathname.startsWith("/auth")
+    !request.nextUrl.pathname.startsWith("/auth") &&
+    !request.nextUrl.pathname.startsWith("/demo")
   ) {
     // no user - each role has its own login page, so send unauthenticated
     // visitors to the home page to pick one rather than guessing which
-    // role's login page applies to this route.
+    // role's login page applies to this route. /demo is exempt too - it's
+    // the public, no-login preview and is never expected to have a session.
     const url = request.nextUrl.clone();
     url.pathname = "/";
     return NextResponse.redirect(url);

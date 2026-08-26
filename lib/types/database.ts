@@ -340,7 +340,6 @@ export interface StudentDashboardData {
     gradeLevel: string | null;
     email: string | null;
     tuitionAmount: number | null;
-    tuitionStatus: string;
   };
   parents: Array<{
     name: string | null;
@@ -377,7 +376,6 @@ export interface ParentDashboardChild {
     gradeLevel: string | null;
     email: string | null;
     tuitionAmount: number | null;
-    tuitionStatus: string;
     withdrawnAt: string | null;
   };
   classes: Array<{
@@ -419,6 +417,17 @@ export interface ParentDashboardData {
   // and would collide when passed as a JSX attribute (<ParentDashboard
   // children={...} />) triggers react/no-children-prop).
   kids: ParentDashboardChild[];
+  balance: {
+    amount: number;
+    monthlyAmount: number;
+    recentTransactions: Array<{
+      id: string;
+      type: FamilyBalanceTransactionType;
+      amount: number;
+      description: string;
+      createdAt: string;
+    }>;
+  };
 }
 
 // Action result types
@@ -646,4 +655,68 @@ export interface PortalCalendarEvent {
   class_id: string | null;
   class_name: string | null;
   notes: string | null;
+}
+
+// Monthly tuition balance ledger. amount is SIGNED: positive = family
+// owes more, negative = owes less. See the family-balance-ledger
+// migration for the full sign/shape CHECK constraints this mirrors.
+export type FamilyBalanceTransactionType =
+  | "monthly_charge"
+  | "payment"
+  | "receipt"
+  | "prepayment"
+  | "adjustment";
+
+export interface FamilyBalanceTransaction {
+  id: string;
+  family_id: string;
+  type: FamilyBalanceTransactionType;
+  amount: number;
+  period: string | null;
+  period_end: string | null;
+  covers_months: number | null;
+  description: string;
+  receipt_id: string | null;
+  payment_method: number | null;
+  source: "manual" | "cron" | "receipt";
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface FamilyBalanceSummary {
+  id: string;
+  parentNames: string[];
+  studentNames: string[];
+  activeStudentCount: number;
+  monthlyAmount: number;
+  balance: number;
+  balanceUpdatedAt: string | null;
+}
+
+export interface FamilyLedger {
+  familyId: string;
+  balance: number;
+  monthlyAmount: number;
+  transactions: Array<FamilyBalanceTransaction & { runningBalance: number }>;
+}
+
+// Carries a just-logged informal payment over to the Receipts tab so the
+// teacher can optionally turn it into a real myDATA receipt without
+// re-entering the family/amount/payment method.
+export interface ReceiptPrefill {
+  familyId: string;
+  amount: number;
+  paymentMethod: number;
+}
+
+export interface ChargeRun {
+  id: string;
+  period: string;
+  ran_at: string;
+  source: "cron" | "manual";
+  billable: boolean;
+  families_charged: number;
+  total_amount: number;
+  skipped_reason: "not_a_billable_month" | "no_families_with_charges" | null;
+  error: string | null;
 }

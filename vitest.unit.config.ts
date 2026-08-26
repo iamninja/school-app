@@ -25,6 +25,8 @@ export default defineConfig({
       "tests/mydata-invoice-xml.test.ts",
       "tests/expense-actions.test.ts",
       "tests/calendar-actions.test.ts",
+      "tests/billing-actions.test.ts",
+      "tests/cron-monthly-charges-route.test.ts",
     ],
   },
   resolve: {

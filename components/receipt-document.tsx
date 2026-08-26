@@ -1,6 +1,7 @@
 import { format } from "date-fns";
 import { el } from "date-fns/locale";
 
+import { formatEuro } from "@/lib/format-currency";
 import type { BusinessProfile, Receipt } from "@/lib/types/database";
 
 // Άρθρο 27 under ν. 5144/2024, which renumbered the VAT Code - this is
@@ -15,12 +16,7 @@ const VAT_NOTES: Record<string, string> = {
     "Χωρίς ΦΠΑ — απαλλαγή κατ' άρθρο 22 του Κώδικα ΦΠΑ (παράδοση ιδιαίτερων μαθημάτων).",
 };
 
-function formatAmount(amount: number): string {
-  return new Intl.NumberFormat("el-GR", {
-    style: "currency",
-    currency: "EUR",
-  }).format(amount);
-}
+const formatAmount = formatEuro;
 
 /**
  * The printable receipt itself, in Greek - it's a legal document issued to
