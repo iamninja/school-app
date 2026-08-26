@@ -46,19 +46,21 @@ const NIKOS: StudentDashboardData = {
   ],
   classes: [
     { id: "demo-class-algebra-b", name: "Άλγεβρα Β Λυκείου", hoursPerWeek: 3, archivedAt: null },
-    { id: "demo-class-geometry-b", name: "Γεωμετρία Β Λυκείου", hoursPerWeek: 2, archivedAt: null },
+    { id: "demo-class-katefthynsis-b", name: "Μαθηματικά Κατεύθυνσης Β Λυκείου", hoursPerWeek: 2, archivedAt: null },
   ],
   schedules: [
     { class_id: "demo-class-algebra-b", day: "Mon", time: "17:00" },
     { class_id: "demo-class-algebra-b", day: "Wed", time: "17:00" },
-    { class_id: "demo-class-geometry-b", day: "Fri", time: "18:00" },
+    { class_id: "demo-class-algebra-b", day: "Thu", time: "17:00" },
+    { class_id: "demo-class-katefthynsis-b", day: "Tue", time: "18:00" },
+    { class_id: "demo-class-katefthynsis-b", day: "Fri", time: "18:00" },
   ],
   attendance: [
     { class_id: "demo-class-algebra-b", class_name: "Άλγεβρα Β Λυκείου", attendance_date: isoDate(-2), status: "present" },
-    { class_id: "demo-class-geometry-b", class_name: "Γεωμετρία Β Λυκείου", attendance_date: isoDate(-5), status: "present" },
+    { class_id: "demo-class-katefthynsis-b", class_name: "Μαθηματικά Κατεύθυνσης Β Λυκείου", attendance_date: isoDate(-5), status: "present" },
     { class_id: "demo-class-algebra-b", class_name: "Άλγεβρα Β Λυκείου", attendance_date: isoDate(-7), status: "late" },
     { class_id: "demo-class-algebra-b", class_name: "Άλγεβρα Β Λυκείου", attendance_date: isoDate(-9), status: "present" },
-    { class_id: "demo-class-geometry-b", class_name: "Γεωμετρία Β Λυκείου", attendance_date: isoDate(-12), status: "absent" },
+    { class_id: "demo-class-katefthynsis-b", class_name: "Μαθηματικά Κατεύθυνσης Β Λυκείου", attendance_date: isoDate(-12), status: "absent" },
     { class_id: "demo-class-algebra-b", class_name: "Άλγεβρα Β Λυκείου", attendance_date: isoDate(-14), status: "present" },
   ],
   quizzes: [
@@ -100,8 +102,8 @@ const NIKOS: StudentDashboardData = {
       event_date: isoDate(11),
       start_time: "18:00",
       end_time: "19:30",
-      class_id: "demo-class-geometry-b",
-      class_name: "Γεωμετρία Β Λυκείου",
+      class_id: "demo-class-katefthynsis-b",
+      class_name: "Μαθηματικά Κατεύθυνσης Β Λυκείου",
       notes: "Αργία",
     },
   ],
@@ -190,13 +192,13 @@ export const DEMO_PARENT_DASHBOARD: ParentDashboardData = {
   ],
   kids: [NIKOS_AS_CHILD, MARIA],
   balance: {
-    amount: 45,
-    monthlyAmount: 160,
+    amount: 25,
+    monthlyAmount: 140,
     recentTransactions: [
       {
         id: "demo-txn-charge",
         type: "monthly_charge",
-        amount: 160,
+        amount: 140,
         description: `Δίδακτρα ${monthName(-5)}`,
         createdAt: isoDateTime(-5, 8, 0),
       },
