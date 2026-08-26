@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildInvoiceXml } from "@/lib/mydata/invoice-xml";
-import { parseMyDataResponse } from "@/lib/mydata/client";
+import { parseMyDataResponse, parseRequestedDocs } from "@/lib/mydata/client";
 import type { BusinessProfile, Receipt } from "@/lib/types/database";
 
 const business: BusinessProfile = {
@@ -260,5 +260,159 @@ describe("parseMyDataResponse", () => {
     if (result.ok) {
       expect(result.mark).toBe("400009999999999");
     }
+  });
+});
+
+describe("parseRequestedDocs", () => {
+  // Captured verbatim from a real RequestDocs call against production
+  // (2026-08-24) - see the "Investigate myDATA expense classification"
+  // Todoist item. Real supplier invoice, real ΑΦΜ pair, real amounts.
+  const realResponse = `<?xml version="1.0" encoding="utf-8"?>
+<RequestedDoc xmlns:icls="https://www.aade.gr/myDATA/incomeClassificaton/v1.0" xmlns:ecls="https://www.aade.gr/myDATA/expensesClassificaton/v1.0" xmlns:pm="https://www.aade.gr/myDATA/paymentMethod/v1.0" xmlns="http://www.aade.gr/myDATA/invoice/v1.0">
+  <invoicesDoc>
+    <invoice>
+      <uid>7E36BDD55A768F3728BCBD946DEDC01DC03B7FCD</uid>
+      <mark>400014966658660</mark>
+      <authenticationCode>ADA740D745FC3009DB6F12CB4AD249F2DCD71056</authenticationCode>
+      <issuer>
+        <vatNumber>999082935</vatNumber>
+        <country>GR</country>
+        <branch>0</branch>
+      </issuer>
+      <counterpart>
+        <vatNumber>133341926</vatNumber>
+        <country>GR</country>
+        <branch>0</branch>
+        <address>
+          <street>ΗΡΩΩΝ ΠΟΛΥΤΕΧΝΕΙΟΥ 3</street>
+          <postalCode>43100</postalCode>
+          <city>ΚΑΡΔΙΤΣΑ</city>
+        </address>
+      </counterpart>
+      <invoiceHeader>
+        <series>0</series>
+        <aa>2100005704</aa>
+        <issueDate>2026-08-24</issueDate>
+        <invoiceType>2.1</invoiceType>
+        <vatPaymentSuspension>false</vatPaymentSuspension>
+        <currency>EUR</currency>
+      </invoiceHeader>
+      <paymentMethods>
+        <paymentMethodDetails>
+          <type>7</type>
+          <amount>9.30</amount>
+        </paymentMethodDetails>
+      </paymentMethods>
+      <invoiceDetails>
+        <lineNumber>1</lineNumber>
+        <netValue>7.5</netValue>
+        <vatCategory>1</vatCategory>
+        <vatAmount>1.80</vatAmount>
+      </invoiceDetails>
+      <invoiceSummary>
+        <totalNetValue>7.5</totalNetValue>
+        <totalVatAmount>1.80</totalVatAmount>
+        <totalWithheldAmount>0</totalWithheldAmount>
+        <totalFeesAmount>0</totalFeesAmount>
+        <totalStampDutyAmount>0</totalStampDutyAmount>
+        <totalOtherTaxesAmount>0</totalOtherTaxesAmount>
+        <totalDeductionsAmount>0</totalDeductionsAmount>
+        <totalGrossValue>9.30</totalGrossValue>
+      </invoiceSummary>
+      <qrCodeUrl>https://mydatapi.aade.gr/myDATA/TimologioQR/QRInfo?q=abc</qrCodeUrl>
+      <downloadingInvoiceUrl>https://e-invoicing.gr/edocuments/ViewInvoice/-1/abc</downloadingInvoiceUrl>
+    </invoice>
+  </invoicesDoc>
+</RequestedDoc>`;
+
+  it("parses a real invoice's issuer, counterpart, and totals", () => {
+    const invoices = parseRequestedDocs(realResponse);
+
+    expect(invoices).toHaveLength(1);
+    expect(invoices[0]).toMatchObject({
+      uid: "7E36BDD55A768F3728BCBD946DEDC01DC03B7FCD",
+      mark: "400014966658660",
+      issuerVatNumber: "999082935",
+      counterpartVatNumber: "133341926",
+      issueDate: "2026-08-24",
+      invoiceType: "2.1",
+      currency: "EUR",
+      totalNetValue: 7.5,
+      totalVatAmount: 1.8,
+      totalGrossValue: 9.3,
+      paymentMethods: [{ type: 7, amount: 9.3 }],
+    });
+  });
+
+  it("doesn't confuse issuer.vatNumber with counterpart.vatNumber", () => {
+    // The whole reason for block-scoped extraction rather than a flat
+    // extractTag: both blocks share the tag name.
+    const [invoice] = parseRequestedDocs(realResponse);
+    expect(invoice.issuerVatNumber).not.toBe(invoice.counterpartVatNumber);
+    expect(invoice.issuerVatNumber).toBe("999082935");
+    expect(invoice.counterpartVatNumber).toBe("133341926");
+  });
+
+  it("returns an empty array when no documents are on file", () => {
+    const empty = `<?xml version="1.0" encoding="utf-8"?>
+<RequestedDoc xmlns="http://www.aade.gr/myDATA/invoice/v1.0">
+  <invoicesDoc>
+  </invoicesDoc>
+</RequestedDoc>`;
+
+    expect(parseRequestedDocs(empty)).toEqual([]);
+  });
+
+  it("tolerates missing optional blocks without throwing", () => {
+    // counterpart, address, and paymentMethods are all optional per §6.2.
+    const noCounterpart = `<RequestedDoc>
+  <invoicesDoc>
+    <invoice>
+      <uid>U1</uid>
+      <mark>1</mark>
+      <issuer><vatNumber>111111111</vatNumber></issuer>
+      <invoiceHeader>
+        <issueDate>2026-08-01</issueDate>
+        <invoiceType>2.1</invoiceType>
+        <currency>EUR</currency>
+      </invoiceHeader>
+      <invoiceSummary>
+        <totalNetValue>10</totalNetValue>
+        <totalVatAmount>2.4</totalVatAmount>
+        <totalGrossValue>12.4</totalGrossValue>
+      </invoiceSummary>
+    </invoice>
+  </invoicesDoc>
+</RequestedDoc>`;
+
+    const [invoice] = parseRequestedDocs(noCounterpart);
+    expect(invoice.counterpartVatNumber).toBeNull();
+    expect(invoice.paymentMethods).toEqual([]);
+    expect(invoice.qrCodeUrl).toBeNull();
+    expect(invoice.downloadingInvoiceUrl).toBeNull();
+    expect(invoice.totalGrossValue).toBe(12.4);
+  });
+
+  it("parses multiple invoices in one response", () => {
+    const two = `<RequestedDoc>
+  <invoicesDoc>
+    <invoice>
+      <uid>U1</uid><mark>1</mark>
+      <issuer><vatNumber>111111111</vatNumber></issuer>
+      <invoiceHeader><issueDate>2026-08-01</issueDate><invoiceType>2.1</invoiceType><currency>EUR</currency></invoiceHeader>
+      <invoiceSummary><totalNetValue>10</totalNetValue><totalVatAmount>2.4</totalVatAmount><totalGrossValue>12.4</totalGrossValue></invoiceSummary>
+    </invoice>
+    <invoice>
+      <uid>U2</uid><mark>2</mark>
+      <issuer><vatNumber>222222222</vatNumber></issuer>
+      <invoiceHeader><issueDate>2026-08-02</issueDate><invoiceType>1.1</invoiceType><currency>EUR</currency></invoiceHeader>
+      <invoiceSummary><totalNetValue>20</totalNetValue><totalVatAmount>4.8</totalVatAmount><totalGrossValue>24.8</totalGrossValue></invoiceSummary>
+    </invoice>
+  </invoicesDoc>
+</RequestedDoc>`;
+
+    const invoices = parseRequestedDocs(two);
+    expect(invoices).toHaveLength(2);
+    expect(invoices.map((i) => i.uid)).toEqual(["U1", "U2"]);
   });
 });
