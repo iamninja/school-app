@@ -51,6 +51,7 @@ type StudentDashboardProps = {
   }>;
   quizzes: QuizSummary[];
   calendarEvents: PortalCalendarEvent[];
+  demoMode?: boolean;
 };
 
 const DAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -94,7 +95,7 @@ export function StudentDashboard(props: StudentDashboardProps) {
       : 0;
 
   return (
-    <PortalShell roleLabel="Πύλη μαθητή">
+    <PortalShell roleLabel="Πύλη μαθητή" demoMode={props.demoMode}>
       <div className="flex w-full flex-col gap-8">
         {/* Greeting */}
         <div className="space-y-2">

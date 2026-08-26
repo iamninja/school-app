@@ -48,6 +48,7 @@ type ParentDashboardProps = {
   // attribute.
   kids: ParentDashboardChild[];
   balance: ParentDashboardData["balance"];
+  demoMode?: boolean;
 };
 
 const DAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -325,7 +326,7 @@ export function ParentDashboard(props: ParentDashboardProps) {
   const parentFirstName = props.parent.name?.trim().split(/\s+/)[0] ?? null;
 
   return (
-    <PortalShell roleLabel="Πύλη γονέα">
+    <PortalShell roleLabel="Πύλη γονέα" demoMode={props.demoMode}>
       <div className="flex w-full flex-col gap-10">
         {/* Greeting */}
         <div className="space-y-2">

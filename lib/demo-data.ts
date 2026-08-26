@@ -1,0 +1,212 @@
+import { addDays, format } from "date-fns";
+import { el } from "date-fns/locale";
+import type {
+  ParentDashboardData,
+  StudentDashboardData,
+} from "@/lib/types/database";
+
+/**
+ * Hand-written, realistic-looking sample data for the public /demo page
+ * (see app/demo/page.tsx) - never touches Supabase, so this is the only
+ * source of truth for what the demo shows.
+ *
+ * Dates are computed relative to "now" (module load time), not fixed
+ * literals - PortalUpcomingCard already projects the weekly schedule
+ * forward from today, so fixed calendar-event/attendance dates would
+ * silently drift into the past and stop showing up as this static page
+ * ages. Recomputing on load keeps the demo looking current indefinitely.
+ */
+
+const today = new Date();
+const isoDate = (dayOffset: number) => format(addDays(today, dayOffset), "yyyy-MM-dd");
+const isoDateTime = (dayOffset: number, hour: number, minute: number) => {
+  const d = addDays(today, dayOffset);
+  d.setHours(hour, minute, 0, 0);
+  return d.toISOString();
+};
+const monthName = (dayOffset: number) =>
+  format(addDays(today, dayOffset), "MMMM", { locale: el });
+
+const NIKOS: StudentDashboardData = {
+  student: {
+    id: "demo-student-nikos",
+    firstName: "Νίκος",
+    lastName: "Παπαδόπουλος",
+    gradeLevel: "Β Λυκείου",
+    email: "nikos.papadopoulos@example.com",
+    tuitionAmount: 90,
+  },
+  parents: [
+    {
+      name: "Ελένη Παπαδοπούλου",
+      email: "eleni.papadopoulou@example.com",
+      phone: "6971234567",
+      is_primary: true,
+    },
+  ],
+  classes: [
+    { id: "demo-class-algebra-b", name: "Άλγεβρα Β Λυκείου", hoursPerWeek: 3, archivedAt: null },
+    { id: "demo-class-geometry-b", name: "Γεωμετρία Β Λυκείου", hoursPerWeek: 2, archivedAt: null },
+  ],
+  schedules: [
+    { class_id: "demo-class-algebra-b", day: "Mon", time: "17:00" },
+    { class_id: "demo-class-algebra-b", day: "Wed", time: "17:00" },
+    { class_id: "demo-class-geometry-b", day: "Fri", time: "18:00" },
+  ],
+  attendance: [
+    { class_id: "demo-class-algebra-b", class_name: "Άλγεβρα Β Λυκείου", attendance_date: isoDate(-2), status: "present" },
+    { class_id: "demo-class-geometry-b", class_name: "Γεωμετρία Β Λυκείου", attendance_date: isoDate(-5), status: "present" },
+    { class_id: "demo-class-algebra-b", class_name: "Άλγεβρα Β Λυκείου", attendance_date: isoDate(-7), status: "late" },
+    { class_id: "demo-class-algebra-b", class_name: "Άλγεβρα Β Λυκείου", attendance_date: isoDate(-9), status: "present" },
+    { class_id: "demo-class-geometry-b", class_name: "Γεωμετρία Β Λυκείου", attendance_date: isoDate(-12), status: "absent" },
+    { class_id: "demo-class-algebra-b", class_name: "Άλγεβρα Β Λυκείου", attendance_date: isoDate(-14), status: "present" },
+  ],
+  quizzes: [
+    {
+      id: "demo-quiz-factoring",
+      title: "Παραγοντοποίηση Πολυωνύμων",
+      className: "Άλγεβρα Β Λυκείου",
+      completed: true,
+      score: 17,
+      maxScore: 20,
+      submittedAt: isoDateTime(-6, 18, 32),
+      quizDeleted: false,
+    },
+    {
+      id: "demo-quiz-trig",
+      title: "Τριγωνομετρικές Εξισώσεις",
+      className: "Άλγεβρα Β Λυκείου",
+      completed: false,
+      score: null,
+      maxScore: 20,
+      submittedAt: null,
+      quizDeleted: false,
+    },
+  ],
+  calendarEvents: [
+    {
+      id: "demo-event-extra",
+      event_type: "extra_session",
+      event_date: isoDate(4),
+      start_time: "17:00",
+      end_time: "18:30",
+      class_id: "demo-class-algebra-b",
+      class_name: "Άλγεβρα Β Λυκείου",
+      notes: "Επανάληψη πριν το διαγώνισμα",
+    },
+    {
+      id: "demo-event-cancel",
+      event_type: "cancellation",
+      event_date: isoDate(11),
+      start_time: "18:00",
+      end_time: "19:30",
+      class_id: "demo-class-geometry-b",
+      class_name: "Γεωμετρία Β Λυκείου",
+      notes: "Αργία",
+    },
+  ],
+};
+
+const MARIA: ParentDashboardData["kids"][number] = {
+  student: {
+    id: "demo-student-maria",
+    firstName: "Μαρία",
+    lastName: "Παπαδοπούλου",
+    gradeLevel: "Α Γυμνασίου",
+    email: null,
+    tuitionAmount: 70,
+    withdrawnAt: null,
+  },
+  classes: [
+    { id: "demo-class-gym-a", name: "Μαθηματικά Α Γυμνασίου", hoursPerWeek: 2, archivedAt: null },
+  ],
+  schedules: [
+    { class_id: "demo-class-gym-a", day: "Tue", time: "16:00" },
+    { class_id: "demo-class-gym-a", day: "Thu", time: "16:00" },
+  ],
+  attendance: [
+    { class_id: "demo-class-gym-a", class_name: "Μαθηματικά Α Γυμνασίου", attendance_date: isoDate(-3), status: "present" },
+    { class_id: "demo-class-gym-a", class_name: "Μαθηματικά Α Γυμνασίου", attendance_date: isoDate(-5), status: "present" },
+    { class_id: "demo-class-gym-a", class_name: "Μαθηματικά Α Γυμνασίου", attendance_date: isoDate(-10), status: "present" },
+  ],
+  quizzes: [
+    {
+      id: "demo-quiz-fractions",
+      title: "Πράξεις με Κλάσματα",
+      className: "Μαθηματικά Α Γυμνασίου",
+      completed: true,
+      score: 19,
+      maxScore: 20,
+      submittedAt: isoDateTime(-9, 17, 20),
+      quizDeleted: false,
+    },
+  ],
+  calendarEvents: [
+    {
+      id: "demo-event-maria-extra",
+      event_type: "extra_session",
+      event_date: isoDate(3),
+      start_time: "16:00",
+      end_time: "17:00",
+      class_id: "demo-class-gym-a",
+      class_name: "Μαθηματικά Α Γυμνασίου",
+      notes: "Προετοιμασία για διαγώνισμα",
+    },
+  ],
+};
+
+const NIKOS_AS_CHILD: ParentDashboardData["kids"][number] = {
+  student: { ...NIKOS.student, withdrawnAt: null },
+  classes: NIKOS.classes,
+  schedules: NIKOS.schedules,
+  attendance: NIKOS.attendance,
+  quizzes: NIKOS.quizzes,
+  calendarEvents: NIKOS.calendarEvents,
+};
+
+export const DEMO_STUDENT_DASHBOARD: StudentDashboardData = NIKOS;
+
+export const DEMO_PARENT_DASHBOARD: ParentDashboardData = {
+  parent: {
+    id: "demo-parent-eleni",
+    name: "Ελένη Παπαδοπούλου",
+    email: "eleni.papadopoulou@example.com",
+    phone: "6971234567",
+    isPrimary: true,
+  },
+  allParents: [
+    {
+      name: "Ελένη Παπαδοπούλου",
+      email: "eleni.papadopoulou@example.com",
+      phone: "6971234567",
+      is_primary: true,
+    },
+    {
+      name: "Γιώργος Παπαδόπουλος",
+      email: "giorgos.papadopoulos@example.com",
+      phone: "6981234567",
+      is_primary: false,
+    },
+  ],
+  kids: [NIKOS_AS_CHILD, MARIA],
+  balance: {
+    amount: 45,
+    monthlyAmount: 160,
+    recentTransactions: [
+      {
+        id: "demo-txn-charge",
+        type: "monthly_charge",
+        amount: 160,
+        description: `Δίδακτρα ${monthName(-5)}`,
+        createdAt: isoDateTime(-5, 8, 0),
+      },
+      {
+        id: "demo-txn-payment",
+        type: "payment",
+        amount: -115,
+        description: "Πληρωμή μετρητοίς",
+        createdAt: isoDateTime(-3, 10, 15),
+      },
+    ],
+  },
+};
