@@ -39,6 +39,7 @@ import type { Expense, ExpenseInput } from "@/lib/types/database";
 // server-only guard in lib/mydata/client.ts at runtime in this client
 // component.
 import type { RequestedInvoice } from "@/lib/mydata/client";
+import { describeInvoiceType } from "@/lib/mydata/invoice-types";
 
 // AADE's own payment-method codes (spec §8.12) - a supplier's document can
 // carry any of these, unlike our own receipts which narrow to the ones a
@@ -395,7 +396,21 @@ export function TeacherExpenses({
                           : "—"}
                       </TableCell>
                       <TableCell>{doc.issuerVatNumber ?? "—"}</TableCell>
-                      <TableCell>{doc.invoiceType ?? "—"}</TableCell>
+                      <TableCell>
+                        {doc.invoiceType ? (
+                          <>
+                            <p>
+                              {describeInvoiceType(doc.invoiceType) ??
+                                `Τύπος ${doc.invoiceType}`}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {doc.invoiceType}
+                            </p>
+                          </>
+                        ) : (
+                          "—"
+                        )}
+                      </TableCell>
                       <TableCell className="text-right">
                         {doc.totalNetValue !== null
                           ? formatAmount(doc.totalNetValue)

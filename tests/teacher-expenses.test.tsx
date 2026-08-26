@@ -205,6 +205,8 @@ describe("TeacherExpenses - myDATA Documents", () => {
       expect(screen.getByText("999082935")).toBeInTheDocument();
     });
     expect(screen.getByText(/POS \/ e-POS/)).toBeInTheDocument();
+    expect(screen.getByText("Τιμολόγιο Παροχής")).toBeInTheDocument();
+    expect(screen.getByText("2.1")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /view/i })).toHaveAttribute(
       "href",
       "https://e-invoicing.gr/view/1",
