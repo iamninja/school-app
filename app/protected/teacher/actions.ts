@@ -238,7 +238,6 @@ type CreateStudentBase = {
   gradeLevel: string;
   email: string;
   tuitionAmount: string;
-  tuitionStatus: "current" | "past-due" | "scholarship";
   assignedClassIds: string[];
 };
 
@@ -312,7 +311,6 @@ export async function createStudentAction(data: CreateStudentInput) {
       grade_level: data.gradeLevel || null,
       email: data.email || null,
       tuition_amount: tuitionAmount,
-      tuition_status: data.tuitionStatus,
     })
     .select("id")
     .single();
@@ -388,7 +386,6 @@ export async function createStudentAction(data: CreateStudentInput) {
     parentTwoEmail: data.familyMode === "new" ? data.parentTwoEmail : undefined,
     parentTwoPhone: data.familyMode === "new" ? data.parentTwoPhone : undefined,
     tuitionAmount: data.tuitionAmount,
-    tuitionStatus: data.tuitionStatus,
     assignedClassIds: data.assignedClassIds,
   };
 }
@@ -400,7 +397,6 @@ export type UpdateStudentInput = {
   gradeLevel: string;
   email: string;
   tuitionAmount: string;
-  tuitionStatus: "current" | "past-due" | "scholarship";
   parentName: string;
   parentEmail: string;
   parentPhone: string;
@@ -446,7 +442,6 @@ export async function updateStudentAction(data: UpdateStudentInput) {
       grade_level: data.gradeLevel || null,
       email: data.email || null,
       tuition_amount: tuitionAmount,
-      tuition_status: data.tuitionStatus,
     })
     .eq("id", data.studentId)
     .eq("teacher_id", user.id);
@@ -545,7 +540,6 @@ export async function updateStudentAction(data: UpdateStudentInput) {
     parentTwoEmail: data.parentTwoEmail,
     parentTwoPhone: data.parentTwoPhone,
     tuitionAmount: data.tuitionAmount,
-    tuitionStatus: data.tuitionStatus,
   };
 }
 

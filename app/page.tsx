@@ -223,6 +223,24 @@ export default function Home() {
               </div>
             ))}
           </div>
+
+          <div className="mt-6 flex flex-col items-start justify-between gap-4 rounded-2xl border border-dashed border-brand/50 bg-brand/5 p-6 sm:flex-row sm:items-center">
+            <div>
+              <h3 className="text-lg font-semibold">
+                Θέλετε να τη δείτε πρώτα;
+              </h3>
+              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                Περιηγηθείτε στην πύλη με δοκιμαστικά δεδομένα — χωρίς
+                λογαριασμό ή σύνδεση.
+              </p>
+            </div>
+            <Button asChild variant="outline" className="w-fit shrink-0">
+              <Link href="/demo">
+                Δοκιμαστική προβολή
+                <ArrowRight className="size-4" aria-hidden="true" />
+              </Link>
+            </Button>
+          </div>
         </div>
       </section>
 

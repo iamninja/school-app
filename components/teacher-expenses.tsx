@@ -34,6 +34,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { formatEuro } from "@/lib/format-currency";
 import type { Expense, ExpenseInput } from "@/lib/types/database";
 // Type-only - erased at compile time, so this never triggers the
 // server-only guard in lib/mydata/client.ts at runtime in this client
@@ -90,12 +91,7 @@ const CATEGORY_LABELS: Record<string, string> = Object.fromEntries(
   EXPENSE_CATEGORIES.map((c) => [c.code, c.label]),
 );
 
-function formatAmount(amount: number): string {
-  return new Intl.NumberFormat("el-GR", {
-    style: "currency",
-    currency: "EUR",
-  }).format(amount);
-}
+const formatAmount = formatEuro;
 
 type ExpenseForm = {
   expenseDate: string;

@@ -97,15 +97,14 @@ begin
     last_name,
     grade_level,
     email,
-    tuition_amount,
-    tuition_status
+    tuition_amount
   )
   values
-    (v_teacher_id, family_olivia, 'Olivia', 'Nguyen', '9', 'olivia.nguyen@example.com', 420, 'current'),
-    (v_teacher_id, family_jayden, 'Jayden', 'Cole', '10', 'jayden.cole@example.com', 380, 'past-due'),
-    (v_teacher_id, family_noah, 'Noah', 'Kim', '11', 'noah.kim@example.com', 460, 'current'),
-    (v_teacher_id, family_lina, 'Lina', 'Patel', '8', 'lina.patel@example.com', 400, 'scholarship'),
-    (v_teacher_id, family_mateo, 'Mateo', 'Santos', '12', 'mateo.santos@example.com', 500, 'current');
+    (v_teacher_id, family_olivia, 'Olivia', 'Nguyen', '9', 'olivia.nguyen@example.com', 420),
+    (v_teacher_id, family_jayden, 'Jayden', 'Cole', '10', 'jayden.cole@example.com', 380),
+    (v_teacher_id, family_noah, 'Noah', 'Kim', '11', 'noah.kim@example.com', 460),
+    (v_teacher_id, family_lina, 'Lina', 'Patel', '8', 'lina.patel@example.com', 0),
+    (v_teacher_id, family_mateo, 'Mateo', 'Santos', '12', 'mateo.santos@example.com', 500);
 
   -- Re-query student IDs to avoid relying on insert order.
   select id into student_olivia from public.students where teacher_id = v_teacher_id and first_name = 'Olivia' limit 1;

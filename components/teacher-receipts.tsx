@@ -35,7 +35,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ReceiptDocument } from "@/components/receipt-document";
-import type { BusinessProfile, Receipt } from "@/lib/types/database";
+import { formatEuro } from "@/lib/format-currency";
+import { PAYMENT_METHODS } from "@/lib/payment-methods";
+import type { BusinessProfile, Receipt, ReceiptPrefill } from "@/lib/types/database";
 
 type FamilyOption = {
   id: string;
@@ -43,36 +45,29 @@ type FamilyOption = {
   studentNames: string[];
 };
 
-// AADE payment-method codes (spec §8.12), narrowed to the ones a tutoring
-// centre realistically gets paid by rather than the full list.
-const PAYMENT_METHODS = [
-  { code: 3, label: "Μετρητά (cash)" },
-  { code: 7, label: "POS / e-POS (card)" },
-  { code: 6, label: "Web banking / transfer" },
-  { code: 8, label: "IRIS" },
-] as const;
-
 type LineDraft = { description: string; amount: string };
 
 function blankLine(): LineDraft {
   return { description: "", amount: "" };
 }
 
-function formatAmount(amount: number): string {
-  return new Intl.NumberFormat("el-GR", {
-    style: "currency",
-    currency: "EUR",
-  }).format(amount);
-}
+const formatAmount = formatEuro;
 
 export function TeacherReceipts({
   initialReceipts,
   families,
   business,
+  prefill = null,
+  onPrefillConsumed,
 }: {
   initialReceipts: Receipt[];
   families: FamilyOption[];
   business: BusinessProfile | null;
+  // Set (as a fresh object) when the Billing tab's "Issue a receipt for
+  // this" hands off a just-logged payment - opens the create dialog
+  // pre-filled instead of the teacher re-entering the same details.
+  prefill?: ReceiptPrefill | null;
+  onPrefillConsumed?: () => void;
 }) {
   const [receipts, setReceipts] = React.useState(initialReceipts);
   const [isCreateOpen, setIsCreateOpen] = React.useState(false);
@@ -120,6 +115,21 @@ export function TeacherReceipts({
       setRecipientName(family.parentNames[0]);
     }
   };
+
+  React.useEffect(() => {
+    if (!prefill) return;
+    // Reacting to a hand-off from the Billing tab ("Issue a receipt for
+    // this") is a real "synchronize with an external system" effect, not
+    // derived state - same exception category as FamilyBillingDetail's
+    // ledger-fetch effect in teacher-billing.tsx.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    handleSelectFamily(prefill.familyId);
+    setPaymentMethod(prefill.paymentMethod);
+    setLines([{ description: "Πληρωμή", amount: String(prefill.amount) }]);
+    setIsCreateOpen(true);
+    onPrefillConsumed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefill]);
 
   const handleCreate = async (event: React.FormEvent) => {
     event.preventDefault();
