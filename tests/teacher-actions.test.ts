@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { requireTeacher } from "@/lib/auth/require-teacher";
 import { ExpectedError } from "@/lib/expected-error";
 import {
@@ -8,6 +8,8 @@ import {
   createStudentAction,
   deleteClassAction,
   enrollStudentInClassAction,
+  resetParentAccountAction,
+  resetStudentAccountAction,
   restoreClassAction,
   restoreStudentAction,
   setAttendanceAction,
@@ -20,6 +22,7 @@ import { createMockSupabaseClient } from "./support/mock-supabase";
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(),
+  createServiceRoleClient: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/require-teacher", () => ({
@@ -540,5 +543,171 @@ describe("teacher actions - auth gate", () => {
     await expect(
       createClassAction({ name: "Algebra", hoursPerWeek: 2 }),
     ).rejects.toThrow("Not authorized as a teacher");
+  });
+});
+
+function mockServiceRoleClient(deleteUserError: unknown = null) {
+  const deleteUser = vi.fn().mockResolvedValue({ error: deleteUserError });
+  vi.mocked(createServiceRoleClient).mockReturnValue({
+    auth: { admin: { deleteUser } },
+  } as never);
+  return deleteUser;
+}
+
+describe("teacher actions - resetStudentAccountAction", () => {
+  beforeEach(() => {
+    vi.mocked(requireTeacher).mockResolvedValue(undefined);
+  });
+
+  it("deletes the auth user and returns the student id", async () => {
+    vi.mocked(createClient).mockResolvedValue(
+      createMockSupabaseClient({
+        students: { data: { id: "student-1", user_id: "auth-1" }, error: null },
+      }) as never,
+    );
+    const deleteUser = mockServiceRoleClient();
+
+    const result = await resetStudentAccountAction("student-1");
+
+    expect(deleteUser).toHaveBeenCalledWith("auth-1");
+    expect(result).toEqual({ id: "student-1" });
+  });
+
+  it("throws a friendly error when the student has no account yet", async () => {
+    vi.mocked(createClient).mockResolvedValue(
+      createMockSupabaseClient({
+        students: { data: { id: "student-1", user_id: null }, error: null },
+      }) as never,
+    );
+
+    await expect(resetStudentAccountAction("student-1")).rejects.toThrow(
+      ExpectedError,
+    );
+  });
+
+  it("throws when the student isn't owned by this teacher", async () => {
+    vi.mocked(createClient).mockResolvedValue(
+      createMockSupabaseClient({
+        students: { data: null, error: null },
+      }) as never,
+    );
+
+    await expect(resetStudentAccountAction("student-1")).rejects.toThrow(
+      "Student not found",
+    );
+  });
+
+  it("falls back to clearing a stale user_id if the auth user is already gone", async () => {
+    vi.mocked(createClient).mockResolvedValue(
+      createMockSupabaseClient({
+        students: [
+          { data: { id: "student-1", user_id: "auth-1" }, error: null },
+          { data: null, error: null },
+        ],
+      }) as never,
+    );
+    mockServiceRoleClient({ message: "User not found" });
+
+    const result = await resetStudentAccountAction("student-1");
+
+    expect(result).toEqual({ id: "student-1" });
+  });
+});
+
+describe("teacher actions - resetParentAccountAction", () => {
+  beforeEach(() => {
+    vi.mocked(requireTeacher).mockResolvedValue(undefined);
+  });
+
+  it("resets the primary parent's account", async () => {
+    vi.mocked(createClient).mockResolvedValue(
+      createMockSupabaseClient({
+        students: { data: { id: "student-1", family_id: "family-1" }, error: null },
+        family_parents: {
+          data: [
+            { id: "parent-1", user_id: "auth-parent-1", is_primary: true },
+            { id: "parent-2", user_id: null, is_primary: false },
+          ],
+          error: null,
+        },
+      }) as never,
+    );
+    const deleteUser = mockServiceRoleClient();
+
+    const result = await resetParentAccountAction({
+      studentId: "student-1",
+      parentSlot: "primary",
+    });
+
+    expect(deleteUser).toHaveBeenCalledWith("auth-parent-1");
+    expect(result).toEqual({ familyId: "family-1", parentSlot: "primary" });
+  });
+
+  it("resets the secondary parent's account", async () => {
+    vi.mocked(createClient).mockResolvedValue(
+      createMockSupabaseClient({
+        students: { data: { id: "student-1", family_id: "family-1" }, error: null },
+        family_parents: {
+          data: [
+            { id: "parent-1", user_id: "auth-parent-1", is_primary: true },
+            { id: "parent-2", user_id: "auth-parent-2", is_primary: false },
+          ],
+          error: null,
+        },
+      }) as never,
+    );
+    const deleteUser = mockServiceRoleClient();
+
+    const result = await resetParentAccountAction({
+      studentId: "student-1",
+      parentSlot: "secondary",
+    });
+
+    expect(deleteUser).toHaveBeenCalledWith("auth-parent-2");
+    expect(result).toEqual({ familyId: "family-1", parentSlot: "secondary" });
+  });
+
+  it("throws a friendly error when the target parent has no account yet", async () => {
+    vi.mocked(createClient).mockResolvedValue(
+      createMockSupabaseClient({
+        students: { data: { id: "student-1", family_id: "family-1" }, error: null },
+        family_parents: {
+          data: [{ id: "parent-1", user_id: null, is_primary: true }],
+          error: null,
+        },
+      }) as never,
+    );
+
+    await expect(
+      resetParentAccountAction({ studentId: "student-1", parentSlot: "primary" }),
+    ).rejects.toThrow(ExpectedError);
+  });
+
+  it("throws when no secondary parent exists", async () => {
+    vi.mocked(createClient).mockResolvedValue(
+      createMockSupabaseClient({
+        students: { data: { id: "student-1", family_id: "family-1" }, error: null },
+        family_parents: {
+          data: [{ id: "parent-1", user_id: "auth-parent-1", is_primary: true }],
+          error: null,
+        },
+      }) as never,
+    );
+
+    await expect(
+      resetParentAccountAction({ studentId: "student-1", parentSlot: "secondary" }),
+    ).rejects.toThrow("Parent not found");
+  });
+
+  it("throws when the student isn't owned by this teacher", async () => {
+    vi.mocked(createClient).mockResolvedValue(
+      createMockSupabaseClient({
+        students: { data: null, error: null },
+      }) as never,
+    );
+
+    await expect(
+      resetParentAccountAction({ studentId: "student-1", parentSlot: "primary" }),
+    ).rejects.toThrow("Student not found");
   });
 });

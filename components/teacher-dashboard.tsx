@@ -40,6 +40,8 @@ import {
   deleteClassAction,
   enrollStudentInClassAction,
   getAttendanceAction,
+  resetParentAccountAction,
+  resetStudentAccountAction,
   restoreClassAction,
   restoreStudentAction,
   setAttendanceAction,
@@ -204,14 +206,18 @@ type StudentItem = {
   lastName: string;
   gradeLevel: string;
   email: string;
+  phone?: string;
+  hasAccount?: boolean;
   familyId?: string;
   withdrawnAt?: string | null;
   parentName: string;
   parentEmail: string;
   parentPhone: string;
+  parentHasAccount?: boolean;
   parentTwoName?: string;
   parentTwoEmail?: string;
   parentTwoPhone?: string;
+  parentTwoHasAccount?: boolean;
   tuitionAmount: string;
   assignedClassIds: string[];
 };
@@ -503,6 +509,7 @@ export function TeacherDashboard({
     lastName: "",
     gradeLevel: "",
     email: "",
+    phone: "",
     familyMode: "new" as "new" | "existing",
     familyId: "",
     parentName: "",
@@ -536,6 +543,7 @@ export function TeacherDashboard({
     lastName: "",
     gradeLevel: "",
     email: "",
+    phone: "",
     parentName: "",
     parentEmail: "",
     parentPhone: "",
@@ -970,6 +978,7 @@ export function TeacherDashboard({
               lastName: studentForm.lastName.trim(),
               gradeLevel: studentForm.gradeLevel.trim(),
               email: studentForm.email.trim(),
+              phone: studentForm.phone.trim(),
               tuitionAmount: studentForm.tuitionAmount.trim(),
               assignedClassIds: studentForm.assignedClassIds,
             }
@@ -979,6 +988,7 @@ export function TeacherDashboard({
               lastName: studentForm.lastName.trim(),
               gradeLevel: studentForm.gradeLevel.trim(),
               email: studentForm.email.trim(),
+              phone: studentForm.phone.trim(),
               parentName: studentForm.parentName.trim(),
               parentEmail: studentForm.parentEmail.trim(),
               parentPhone: studentForm.parentPhone.trim(),
@@ -1030,6 +1040,7 @@ export function TeacherDashboard({
       lastName: "",
       gradeLevel: "",
       email: "",
+      phone: "",
       familyMode: "new",
       familyId: "",
       parentName: "",
@@ -1068,6 +1079,70 @@ export function TeacherDashboard({
     );
   };
 
+  const handleResetStudentAccount = async (studentId: string) => {
+    if (
+      !window.confirm(
+        "Reset this student's account? They'll be signed out and able to register again with the same email. Nothing else - grades, attendance, tuition - is affected.",
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await resetStudentAccountAction(studentId);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to reset account",
+      );
+      return;
+    }
+
+    setStudents((prev) =>
+      prev.map((student) =>
+        student.id === studentId
+          ? { ...student, hasAccount: false }
+          : student,
+      ),
+    );
+    toast.success("Account reset. They can register again.");
+  };
+
+  const handleResetParentAccount = async (
+    studentId: string,
+    slot: "primary" | "secondary",
+  ) => {
+    if (
+      !window.confirm(
+        "Reset this parent's account? They'll be signed out and able to register again with the same email. Nothing else - grades, attendance, tuition - is affected. If they share this login across siblings, all of those children are affected too.",
+      )
+    ) {
+      return;
+    }
+
+    let result;
+    try {
+      result = await resetParentAccountAction({
+        studentId,
+        parentSlot: slot,
+      });
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to reset account",
+      );
+      return;
+    }
+
+    const flag = slot === "primary" ? "parentHasAccount" : "parentTwoHasAccount";
+    setStudents((prev) =>
+      prev.map((student) =>
+        student.familyId === result.familyId
+          ? { ...student, [flag]: false }
+          : student,
+      ),
+    );
+    toast.success("Account reset. They can register again.");
+  };
+
   const handleEditStudentChange = (
     key: keyof typeof editStudentForm,
     value: string,
@@ -1084,6 +1159,7 @@ export function TeacherDashboard({
       lastName: student.lastName,
       gradeLevel: student.gradeLevel,
       email: student.email,
+      phone: student.phone ?? "",
       parentName: student.parentName,
       parentEmail: student.parentEmail,
       parentPhone: student.parentPhone,
@@ -1159,6 +1235,7 @@ export function TeacherDashboard({
         lastName: editStudentForm.lastName.trim(),
         gradeLevel: editStudentForm.gradeLevel.trim(),
         email: editStudentForm.email.trim(),
+        phone: editStudentForm.phone.trim(),
         tuitionAmount: editStudentForm.tuitionAmount.trim(),
         parentName: editStudentForm.parentName.trim(),
         parentEmail: editStudentForm.parentEmail.trim(),
@@ -1184,6 +1261,7 @@ export function TeacherDashboard({
             lastName: updated.lastName,
             gradeLevel: updated.gradeLevel,
             email: updated.email,
+            phone: updated.phone,
             parentName: updated.parentName,
             parentEmail: updated.parentEmail,
             parentPhone: updated.parentPhone,
@@ -1937,6 +2015,7 @@ export function TeacherDashboard({
                         <div className="text-sm text-muted-foreground">
                           Grade {student.gradeLevel || "N/A"} •{" "}
                           {student.email || "No email"}
+                          {student.phone ? ` • ${student.phone}` : ""}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
@@ -1961,6 +2040,17 @@ export function TeacherDashboard({
                             Withdraw
                           </Button>
                         )}
+                        {student.hasAccount ? (
+                          <Button
+                            variant="outline"
+                            aria-label={`Reset ${student.firstName} ${student.lastName}'s account`}
+                            onClick={() =>
+                              handleResetStudentAccount(student.id)
+                            }
+                          >
+                            Reset account
+                          </Button>
+                        ) : null}
                         <Button
                           variant="outline"
                           onClick={() => setSelectedStudentId(null)}
@@ -1976,26 +2066,60 @@ export function TeacherDashboard({
                             Parents
                           </div>
                           <div className="mt-3 space-y-3">
-                            <div>
-                              <div className="text-sm font-medium">
-                                {student.parentName || "Not set"}
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <div className="text-sm font-medium">
+                                  {student.parentName || "Not set"}
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  {student.parentEmail || "No email"} •{" "}
+                                  {student.parentPhone || "No phone"}
+                                </div>
                               </div>
-                              <div className="text-xs text-muted-foreground">
-                                {student.parentEmail || "No email"} •{" "}
-                                {student.parentPhone || "No phone"}
-                              </div>
+                              {student.parentHasAccount ? (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  aria-label={`Reset ${student.parentName || "parent"}'s account`}
+                                  onClick={() =>
+                                    handleResetParentAccount(
+                                      student.id,
+                                      "primary",
+                                    )
+                                  }
+                                >
+                                  Reset account
+                                </Button>
+                              ) : null}
                             </div>
                             {student.parentTwoName ||
                             student.parentTwoEmail ||
                             student.parentTwoPhone ? (
-                              <div>
-                                <div className="text-sm font-medium">
-                                  {student.parentTwoName || "Second parent"}
+                              <div className="flex items-start justify-between gap-2">
+                                <div>
+                                  <div className="text-sm font-medium">
+                                    {student.parentTwoName || "Second parent"}
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">
+                                    {student.parentTwoEmail || "No email"} •{" "}
+                                    {student.parentTwoPhone || "No phone"}
+                                  </div>
                                 </div>
-                                <div className="text-xs text-muted-foreground">
-                                  {student.parentTwoEmail || "No email"} •{" "}
-                                  {student.parentTwoPhone || "No phone"}
-                                </div>
+                                {student.parentTwoHasAccount ? (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    aria-label={`Reset ${student.parentTwoName || "second parent"}'s account`}
+                                    onClick={() =>
+                                      handleResetParentAccount(
+                                        student.id,
+                                        "secondary",
+                                      )
+                                    }
+                                  >
+                                    Reset account
+                                  </Button>
+                                ) : null}
                               </div>
                             ) : null}
                           </div>
@@ -2267,6 +2391,20 @@ export function TeacherDashboard({
                               ? "border-red-500 focus-visible:ring-red-500"
                               : ""
                           }
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="student-phone">
+                          Phone <span className="text-muted-foreground">(optional)</span>
+                        </Label>
+                        <Input
+                          id="student-phone"
+                          type="tel"
+                          value={studentForm.phone}
+                          onChange={(event) =>
+                            handleStudentChange("phone", event.target.value)
+                          }
+                          placeholder="(555) 123-4567"
                         />
                       </div>
                     </div>
@@ -2596,6 +2734,7 @@ export function TeacherDashboard({
                             </div>
                             <div className="text-xs text-muted-foreground">
                               {student.email || "No email"}
+                              {student.phone ? ` • ${student.phone}` : ""}
                             </div>
                           </TableCell>
                           <TableCell className="text-muted-foreground">
@@ -2766,6 +2905,19 @@ export function TeacherDashboard({
                             editStudentFormErrors.email
                               ? "border-red-500 focus-visible:ring-red-500"
                               : ""
+                          }
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-student-phone">
+                          Phone <span className="text-muted-foreground">(optional)</span>
+                        </Label>
+                        <Input
+                          id="edit-student-phone"
+                          type="tel"
+                          value={editStudentForm.phone}
+                          onChange={(event) =>
+                            handleEditStudentChange("phone", event.target.value)
                           }
                         />
                       </div>
