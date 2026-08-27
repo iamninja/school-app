@@ -158,7 +158,7 @@ export async function getStudentDashboardDataAction(): Promise<
     .select("class_id, class_name, attendance_date, status")
     .eq("student_id", student.id)
     .order("attendance_date", { ascending: false })
-    .limit(50);
+    .limit(300);
 
   // Get quizzes assigned to this student's classes, plus their own attempts
   let quizzes: QuizSummary[] = [];

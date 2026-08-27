@@ -426,8 +426,15 @@ export interface ParentDashboardData {
       amount: number;
       description: string;
       createdAt: string;
+      receiptId: string | null;
     }>;
   };
+  // This family's receipts, for the tuition history dialog's "view
+  // receipt" flow - receiptId above links a transaction to one of these.
+  receipts: Receipt[];
+  // Needed to render a receipt (name/ΑΦΜ/address on the header) via the
+  // same ReceiptDocument the teacher console already uses.
+  business: BusinessProfile | null;
 }
 
 // Action result types

@@ -211,6 +211,7 @@ describe("TeacherDashboard student form", () => {
       lastName: "Carter",
       gradeLevel: "10",
       email: "maya@example.com",
+      phone: "",
       parentName: "Jordan Carter",
       parentEmail: "parent@example.com",
       parentPhone: "(555) 123-4567",
@@ -241,6 +242,55 @@ describe("TeacherDashboard student form", () => {
 
     expect(createStudentAction).toHaveBeenCalled();
     expect(await screen.findByText(/maya carter/i)).toBeInTheDocument();
+  });
+
+  it("submits an optional student phone number when provided", async () => {
+    const user = userEvent.setup();
+    const createStudentAction = vi.mocked(actions.createStudentAction);
+
+    createStudentAction.mockResolvedValue({
+      id: "student-1",
+      familyId: "family-1",
+      withdrawnAt: null,
+      firstName: "Maya",
+      lastName: "Carter",
+      gradeLevel: "10",
+      email: "maya@example.com",
+      phone: "(555) 987-6543",
+      parentName: "Jordan Carter",
+      parentEmail: "parent@example.com",
+      parentPhone: "(555) 123-4567",
+      parentTwoName: "",
+      parentTwoEmail: "",
+      parentTwoPhone: "",
+      tuitionAmount: "420",
+      assignedClassIds: [],
+    });
+
+    render(<TeacherDashboard {...baseProps} />);
+
+    await user.click(screen.getByRole("tab", { name: /students/i }));
+    await user.click(screen.getByRole("button", { name: /add student/i }));
+
+    await user.type(screen.getByLabelText(/first name/i), "Maya");
+    await user.type(screen.getByLabelText(/last name/i), "Carter");
+    await user.selectOptions(screen.getByLabelText(/^grade$/i), "10");
+    await user.type(screen.getByLabelText(/^email$/i), "maya@example.com");
+    await user.type(screen.getByLabelText(/^phone/i), "(555) 987-6543");
+    await user.type(screen.getByLabelText(/parent name/i), "Jordan Carter");
+    await user.type(
+      screen.getByLabelText(/parent email/i),
+      "parent@example.com",
+    );
+    await user.type(screen.getByLabelText(/parent phone/i), "(555) 123-4567");
+
+    await user.click(screen.getByRole("button", { name: /create student/i }));
+
+    await waitFor(() => {
+      expect(createStudentAction).toHaveBeenCalledWith(
+        expect.objectContaining({ phone: "(555) 987-6543" }),
+      );
+    });
   });
 
   it("shows toast notification when submitting without required fields", async () => {
@@ -441,6 +491,7 @@ describe("TeacherDashboard student form", () => {
       lastName: "Carter",
       gradeLevel: "10",
       email: "maya@example.com",
+      phone: "",
       parentName: "Jordan Carter",
       parentEmail: "parent@example.com",
       parentPhone: "(555) 123-4567",
@@ -527,6 +578,7 @@ describe("TeacherDashboard student form", () => {
       lastName: "Carter",
       gradeLevel: "10",
       email: "liam@example.com",
+      phone: "",
       parentName: "",
       parentEmail: "",
       parentPhone: "",

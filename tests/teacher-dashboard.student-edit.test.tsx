@@ -15,6 +15,8 @@ vi.mock("@/app/protected/teacher/actions", () => ({
   createStudentAction: vi.fn(),
   enrollStudentInClassAction: vi.fn(),
   getAttendanceAction: vi.fn().mockResolvedValue([]),
+  resetParentAccountAction: vi.fn(),
+  resetStudentAccountAction: vi.fn(),
   restoreClassAction: vi.fn(),
   restoreStudentAction: vi.fn(),
   setAttendanceAction: vi.fn(),
@@ -56,10 +58,12 @@ describe("TeacherDashboard student detail - edit", () => {
         lastName: "Carter",
         gradeLevel: "10",
         email: "maya@example.com",
+        hasAccount: true,
         familyId: "family-1",
         parentName: "Jordan Carter",
         parentEmail: "parent@example.com",
         parentPhone: "(555) 123-4567",
+        parentHasAccount: true,
         tuitionAmount: "420",
         assignedClassIds: ["class-1", "class-3"],
       },
@@ -73,6 +77,7 @@ describe("TeacherDashboard student detail - edit", () => {
         parentName: "Jordan Carter",
         parentEmail: "parent@example.com",
         parentPhone: "(555) 123-4567",
+        parentHasAccount: true,
         tuitionAmount: "400",
         assignedClassIds: [],
       },
@@ -177,6 +182,7 @@ describe("TeacherDashboard student detail - edit", () => {
       lastName: "Carterson",
       gradeLevel: "10",
       email: "maya@example.com",
+      phone: "",
       parentName: "Jordan Carter",
       parentEmail: "parent@example.com",
       parentPhone: "(555) 123-4567",
@@ -208,6 +214,47 @@ describe("TeacherDashboard student detail - edit", () => {
     expect(await screen.findByText(/maya carterson/i)).toBeInTheDocument();
   });
 
+  it("edits a student's own phone number", async () => {
+    const user = userEvent.setup();
+    const updateStudentAction = vi.mocked(actions.updateStudentAction);
+    updateStudentAction.mockResolvedValue({
+      id: "student-1",
+      familyId: "family-1",
+      firstName: "Maya",
+      lastName: "Carter",
+      gradeLevel: "10",
+      email: "maya@example.com",
+      phone: "(555) 987-6543",
+      parentName: "Jordan Carter",
+      parentEmail: "parent@example.com",
+      parentPhone: "(555) 123-4567",
+      parentTwoName: "",
+      parentTwoEmail: "",
+      parentTwoPhone: "",
+      tuitionAmount: "420",
+    });
+
+    await openMayaDetail(user);
+    await user.click(screen.getByRole("button", { name: /^\s*edit\s*$/i }));
+
+    const dialog = screen.getByRole("dialog");
+    await user.type(
+      within(dialog).getByLabelText(/^phone/i),
+      "(555) 987-6543",
+    );
+
+    await user.click(within(dialog).getByRole("button", { name: /save/i }));
+
+    await waitFor(() => {
+      expect(updateStudentAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          studentId: "student-1",
+          phone: "(555) 987-6543",
+        }),
+      );
+    });
+  });
+
   it("adds a second parent and tuition details via the edit dialog", async () => {
     const user = userEvent.setup();
     const updateStudentAction = vi.mocked(actions.updateStudentAction);
@@ -218,6 +265,7 @@ describe("TeacherDashboard student detail - edit", () => {
       lastName: "Carter",
       gradeLevel: "10",
       email: "maya@example.com",
+      phone: "",
       parentName: "Jordan Carter",
       parentEmail: "parent@example.com",
       parentPhone: "(555) 123-4567",
@@ -278,6 +326,7 @@ describe("TeacherDashboard student detail - edit", () => {
       lastName: "Carter",
       gradeLevel: "10",
       email: "maya@example.com",
+      phone: "",
       parentName: "Jordan Carter-Smith",
       parentEmail: "parent@example.com",
       parentPhone: "(555) 123-4567",
@@ -408,5 +457,73 @@ describe("TeacherDashboard student detail - edit", () => {
     expect(
       screen.queryByText("stale snapshot, should be ignored"),
     ).not.toBeInTheDocument();
+  });
+
+  it("resets a student's account after confirming, and does nothing if cancelled", async () => {
+    const user = userEvent.setup();
+    const resetStudentAccountAction = vi.mocked(
+      actions.resetStudentAccountAction,
+    );
+    resetStudentAccountAction.mockResolvedValue({ id: "student-1" });
+    const confirmSpy = vi.spyOn(window, "confirm");
+
+    await openMayaDetail(user);
+
+    const resetButton = screen.getByRole("button", {
+      name: /reset maya carter's account/i,
+    });
+
+    confirmSpy.mockReturnValueOnce(false);
+    await user.click(resetButton);
+    expect(resetStudentAccountAction).not.toHaveBeenCalled();
+
+    confirmSpy.mockReturnValueOnce(true);
+    await user.click(resetButton);
+    await waitFor(() => {
+      expect(resetStudentAccountAction).toHaveBeenCalledWith("student-1");
+    });
+
+    // The button disappears once hasAccount flips to false locally.
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("button", { name: /reset maya carter's account/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    confirmSpy.mockRestore();
+  });
+
+  it("resets a parent's account and clears it for every sibling sharing that login", async () => {
+    const user = userEvent.setup();
+    const resetParentAccountAction = vi.mocked(
+      actions.resetParentAccountAction,
+    );
+    resetParentAccountAction.mockResolvedValue({
+      familyId: "family-1",
+      parentSlot: "primary",
+    });
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    await openMayaDetail(user);
+    await user.click(
+      screen.getByRole("button", { name: /reset jordan carter's account/i }),
+    );
+
+    await waitFor(() => {
+      expect(resetParentAccountAction).toHaveBeenCalledWith({
+        studentId: "student-1",
+        parentSlot: "primary",
+      });
+    });
+
+    // Emma shares the same family - her cached parent-account flag should
+    // clear too, not just Maya's, even though only Maya's detail was open.
+    await user.click(screen.getByRole("button", { name: /back to students/i }));
+    await user.click(screen.getByText(/emma carter/i));
+    expect(
+      screen.queryByRole("button", { name: /reset jordan carter's account/i }),
+    ).not.toBeInTheDocument();
+
+    confirmSpy.mockRestore();
   });
 });

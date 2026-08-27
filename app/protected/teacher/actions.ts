@@ -1,6 +1,6 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { requireTeacher } from "@/lib/auth/require-teacher";
 import { ExpectedError } from "@/lib/expected-error";
 
@@ -237,6 +237,7 @@ type CreateStudentBase = {
   lastName: string;
   gradeLevel: string;
   email: string;
+  phone?: string;
   tuitionAmount: string;
   assignedClassIds: string[];
 };
@@ -310,6 +311,7 @@ export async function createStudentAction(data: CreateStudentInput) {
       last_name: data.lastName,
       grade_level: data.gradeLevel || null,
       email: data.email || null,
+      phone: data.phone || null,
       tuition_amount: tuitionAmount,
     })
     .select("id")
@@ -378,6 +380,7 @@ export async function createStudentAction(data: CreateStudentInput) {
     lastName: data.lastName,
     gradeLevel: data.gradeLevel,
     email: data.email,
+    phone: data.phone ?? "",
     withdrawnAt: null as string | null,
     parentName: data.familyMode === "new" ? data.parentName : "",
     parentEmail: data.familyMode === "new" ? data.parentEmail : "",
@@ -396,6 +399,7 @@ export type UpdateStudentInput = {
   lastName: string;
   gradeLevel: string;
   email: string;
+  phone?: string;
   tuitionAmount: string;
   parentName: string;
   parentEmail: string;
@@ -441,6 +445,7 @@ export async function updateStudentAction(data: UpdateStudentInput) {
       last_name: data.lastName,
       grade_level: data.gradeLevel || null,
       email: data.email || null,
+      phone: data.phone || null,
       tuition_amount: tuitionAmount,
     })
     .eq("id", data.studentId)
@@ -533,6 +538,7 @@ export async function updateStudentAction(data: UpdateStudentInput) {
     lastName: data.lastName,
     gradeLevel: data.gradeLevel,
     email: data.email,
+    phone: data.phone ?? "",
     parentName: data.parentName,
     parentEmail: data.parentEmail,
     parentPhone: data.parentPhone,
@@ -541,6 +547,130 @@ export async function updateStudentAction(data: UpdateStudentInput) {
     parentTwoPhone: data.parentTwoPhone,
     tuitionAmount: data.tuitionAmount,
   };
+}
+
+// Kills a student's or parent's login (auth.users row) and clears the
+// roster row's user_id, so a lost-password-and-lost-email-access or a
+// mis-typed-registration-email account can register fresh. The roster row
+// itself (and everything keyed off its id - receipts, balance, quiz
+// attempts, attendance) is never touched: students.user_id/
+// family_parents.user_id are both ON DELETE SET NULL, not cascade.
+export async function resetStudentAccountAction(studentId: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error("Not authenticated");
+  }
+
+  await requireTeacher(supabase, user.id);
+
+  const { data: student, error: lookupError } = await supabase
+    .from("students")
+    .select("id, user_id")
+    .eq("id", studentId)
+    .eq("teacher_id", user.id)
+    .single();
+
+  if (lookupError || !student) {
+    throw new Error("Student not found");
+  }
+
+  if (!student.user_id) {
+    throw new ExpectedError(
+      "This student doesn't have an account to reset yet.",
+    );
+  }
+
+  const supabaseAdmin = createServiceRoleClient();
+  const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(
+    student.user_id,
+  );
+
+  if (deleteError) {
+    // The auth user may already be gone (e.g. deleted directly via the
+    // Supabase dashboard before this action existed) - clear the stale
+    // link ourselves rather than leaving the student permanently unable
+    // to re-register over something already effectively done.
+    const { error: clearError } = await supabase
+      .from("students")
+      .update({ user_id: null })
+      .eq("id", studentId);
+    if (clearError) {
+      throw deleteError;
+    }
+  }
+
+  return { id: studentId };
+}
+
+export async function resetParentAccountAction(params: {
+  studentId: string;
+  parentSlot: "primary" | "secondary";
+}) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error("Not authenticated");
+  }
+
+  await requireTeacher(supabase, user.id);
+
+  const { data: student, error: studentLookupError } = await supabase
+    .from("students")
+    .select("id, family_id")
+    .eq("id", params.studentId)
+    .eq("teacher_id", user.id)
+    .single();
+
+  if (studentLookupError || !student) {
+    throw new Error("Student not found");
+  }
+
+  const { data: parents, error: parentsLookupError } = await supabase
+    .from("family_parents")
+    .select("id, user_id, is_primary")
+    .eq("family_id", student.family_id);
+
+  if (parentsLookupError) {
+    throw parentsLookupError;
+  }
+
+  const parent = (parents ?? []).find((p) =>
+    params.parentSlot === "primary" ? p.is_primary : !p.is_primary,
+  );
+
+  if (!parent) {
+    throw new Error("Parent not found");
+  }
+
+  if (!parent.user_id) {
+    throw new ExpectedError(
+      "This parent doesn't have an account to reset yet.",
+    );
+  }
+
+  const supabaseAdmin = createServiceRoleClient();
+  const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(
+    parent.user_id,
+  );
+
+  if (deleteError) {
+    const { error: clearError } = await supabase
+      .from("family_parents")
+      .update({ user_id: null })
+      .eq("id", parent.id);
+    if (clearError) {
+      throw deleteError;
+    }
+  }
+
+  return { familyId: student.family_id, parentSlot: params.parentSlot };
 }
 
 export async function withdrawStudentAction(studentId: string) {

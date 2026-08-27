@@ -26,6 +26,7 @@ type FamilyParentRow = {
   email: string | null;
   phone: string | null;
   is_primary: boolean;
+  user_id: string | null;
 };
 type StudentFamilyEmbed = { id: string; family_parents: FamilyParentRow[] } | null;
 
@@ -69,7 +70,7 @@ export default async function TeacherPage() {
     supabase
       .from("students")
       .select(
-        "id, first_name, last_name, grade_level, email, tuition_amount, created_at, family_id, withdrawn_at, families(id, family_parents(id, name, email, phone, is_primary)), student_class_assignments(class_id)"
+        "id, first_name, last_name, grade_level, email, phone, user_id, tuition_amount, created_at, family_id, withdrawn_at, families(id, family_parents(id, name, email, phone, is_primary, user_id)), student_class_assignments(class_id)"
       )
       .eq("teacher_id", user.id)
       .order("created_at", { ascending: false }),
@@ -130,14 +131,18 @@ export default async function TeacherPage() {
       lastName: student.last_name,
       gradeLevel: student.grade_level ?? "",
       email: student.email ?? "",
+      phone: student.phone ?? "",
+      hasAccount: student.user_id != null,
       familyId: student.family_id,
       withdrawnAt: student.withdrawn_at,
       parentName: primaryParent?.name ?? "",
       parentEmail: primaryParent?.email ?? "",
       parentPhone: primaryParent?.phone ?? "",
+      parentHasAccount: primaryParent?.user_id != null,
       parentTwoName: secondaryParent?.name ?? "",
       parentTwoEmail: secondaryParent?.email ?? "",
       parentTwoPhone: secondaryParent?.phone ?? "",
+      parentTwoHasAccount: secondaryParent?.user_id != null,
       tuitionAmount:
         student.tuition_amount === null || student.tuition_amount === undefined
           ? ""

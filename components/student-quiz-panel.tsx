@@ -21,6 +21,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MathText } from "@/components/math-text";
+import { PortalHistoryDialog } from "@/components/portal-history-dialog";
 import { QuizQuestionImage } from "@/components/quiz-question-image";
 import { QuizReviewAnswers } from "@/components/quiz-review-answers";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -35,6 +36,8 @@ type ViewState =
   | { mode: "list" }
   | { mode: "taking"; quiz: QuizForTaking }
   | { mode: "review"; review: QuizAttemptReview };
+
+const RECENT_PREVIEW_COUNT = 5;
 
 function formatRemainingTime(totalSeconds: number): string {
   const minutes = Math.floor(totalSeconds / 60);
@@ -302,10 +305,58 @@ export function StudentQuizPanel({
     );
   }
 
+  const renderQuizRow = (quiz: QuizSummary) => (
+    <div
+      key={quiz.id}
+      className="flex items-center justify-between rounded-md border px-3 py-2"
+    >
+      <div>
+        <p className="text-sm font-medium">
+          <MathText text={quiz.title} />
+        </p>
+        <p className="text-xs text-muted-foreground">
+          {quiz.className ||
+            (quiz.submittedAt
+              ? format(new Date(quiz.submittedAt), "d MMMM yyyy", {
+                  locale: el,
+                })
+              : "")}
+        </p>
+      </div>
+      {quiz.quizDeleted ? (
+        <Badge variant="outline">
+          {quiz.score} / {quiz.maxScore}
+        </Badge>
+      ) : quiz.completed ? (
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={isLoading}
+          onClick={() => handleViewReview(quiz.id)}
+        >
+          {quiz.score} / {quiz.maxScore} · Ανασκόπηση
+        </Button>
+      ) : (
+        <Button
+          size="sm"
+          disabled={isLoading}
+          onClick={() => handleTakeQuiz(quiz.id)}
+        >
+          Έναρξη τεστ
+        </Button>
+      )}
+    </div>
+  );
+
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="flex flex-row items-center justify-between gap-4">
         <CardTitle>Τεστ</CardTitle>
+        {quizzes.length > RECENT_PREVIEW_COUNT ? (
+          <PortalHistoryDialog triggerLabel="Ιστορικό" title="Τεστ">
+            {quizzes.map(renderQuizRow)}
+          </PortalHistoryDialog>
+        ) : null}
       </CardHeader>
       <CardContent>
         {quizzes.length === 0 ? (
@@ -314,48 +365,7 @@ export function StudentQuizPanel({
           </p>
         ) : (
           <div className="space-y-2">
-            {quizzes.map((quiz) => (
-              <div
-                key={quiz.id}
-                className="flex items-center justify-between rounded-md border px-3 py-2"
-              >
-                <div>
-                  <p className="text-sm font-medium">
-                    <MathText text={quiz.title} />
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {quiz.className ||
-                      (quiz.submittedAt
-                        ? format(new Date(quiz.submittedAt), "d MMMM yyyy", {
-                            locale: el,
-                          })
-                        : "")}
-                  </p>
-                </div>
-                {quiz.quizDeleted ? (
-                  <Badge variant="outline">
-                    {quiz.score} / {quiz.maxScore}
-                  </Badge>
-                ) : quiz.completed ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={isLoading}
-                    onClick={() => handleViewReview(quiz.id)}
-                  >
-                    {quiz.score} / {quiz.maxScore} · Ανασκόπηση
-                  </Button>
-                ) : (
-                  <Button
-                    size="sm"
-                    disabled={isLoading}
-                    onClick={() => handleTakeQuiz(quiz.id)}
-                  >
-                    Έναρξη τεστ
-                  </Button>
-                )}
-              </div>
-            ))}
+            {quizzes.slice(0, RECENT_PREVIEW_COUNT).map(renderQuizRow)}
           </div>
         )}
       </CardContent>
