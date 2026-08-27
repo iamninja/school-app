@@ -63,6 +63,8 @@ const baseProps = {
     monthlyAmount: 500,
     recentTransactions: [] as ParentDashboardData["balance"]["recentTransactions"],
   },
+  receipts: [] as ParentDashboardData["receipts"],
+  business: null as ParentDashboardData["business"],
 };
 
 describe("ParentDashboard", () => {
@@ -362,7 +364,8 @@ describe("ParentDashboard", () => {
     expect(screen.getByText("Algebra II, Geometry")).toBeInTheDocument();
   });
 
-  it("renders each child in a family in its own section without leaking data between them", () => {
+  it("renders each child in a family in its own tab without leaking data between them", async () => {
+    const user = userEvent.setup();
     render(
       <ParentDashboard
         {...baseProps}
@@ -419,51 +422,38 @@ describe("ParentDashboard", () => {
       />,
     );
 
+    // Multiple kids render as tabs - John's is active by default, Emma's
+    // tab content isn't in the accessible tree until selected.
+    expect(
+      screen.getByRole("tab", { name: "John" }),
+    ).toHaveAttribute("aria-selected", "true");
     expect(
       screen.getByRole("heading", { level: 2, name: "John Smith" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { level: 2, name: "Emma Smith" }),
-    ).toBeInTheDocument();
-    expect(
       screen.getByRole("heading", { level: 3, name: "Algebra II" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("John's Quiz")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { level: 2, name: "Emma Smith" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Emma's Quiz")).not.toBeInTheDocument();
+
+    // Switch to Emma's tab - her data should not leak from John's, and
+    // vice versa once switched - the core regression risk of grouping
+    // data per-child.
+    await user.click(screen.getByRole("tab", { name: "Emma" }));
+
+    expect(
+      screen.getByRole("heading", { level: 2, name: "Emma Smith" }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("heading", { level: 3, name: "Biology" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("John's Quiz")).toBeInTheDocument();
     expect(screen.getByText("Emma's Quiz")).toBeInTheDocument();
-
-    // Emma's section should not contain John's class/quiz, and vice versa -
-    // the core regression risk of grouping data per-child.
-    const johnSection = screen
-      .getByRole("heading", { level: 2, name: "John Smith" })
-      .closest("section") as HTMLElement;
-    const emmaSection = screen
-      .getByRole("heading", { level: 2, name: "Emma Smith" })
-      .closest("section") as HTMLElement;
-
-    expect(johnSection).not.toBe(emmaSection);
     expect(
-      within(johnSection).getByRole("heading", { level: 3, name: "Algebra II" }),
-    ).toBeInTheDocument();
-    expect(
-      within(johnSection).queryByRole("heading", { level: 3, name: "Biology" }),
+      screen.queryByRole("heading", { level: 2, name: "John Smith" }),
     ).not.toBeInTheDocument();
-    expect(within(johnSection).getByText("John's Quiz")).toBeInTheDocument();
-    expect(
-      within(johnSection).queryByText("Emma's Quiz"),
-    ).not.toBeInTheDocument();
-
-    expect(
-      within(emmaSection).getByRole("heading", { level: 3, name: "Biology" }),
-    ).toBeInTheDocument();
-    expect(
-      within(emmaSection).queryByRole("heading", { level: 3, name: "Algebra II" }),
-    ).not.toBeInTheDocument();
-    expect(within(emmaSection).getByText("Emma's Quiz")).toBeInTheDocument();
-    expect(
-      within(emmaSection).queryByText("John's Quiz"),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText("John's Quiz")).not.toBeInTheDocument();
   });
 });

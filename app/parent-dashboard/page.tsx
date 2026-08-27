@@ -54,6 +54,8 @@ export default async function ParentDashboardPage() {
         allParents={result.data.allParents}
         kids={result.data.kids}
         balance={result.data.balance}
+        receipts={result.data.receipts}
+        business={result.data.business}
       />
     </div>
   );

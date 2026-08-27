@@ -81,12 +81,17 @@ describe("RLS: receipts", () => {
     expect(data ?? []).toHaveLength(0);
   });
 
-  it("blocks a parent from reading receipts", async () => {
+  it("blocks a parent from reading a receipt with no family_id", async () => {
+    // Parents can read their own family's receipts (see
+    // tests/rls/parent-receipts.test.ts) - this asserts the narrower case
+    // of a receipt that isn't tied to any family at all (e.g. a one-off,
+    // non-tuition receipt), which must stay teacher-only.
     const parent = await signInAs(fixtures.parentA1.email, fixtures.password);
 
     const { data } = await parent
       .from("receipts")
-      .select("recipient_name, total_amount");
+      .select("recipient_name, total_amount")
+      .is("family_id", null);
 
     expect(data ?? []).toHaveLength(0);
   });

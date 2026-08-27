@@ -13,6 +13,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StudentQuizPanel } from "@/components/student-quiz-panel";
+import { PortalHistoryDialog } from "@/components/portal-history-dialog";
 import { PortalUpcomingCard } from "@/components/portal-upcoming-card";
 import type { PortalCalendarEvent, QuizSummary } from "@/lib/types/database";
 import { ATTENDANCE_STATUS_LABELS_EL, DAY_LABELS_EL } from "@/lib/greek-labels";
@@ -55,6 +56,40 @@ type StudentDashboardProps = {
 };
 
 const DAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const RECENT_PREVIEW_COUNT = 5;
+
+function AttendanceRow({
+  record,
+  classes,
+}: {
+  record: {
+    class_id: string | null;
+    class_name: string;
+    attendance_date: string;
+    status: string;
+  };
+  classes: Array<{ id: string; name: string }>;
+}) {
+  const classInfo = classes.find((c) => c.id === record.class_id);
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-border/70 bg-background/60 px-3 py-2">
+      <div className="min-w-0">
+        <p className="truncate text-sm font-medium">
+          {classInfo?.name || record.class_name}
+        </p>
+        <p className="text-xs text-muted-foreground">
+          {format(new Date(record.attendance_date), "d MMMM yyyy", {
+            locale: el,
+          })}
+        </p>
+      </div>
+      <AttendanceChip
+        status={record.status}
+        label={ATTENDANCE_STATUS_LABELS_EL[record.status] ?? record.status}
+      />
+    </div>
+  );
+}
 
 export function StudentDashboard(props: StudentDashboardProps) {
   // Group schedules by class
@@ -227,7 +262,7 @@ export function StudentDashboard(props: StudentDashboardProps) {
             <div className="space-y-3">
               <SectionLabel>Παρουσίες</SectionLabel>
               <Card>
-                <CardHeader>
+                <CardHeader className="flex flex-row items-center justify-between gap-4">
                   <CardTitle className="flex items-center gap-2 text-base">
                     <ClipboardCheck
                       className="size-4 text-brand"
@@ -235,6 +270,20 @@ export function StudentDashboard(props: StudentDashboardProps) {
                     />
                     Πρόσφατες καταγραφές
                   </CardTitle>
+                  {props.attendance.length > RECENT_PREVIEW_COUNT ? (
+                    <PortalHistoryDialog
+                      triggerLabel="Ιστορικό"
+                      title="Παρουσίες"
+                    >
+                      {props.attendance.map((record, idx) => (
+                        <AttendanceRow
+                          key={idx}
+                          record={record}
+                          classes={props.classes}
+                        />
+                      ))}
+                    </PortalHistoryDialog>
+                  ) : null}
                 </CardHeader>
                 <CardContent>
                   {props.attendance.length === 0 ? (
@@ -243,37 +292,15 @@ export function StudentDashboard(props: StudentDashboardProps) {
                     </p>
                   ) : (
                     <div className="space-y-2">
-                      {props.attendance.slice(0, 10).map((record, idx) => {
-                        const classInfo = props.classes.find(
-                          (c) => c.id === record.class_id,
-                        );
-                        return (
-                          <div
+                      {props.attendance
+                        .slice(0, RECENT_PREVIEW_COUNT)
+                        .map((record, idx) => (
+                          <AttendanceRow
                             key={idx}
-                            className="flex items-center justify-between gap-3 rounded-lg border border-border/70 bg-background/60 px-3 py-2"
-                          >
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-medium">
-                                {classInfo?.name || record.class_name}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                {format(
-                                  new Date(record.attendance_date),
-                                  "d MMMM yyyy",
-                                  { locale: el },
-                                )}
-                              </p>
-                            </div>
-                            <AttendanceChip
-                              status={record.status}
-                              label={
-                                ATTENDANCE_STATUS_LABELS_EL[record.status] ??
-                                record.status
-                              }
-                            />
-                          </div>
-                        );
-                      })}
+                            record={record}
+                            classes={props.classes}
+                          />
+                        ))}
                     </div>
                   )}
                 </CardContent>

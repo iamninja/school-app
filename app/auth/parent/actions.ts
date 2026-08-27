@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { RECEIPT_COLUMNS, attachLineItems } from "@/lib/receipts";
 import type {
   ParentEmailCheckResult,
   ParentDashboardData,
@@ -11,6 +12,7 @@ import type {
   ActionResult,
   QuizSummary,
   PortalCalendarEvent,
+  Receipt,
 } from "@/lib/types/database";
 import {
   createRoleAuthUser,
@@ -124,10 +126,32 @@ export async function getParentDashboardDataAction(): Promise<
 
   const { data: recentTransactionRows } = await supabase
     .from("family_balance_transactions")
-    .select("id, type, amount, description, created_at")
+    .select("id, type, amount, description, receipt_id, created_at")
     .eq("family_id", parent.family_id)
     .order("created_at", { ascending: false })
-    .limit(12);
+    .limit(200);
+
+  // This family's receipts, for the tuition history dialog's "view
+  // receipt" flow - RLS-scoped via "Parents view own family receipts"
+  // (20260827170752_parent-view-receipts.sql), same is_parent_of_family()
+  // boundary as everything else on this page.
+  const { data: receiptRows } = await supabase
+    .from("receipts")
+    .select(RECEIPT_COLUMNS)
+    .eq("family_id", parent.family_id)
+    .order("issue_date", { ascending: false });
+  const receipts = await attachLineItems(
+    supabase,
+    (receiptRows ?? []) as unknown as Omit<Receipt, "lineItems">[],
+  );
+
+  const { data: businessRow } = await supabase
+    .from("business_profile")
+    .select(
+      "id, business_name, afm, doy, activity_code, address, city, postal_code, phone, updated_at",
+    )
+    .eq("id", 1)
+    .maybeSingle();
 
   // Every non-withdrawn child in this family - hidden by default, matching
   // the teacher dashboard's "hidden unless toggled" withdrawn-student
@@ -227,7 +251,7 @@ export async function getParentDashboardDataAction(): Promise<
         .select("class_id, class_name, attendance_date, status")
         .eq("student_id", student.id)
         .order("attendance_date", { ascending: false })
-        .limit(50);
+        .limit(300);
 
       // Quizzes + this child's attempts.
       let quizzes: QuizSummary[] = [];
@@ -373,8 +397,11 @@ export async function getParentDashboardDataAction(): Promise<
           amount: Number(row.amount),
           description: row.description,
           createdAt: row.created_at,
+          receiptId: row.receipt_id,
         })),
       },
+      receipts,
+      business: businessRow ?? null,
     },
   };
 }

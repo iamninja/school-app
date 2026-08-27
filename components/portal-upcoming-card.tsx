@@ -6,15 +6,54 @@ import { CalendarClockIcon } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PortalHistoryDialog } from "@/components/portal-history-dialog";
 import { cn } from "@/lib/utils";
 import {
   fromIsoDate,
   nextOccurrences,
+  type Occurrence,
   type ProjectionClass,
   type ProjectionEvent,
   type ProjectionSlot,
 } from "@/lib/calendar-projection";
 import { CALENDAR_EVENT_TYPE_LABELS_EL } from "@/lib/greek-labels";
+
+const EXPANDED_DAYS = 60;
+const EXPANDED_LIMIT = 30;
+
+function OccurrenceRow({ occurrence }: { occurrence: Occurrence }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-border/70 bg-background/60 px-3 py-2">
+      <div
+        className={cn(
+          "min-w-0",
+          occurrence.kind === "cancelled" &&
+            "text-muted-foreground line-through",
+        )}
+      >
+        <p className="truncate text-sm font-medium">
+          {occurrence.className ?? occurrence.studentName ?? "Μάθημα"}
+        </p>
+        <p className="text-xs text-muted-foreground">
+          {format(fromIsoDate(occurrence.date), "EEEE d MMMM", {
+            locale: el,
+          })}
+          {occurrence.startTime ? ` · ${occurrence.startTime}` : ""}
+        </p>
+      </div>
+      {occurrence.kind !== "recurring" ? (
+        <Badge
+          variant={occurrence.kind === "cancelled" ? "destructive" : "outline"}
+        >
+          {occurrence.kind === "cancelled"
+            ? CALENDAR_EVENT_TYPE_LABELS_EL.cancellation
+            : (CALENDAR_EVENT_TYPE_LABELS_EL[occurrence.kind] ??
+              occurrence.kind)}
+        </Badge>
+      ) : null}
+    </div>
+  );
+}
 
 /**
  * Shared by both portals - what's coming up over the next couple of weeks,
@@ -68,15 +107,16 @@ export function PortalUpcomingCard({
 
   const today = new Date();
   const from = format(today, "yyyy-MM-dd");
-  const to = format(
-    new Date(today.getTime() + days * 24 * 60 * 60 * 1000),
-    "yyyy-MM-dd",
-  );
+  const projectTo = (windowDays: number) =>
+    format(
+      new Date(today.getTime() + windowDays * 24 * 60 * 60 * 1000),
+      "yyyy-MM-dd",
+    );
 
   const occurrences = nextOccurrences(
     {
       from,
-      to,
+      to: projectTo(days),
       slots: projectionSlots,
       classes: projectionClasses,
       events: projectionEvents,
@@ -85,13 +125,36 @@ export function PortalUpcomingCard({
     limit,
   );
 
+  const expandedOccurrences = nextOccurrences(
+    {
+      from,
+      to: projectTo(EXPANDED_DAYS),
+      slots: projectionSlots,
+      classes: projectionClasses,
+      events: projectionEvents,
+      includeBlocks: false,
+    },
+    EXPANDED_LIMIT,
+  );
+  const hasMore = expandedOccurrences.length > occurrences.length;
+
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="flex flex-row items-center justify-between gap-4">
         <CardTitle className="flex items-center gap-2 text-base">
           <CalendarClockIcon className="size-4 text-brand" aria-hidden="true" />
           Επόμενα μαθήματα
         </CardTitle>
+        {hasMore ? (
+          <PortalHistoryDialog
+            triggerLabel="Περισσότερα"
+            title="Επόμενα μαθήματα"
+          >
+            {expandedOccurrences.map((occurrence, idx) => (
+              <OccurrenceRow key={idx} occurrence={occurrence} />
+            ))}
+          </PortalHistoryDialog>
+        ) : null}
       </CardHeader>
       <CardContent>
         {occurrences.length === 0 ? (
@@ -101,44 +164,7 @@ export function PortalUpcomingCard({
         ) : (
           <div className="space-y-2">
             {occurrences.map((occurrence, idx) => (
-              <div
-                key={idx}
-                className="flex items-center justify-between gap-3 rounded-lg border border-border/70 bg-background/60 px-3 py-2"
-              >
-                <div
-                  className={cn(
-                    "min-w-0",
-                    occurrence.kind === "cancelled" &&
-                      "text-muted-foreground line-through",
-                  )}
-                >
-                  <p className="truncate text-sm font-medium">
-                    {occurrence.className ??
-                      occurrence.studentName ??
-                      "Μάθημα"}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {format(fromIsoDate(occurrence.date), "EEEE d MMMM", {
-                      locale: el,
-                    })}
-                    {occurrence.startTime ? ` · ${occurrence.startTime}` : ""}
-                  </p>
-                </div>
-                {occurrence.kind !== "recurring" ? (
-                  <Badge
-                    variant={
-                      occurrence.kind === "cancelled"
-                        ? "destructive"
-                        : "outline"
-                    }
-                  >
-                    {occurrence.kind === "cancelled"
-                      ? CALENDAR_EVENT_TYPE_LABELS_EL.cancellation
-                      : (CALENDAR_EVENT_TYPE_LABELS_EL[occurrence.kind] ??
-                        occurrence.kind)}
-                  </Badge>
-                ) : null}
-              </div>
+              <OccurrenceRow key={idx} occurrence={occurrence} />
             ))}
           </div>
         )}
