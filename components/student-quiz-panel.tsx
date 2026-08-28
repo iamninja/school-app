@@ -25,6 +25,7 @@ import { PortalHistoryDialog } from "@/components/portal-history-dialog";
 import { QuizQuestionImage } from "@/components/quiz-question-image";
 import { QuizReviewAnswers } from "@/components/quiz-review-answers";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type {
   QuizAnswerInput,
   QuizAttemptReview,
@@ -312,20 +313,24 @@ export function StudentQuizPanel({
               {view.review.attemptsUsed} προσπάθειες
             </p>
           )}
-          <div>
-            <p className="mb-2 text-sm font-medium">Πρώτη προσπάθεια</p>
+          {view.review.best ? (
+            <Tabs defaultValue="first">
+              <TabsList>
+                <TabsTrigger value="first">Πρώτη προσπάθεια</TabsTrigger>
+                <TabsTrigger value="best">Καλύτερη προσπάθεια</TabsTrigger>
+              </TabsList>
+              <TabsContent value="first">
+                <QuizReviewAnswers answers={view.review.answers} locale="el" />
+              </TabsContent>
+              <TabsContent value="best">
+                <QuizReviewAnswers
+                  answers={view.review.best.answers}
+                  locale="el"
+                />
+              </TabsContent>
+            </Tabs>
+          ) : (
             <QuizReviewAnswers answers={view.review.answers} locale="el" />
-          </div>
-          {view.review.best && (
-            <div>
-              <p className="mb-2 text-sm font-medium">
-                Καλύτερη προσπάθεια
-              </p>
-              <QuizReviewAnswers
-                answers={view.review.best.answers}
-                locale="el"
-              />
-            </div>
           )}
           <div className="flex gap-2">
             <Button

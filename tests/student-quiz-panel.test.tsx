@@ -335,6 +335,96 @@ describe("StudentQuizPanel", () => {
     });
   });
 
+  it("shows the first and best attempts as separate tabs, switching content on click", async () => {
+    const user = userEvent.setup();
+    const getQuizReviewAction = vi.mocked(quizActions.getQuizReviewAction);
+    getQuizReviewAction.mockResolvedValue({
+      attemptId: "attempt-1",
+      quizId: "quiz-1",
+      quizTitle: "Chapter 3 Quiz",
+      score: 0,
+      maxScore: 1,
+      submittedAt: "2026-01-01T00:00:00Z",
+      answers: [
+        {
+          questionId: "q1",
+          questionText: "2 + 2 = ?",
+          questionType: "multiple_choice",
+          imageUrl: null,
+          selectedOptionId: "opt-2",
+          selectedOptionText: "Wrong first answer",
+          textAnswer: null,
+          correctOptionId: "opt-1",
+          correctOptionText: "4",
+          isCorrect: false,
+          pointsAwarded: 0,
+          pointsPossible: 1,
+        },
+      ],
+      attemptsUsed: 2,
+      maxAttempts: null,
+      canRetake: true,
+      best: {
+        score: 1,
+        submittedAt: "2026-01-03T00:00:00Z",
+        answers: [
+          {
+            questionId: "q1",
+            questionText: "2 + 2 = ?",
+            questionType: "multiple_choice",
+            imageUrl: null,
+            selectedOptionId: "opt-1",
+            selectedOptionText: "Correct best answer",
+            textAnswer: null,
+            correctOptionId: "opt-1",
+            correctOptionText: "4",
+            isCorrect: true,
+            pointsAwarded: 1,
+            pointsPossible: 1,
+          },
+        ],
+      },
+    });
+
+    render(
+      <StudentQuizPanel
+        quizzes={[
+          {
+            ...quizzes[0],
+            completed: true,
+            score: 0,
+            bestScore: 1,
+            attemptsUsed: 2,
+            canRetake: true,
+            submittedAt: "2026-01-01T00:00:00Z",
+          },
+        ]}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /ανασκόπηση/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("tab", { name: /πρώτη προσπάθεια/i }),
+      ).toBeInTheDocument();
+    });
+
+    // The first tab is active by default, and its attempt was wrong.
+    expect(screen.getByText("Λάθος")).toBeInTheDocument();
+    expect(screen.queryByText("Σωστό")).not.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("tab", { name: /καλύτερη προσπάθεια/i }),
+    );
+
+    // The best attempt was correct, and the first attempt's panel is gone.
+    await waitFor(() => {
+      expect(screen.getByText("Σωστό")).toBeInTheDocument();
+      expect(screen.queryByText("Λάθος")).not.toBeInTheDocument();
+    });
+  });
+
   it("renders a true/false question with True/False options when taking a quiz", async () => {
     const user = userEvent.setup();
     const getQuizForTakingAction = vi.mocked(
