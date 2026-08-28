@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
 import { TeacherQuizBuilder } from "@/components/teacher-quiz-builder";
@@ -1076,6 +1082,90 @@ describe("TeacherQuizBuilder", () => {
         );
       });
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("quiz markdown template", () => {
+    it("downloads a quiz-template.md file", async () => {
+      const user = userEvent.setup();
+      const createObjectURL = vi
+        .spyOn(URL, "createObjectURL")
+        .mockReturnValue("blob:quiz-template");
+      const revokeObjectURL = vi
+        .spyOn(URL, "revokeObjectURL")
+        .mockImplementation(() => {});
+      const clickSpy = vi
+        .spyOn(HTMLAnchorElement.prototype, "click")
+        .mockImplementation(() => {});
+
+      render(<TeacherQuizBuilder classes={classes} initialQuizzes={[]} />);
+      await user.click(
+        screen.getByRole("button", { name: /download template/i }),
+      );
+
+      expect(createObjectURL).toHaveBeenCalledWith(expect.any(Blob));
+      expect(clickSpy).toHaveBeenCalled();
+      expect(revokeObjectURL).toHaveBeenCalledWith("blob:quiz-template");
+
+      createObjectURL.mockRestore();
+      revokeObjectURL.mockRestore();
+      clickSpy.mockRestore();
+    });
+
+    it("opens the checker pre-filled with a valid example", async () => {
+      const user = userEvent.setup();
+      render(<TeacherQuizBuilder classes={classes} initialQuizzes={[]} />);
+
+      await user.click(
+        screen.getByRole("button", { name: /check quiz markdown/i }),
+      );
+
+      expect(
+        await screen.findByText(/looks good/i),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /use this quiz/i }),
+      ).toBeEnabled();
+    });
+
+    it("reports every problem in broken markdown instead of just the first", async () => {
+      const user = userEvent.setup();
+      render(<TeacherQuizBuilder classes={classes} initialQuizzes={[]} />);
+
+      await user.click(
+        screen.getByRole("button", { name: /check quiz markdown/i }),
+      );
+      const textarea = await screen.findByLabelText(
+        /quiz markdown to validate/i,
+      );
+      fireEvent.change(textarea, {
+        target: { value: "# Quiz\n## Q1\n## Q2 {type=true_false}" },
+      });
+
+      expect(
+        await screen.findByText(/found 3 problems/i),
+      ).toBeInTheDocument();
+      expect(screen.getAllByText(/question 1:/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/question 2:/i).length).toBeGreaterThan(0);
+      expect(
+        screen.getByRole("button", { name: /use this quiz/i }),
+      ).toBeDisabled();
+    });
+
+    it("loads the checked quiz into the create form on Use this quiz", async () => {
+      const user = userEvent.setup();
+      render(<TeacherQuizBuilder classes={classes} initialQuizzes={[]} />);
+
+      await user.click(
+        screen.getByRole("button", { name: /check quiz markdown/i }),
+      );
+      await screen.findByText(/looks good/i);
+      await user.click(screen.getByRole("button", { name: /use this quiz/i }));
+
+      await screen.findByRole("dialog");
+      expect(screen.getByLabelText(/title/i)).toHaveValue(
+        "Chapter 3 Quiz: Derivatives",
+      );
     });
   });
 
