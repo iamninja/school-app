@@ -69,7 +69,13 @@ export function PortalUpcomingCard({
   days = 14,
   limit = 5,
 }: {
-  classes: Array<{ id: string; name: string; archivedAt: string | null }>;
+  classes: Array<{
+    id: string;
+    name: string;
+    archivedAt: string | null;
+    startDate?: string | null;
+    finishDate?: string | null;
+  }>;
   schedules: Array<{ class_id: string; day: string; time: string }>;
   calendarEvents: Array<{
     id: string;

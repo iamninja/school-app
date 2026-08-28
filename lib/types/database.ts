@@ -57,6 +57,8 @@ export interface Class {
   teacher_id: string | null;
   archived_at: string | null;
   created_at?: string;
+  start_date?: string | null;
+  finish_date?: string | null;
 }
 
 export interface StudentClassAssignment {
@@ -407,6 +409,8 @@ export interface StudentDashboardData {
     name: string;
     hoursPerWeek: number;
     archivedAt: string | null;
+    startDate?: string | null;
+    finishDate?: string | null;
   }>;
   schedules: Array<{
     class_id: string;
@@ -438,6 +442,8 @@ export interface ParentDashboardChild {
     name: string;
     hoursPerWeek: number;
     archivedAt: string | null;
+    startDate?: string | null;
+    finishDate?: string | null;
   }>;
   schedules: Array<{
     class_id: string;

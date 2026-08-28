@@ -38,6 +38,8 @@ type StudentDashboardProps = {
     name: string;
     hoursPerWeek: number;
     archivedAt: string | null;
+    startDate?: string | null;
+    finishDate?: string | null;
   }>;
   schedules: Array<{
     class_id: string;

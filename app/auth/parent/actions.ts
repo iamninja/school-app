@@ -210,7 +210,9 @@ export async function getParentDashboardDataAction(): Promise<
             id,
             name,
             hours_per_week,
-            archived_at
+            archived_at,
+            start_date,
+            finish_date
           )
         `,
         )
@@ -405,6 +407,8 @@ export async function getParentDashboardDataAction(): Promise<
               name: a.classes.name,
               hoursPerWeek: a.classes.hours_per_week,
               archivedAt: a.classes.archived_at,
+              startDate: a.classes.start_date ?? null,
+              finishDate: a.classes.finish_date ?? null,
             }),
           ) || [],
         schedules,
