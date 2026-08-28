@@ -86,7 +86,7 @@ describe("StudentQuizPanel", () => {
     expect(container.querySelector(".katex")).not.toBeNull();
   });
 
-  it("shows a Review button with score for a completed quiz", () => {
+  it("shows a Review button and an official-score badge for a completed quiz", () => {
     render(
       <StudentQuizPanel
         quizzes={[
@@ -101,8 +101,9 @@ describe("StudentQuizPanel", () => {
     );
 
     expect(
-      screen.getByRole("button", { name: /1 \/ 1.*ανασκόπηση/i }),
+      screen.getByRole("button", { name: /ανασκόπηση/i }),
     ).toBeInTheDocument();
+    expect(screen.getByText(/επίσημος: 1 \/ 1/i)).toBeInTheDocument();
   });
 
   it("shows a plain score badge with no review button for a deleted quiz", () => {
@@ -253,7 +254,7 @@ describe("StudentQuizPanel", () => {
       expect(submitQuizAttemptAction).toHaveBeenCalledWith("quiz-1", [
         { questionId: "q1", selectedOptionId: "opt-1" },
       ]);
-      expect(screen.getByText("1 / 1")).toBeInTheDocument();
+      expect(screen.getByText(/επίσημος: 1 \/ 1/i)).toBeInTheDocument();
       expect(screen.getByText(/σωστό/i)).toBeInTheDocument();
     });
   });
@@ -326,13 +327,11 @@ describe("StudentQuizPanel", () => {
       />,
     );
 
-    await user.click(
-      screen.getByRole("button", { name: /1 \/ 1.*ανασκόπηση/i }),
-    );
+    await user.click(screen.getByRole("button", { name: /ανασκόπηση/i }));
 
     await waitFor(() => {
       expect(getQuizReviewAction).toHaveBeenCalledWith("quiz-1");
-      expect(screen.getByText("1 / 1")).toBeInTheDocument();
+      expect(screen.getByText(/επίσημος: 1 \/ 1/i)).toBeInTheDocument();
     });
   });
 
@@ -456,7 +455,7 @@ describe("StudentQuizPanel", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: /0 \/ 1.*ανασκόπηση/i }));
+    await user.click(screen.getByRole("button", { name: /ανασκόπηση/i }));
 
     await waitFor(() => {
       expect(

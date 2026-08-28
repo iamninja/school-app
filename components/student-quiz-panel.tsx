@@ -297,14 +297,19 @@ export function StudentQuizPanel({
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-2xl font-bold">
-            {view.review.score} / {view.review.maxScore}
-          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline" className="text-base font-bold">
+              Επίσημος: {view.review.score} / {view.review.maxScore}
+            </Badge>
+            {view.review.best && (
+              <Badge className="text-base font-bold">
+                Καλύτερος: {view.review.best.score} / {view.review.maxScore}
+              </Badge>
+            )}
+          </div>
           {view.review.attemptsUsed > 1 && (
             <p className="text-sm text-muted-foreground">
               {view.review.attemptsUsed} προσπάθειες
-              {view.review.best &&
-                ` — καλύτερη: ${view.review.best.score} / ${view.review.maxScore}`}
             </p>
           )}
           <div>
@@ -366,16 +371,20 @@ export function StudentQuizPanel({
           {quiz.score} / {quiz.maxScore}
         </Badge>
       ) : quiz.completed ? (
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="outline">
+            Επίσημος: {quiz.score} / {quiz.maxScore}
+          </Badge>
+          {quiz.attemptsUsed > 1 && (
+            <Badge>Καλύτερος: {quiz.bestScore} / {quiz.maxScore}</Badge>
+          )}
           <Button
             variant="outline"
             size="sm"
             disabled={isLoading}
             onClick={() => handleViewReview(quiz.id)}
           >
-            {quiz.score} / {quiz.maxScore}
-            {quiz.attemptsUsed > 1 && ` · καλύτερη ${quiz.bestScore}`}
-            {" · Ανασκόπηση"}
+            Ανασκόπηση
           </Button>
           {quiz.canRetake && (
             <Button
