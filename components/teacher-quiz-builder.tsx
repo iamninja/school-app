@@ -1106,9 +1106,9 @@ export function TeacherQuizBuilder({
               return (
                 <div
                   key={classOption.id}
-                  className="flex items-center gap-3 rounded-md border p-3 text-sm"
+                  className="flex flex-col gap-2 rounded-md border p-3 text-sm"
                 >
-                  <label className="flex flex-1 items-center gap-3">
+                  <label className="flex items-center gap-3">
                     <Checkbox
                       checked={isAssigned}
                       disabled={isTogglingAssignment}
@@ -1119,8 +1119,8 @@ export function TeacherQuizBuilder({
                     <span className="flex-1">{classOption.name}</span>
                   </label>
                   {isAssigned && (
-                    <>
-                      <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <div className="flex flex-wrap items-center gap-4 pl-7 text-xs text-muted-foreground">
+                      <label className="flex items-center gap-2">
                         <Checkbox
                           checked={assignedClass.shuffleQuestions}
                           disabled={isTogglingAssignment}
@@ -1133,7 +1133,7 @@ export function TeacherQuizBuilder({
                         />
                         Shuffle questions
                       </label>
-                      <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <label className="flex items-center gap-2">
                         Max attempts
                         <Input
                           type="number"
@@ -1161,7 +1161,7 @@ export function TeacherQuizBuilder({
                           }
                         />
                       </label>
-                    </>
+                    </div>
                   )}
                 </div>
               );
