@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { EDITABLE_COMMENT_LABELS, EditableComment } from "@/components/editable-comment";
 import { MathText } from "@/components/math-text";
 import { QuizQuestionImage } from "@/components/quiz-question-image";
@@ -13,6 +14,8 @@ const LABELS = {
     correctAnswer: "Correct answer:",
     correct: "Correct",
     incorrect: "Incorrect",
+    markCorrect: "Mark correct",
+    markIncorrect: "Mark incorrect",
   },
   el: {
     answer: "Απάντηση:",
@@ -22,6 +25,8 @@ const LABELS = {
     correctAnswer: "Σωστή απάντηση:",
     correct: "Σωστό",
     incorrect: "Λάθος",
+    markCorrect: "Σήμανση ως σωστό",
+    markIncorrect: "Σήμανση ως λάθος",
   },
 };
 
@@ -37,6 +42,8 @@ export function QuizReviewAnswers({
   answers,
   locale = "en",
   onSaveComment,
+  onGrade,
+  gradingAnswerId,
 }: {
   answers: QuizAttemptAnswerReview[];
   locale?: "en" | "el";
@@ -44,6 +51,13 @@ export function QuizReviewAnswers({
     answer: QuizAttemptAnswerReview,
     comment: string | null,
   ) => Promise<void> | void;
+  // Renders Mark correct/incorrect buttons for a short-answer response
+  // still awaiting review. The student/parent side never passes this.
+  onGrade?: (
+    answer: QuizAttemptAnswerReview,
+    isCorrect: boolean,
+  ) => Promise<void> | void;
+  gradingAnswerId?: string | null;
 }) {
   const labels = LABELS[locale];
   const commentLabels = EDITABLE_COMMENT_LABELS[locale];
@@ -76,7 +90,30 @@ export function QuizReviewAnswers({
                 {labels.answer} {answer.textAnswer || labels.noAnswer}
               </p>
               {answer.isCorrect === null ? (
-                <Badge variant="outline">{labels.awaitingReview}</Badge>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="outline">{labels.awaitingReview}</Badge>
+                  {onGrade && (
+                    <>
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={gradingAnswerId === answer.answerId}
+                        onClick={() => onGrade(answer, true)}
+                      >
+                        {labels.markCorrect}
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={gradingAnswerId === answer.answerId}
+                        onClick={() => onGrade(answer, false)}
+                      >
+                        {labels.markIncorrect}
+                      </Button>
+                    </>
+                  )}
+                </div>
               ) : (
                 <Badge variant={answer.isCorrect ? "default" : "destructive"}>
                   {answer.isCorrect ? labels.correct : labels.incorrect}
