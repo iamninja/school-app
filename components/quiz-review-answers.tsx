@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/badge";
+import { EDITABLE_COMMENT_LABELS, EditableComment } from "@/components/editable-comment";
 import { MathText } from "@/components/math-text";
 import { QuizQuestionImage } from "@/components/quiz-question-image";
 import type { QuizAttemptAnswerReview } from "@/lib/types/database";
@@ -28,15 +29,24 @@ const LABELS = {
  * Renders a list of graded quiz answers - shared between the student's own
  * review and the teacher's view of a specific student's answers, so the
  * strings are locale-switched rather than hardcoded to either side.
+ * Comment editing only renders when a teacher-side caller passes
+ * onSaveComment - the student/parent side never does, so they only ever
+ * see the comment as read-only text.
  */
 export function QuizReviewAnswers({
   answers,
   locale = "en",
+  onSaveComment,
 }: {
   answers: QuizAttemptAnswerReview[];
   locale?: "en" | "el";
+  onSaveComment?: (
+    answer: QuizAttemptAnswerReview,
+    comment: string | null,
+  ) => Promise<void> | void;
 }) {
   const labels = LABELS[locale];
+  const commentLabels = EDITABLE_COMMENT_LABELS[locale];
 
   return (
     <div className="space-y-3">
@@ -94,6 +104,15 @@ export function QuizReviewAnswers({
               </Badge>
             </div>
           )}
+          <EditableComment
+            comment={answer.teacherComment}
+            labels={commentLabels}
+            onSave={
+              onSaveComment
+                ? (comment) => onSaveComment(answer, comment)
+                : undefined
+            }
+          />
         </div>
       ))}
     </div>

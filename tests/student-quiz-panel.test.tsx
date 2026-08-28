@@ -220,6 +220,7 @@ describe("StudentQuizPanel", () => {
       submittedAt: "2026-01-02T00:00:00Z",
       answers: [
         {
+          answerId: "answer-1",
           questionId: "q1",
           questionText: "2 + 2 = ?",
           questionType: "multiple_choice",
@@ -232,6 +233,7 @@ describe("StudentQuizPanel", () => {
           isCorrect: true,
           pointsAwarded: 1,
           pointsPossible: 1,
+          teacherComment: null,
         },
       ],
       attemptsUsed: 1,
@@ -294,6 +296,7 @@ describe("StudentQuizPanel", () => {
       submittedAt: "2026-01-02T00:00:00Z",
       answers: [
         {
+          answerId: "answer-1",
           questionId: "q1",
           questionText: "2 + 2 = ?",
           questionType: "multiple_choice",
@@ -306,6 +309,7 @@ describe("StudentQuizPanel", () => {
           isCorrect: true,
           pointsAwarded: 1,
           pointsPossible: 1,
+          teacherComment: null,
         },
       ],
       attemptsUsed: 1,
@@ -347,6 +351,7 @@ describe("StudentQuizPanel", () => {
       submittedAt: "2026-01-01T00:00:00Z",
       answers: [
         {
+          answerId: "answer-1",
           questionId: "q1",
           questionText: "2 + 2 = ?",
           questionType: "multiple_choice",
@@ -359,6 +364,7 @@ describe("StudentQuizPanel", () => {
           isCorrect: false,
           pointsAwarded: 0,
           pointsPossible: 1,
+          teacherComment: null,
         },
       ],
       attemptsUsed: 2,
@@ -369,6 +375,7 @@ describe("StudentQuizPanel", () => {
         submittedAt: "2026-01-03T00:00:00Z",
         answers: [
           {
+            answerId: "answer-1",
             questionId: "q1",
             questionText: "2 + 2 = ?",
             questionType: "multiple_choice",
@@ -381,6 +388,7 @@ describe("StudentQuizPanel", () => {
             isCorrect: true,
             pointsAwarded: 1,
             pointsPossible: 1,
+            teacherComment: null,
           },
         ],
       },
@@ -512,6 +520,7 @@ describe("StudentQuizPanel", () => {
       submittedAt: "2026-01-02T00:00:00Z",
       answers: [
         {
+          answerId: "answer-1",
           questionId: "q1",
           questionText: "Explain your reasoning",
           questionType: "short_answer",
@@ -524,6 +533,7 @@ describe("StudentQuizPanel", () => {
           isCorrect: null,
           pointsAwarded: null,
           pointsPossible: 1,
+          teacherComment: null,
         },
       ],
       attemptsUsed: 1,

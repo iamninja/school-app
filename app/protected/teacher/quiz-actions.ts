@@ -779,7 +779,7 @@ export async function getStudentQuizAttemptAction(
   const { data: answers, error: answersError } = await supabase
     .from("quiz_attempt_answers")
     .select(
-      "question_id, selected_option_id, text_answer, is_correct, points_awarded",
+      "id, question_id, selected_option_id, text_answer, is_correct, points_awarded, teacher_comment",
     )
     .eq("attempt_id", attempt.id);
 
@@ -826,11 +826,13 @@ export async function getStudentQuizAttemptAction(
   );
 
   function mapToReview(row: {
+    id: string;
     question_id: string;
     selected_option_id: string | null;
     text_answer: string | null;
     is_correct: boolean | null;
     points_awarded: number | null;
+    teacher_comment: string | null;
   }): QuizAttemptAnswerReview {
     const question = questionById.get(row.question_id);
     const correctOption = correctOptionByQuestion.get(row.question_id);
@@ -839,6 +841,7 @@ export async function getStudentQuizAttemptAction(
       : undefined;
 
     return {
+      answerId: row.id,
       questionId: row.question_id,
       questionText: question?.question_text ?? "",
       questionType:
@@ -854,6 +857,7 @@ export async function getStudentQuizAttemptAction(
       isCorrect: row.is_correct,
       pointsAwarded: row.points_awarded,
       pointsPossible: question?.points ?? 0,
+      teacherComment: row.teacher_comment,
     };
   }
 
@@ -872,7 +876,7 @@ export async function getStudentQuizAttemptAction(
     const { data: bestAnswerRows } = await supabase
       .from("quiz_attempt_best_answers")
       .select(
-        "question_id, selected_option_id, text_answer, is_correct, points_awarded",
+        "id, question_id, selected_option_id, text_answer, is_correct, points_awarded, teacher_comment",
       )
       .eq("attempt_id", attempt.id);
 
@@ -1020,17 +1024,21 @@ export async function getQuizQuestionBreakdownAction(
     attemptIds.length > 0
       ? await supabase
           .from("quiz_attempt_answers")
-          .select("attempt_id, question_id, selected_option_id, text_answer, is_correct")
+          .select(
+            "id, attempt_id, question_id, selected_option_id, text_answer, is_correct, teacher_comment",
+          )
           .in("attempt_id", attemptIds)
       : { data: [] as never[] };
 
   const answersByQuestion = new Map<
     string,
     {
+      id: string;
       attempt_id: string;
       selected_option_id: string | null;
       text_answer: string | null;
       is_correct: boolean | null;
+      teacher_comment: string | null;
     }[]
   >();
   for (const answer of answers ?? []) {
@@ -1062,6 +1070,7 @@ export async function getQuizQuestionBreakdownAction(
             : undefined;
 
           return {
+            answerId: answer.id,
             studentId: studentId ?? "",
             studentName: student
               ? `${student.first_name} ${student.last_name}`
@@ -1069,6 +1078,7 @@ export async function getQuizQuestionBreakdownAction(
             selectedOptionText: selectedOption?.option_text ?? null,
             textAnswer: answer.text_answer,
             isCorrect: answer.is_correct,
+            teacherComment: answer.teacher_comment,
           };
         })
         .sort((a, b) => a.studentName.localeCompare(b.studentName));
@@ -1162,7 +1172,7 @@ export async function getClassPendingGradingAction(
 
   const { data: answers, error: answersError } = await supabase
     .from("quiz_attempt_answers")
-    .select("id, attempt_id, question_id, text_answer")
+    .select("id, attempt_id, question_id, text_answer, teacher_comment")
     .in("attempt_id", attemptIds)
     .is("is_correct", null)
     .not("text_answer", "is", null);
@@ -1221,6 +1231,7 @@ export async function getClassPendingGradingAction(
           ? `${student.first_name} ${student.last_name}`
           : "Unknown student",
         textAnswer: answer.text_answer,
+        teacherComment: answer.teacher_comment,
       };
     })
     .sort(
@@ -1279,6 +1290,7 @@ async function recomputeBestScore(
 export async function gradeShortAnswerAction(
   answerId: string,
   isCorrect: boolean,
+  comment?: string | null,
 ): Promise<void> {
   const supabase = await createClient();
   const {
@@ -1326,10 +1338,15 @@ export async function gradeShortAnswerAction(
   }
 
   const pointsAwarded = isCorrect ? question.points : 0;
+  const trimmedComment = comment?.trim() || null;
 
   const { error: updateError } = await supabase
     .from("quiz_attempt_answers")
-    .update({ is_correct: isCorrect, points_awarded: pointsAwarded })
+    .update({
+      is_correct: isCorrect,
+      points_awarded: pointsAwarded,
+      ...(comment !== undefined ? { teacher_comment: trimmedComment } : {}),
+    })
     .eq("id", answerId);
 
   if (updateError) {
@@ -1354,7 +1371,11 @@ export async function gradeShortAnswerAction(
   if (bestAnswer && bestAnswer.text_answer === answer.text_answer) {
     const { error: bestUpdateError } = await supabase
       .from("quiz_attempt_best_answers")
-      .update({ is_correct: isCorrect, points_awarded: pointsAwarded })
+      .update({
+        is_correct: isCorrect,
+        points_awarded: pointsAwarded,
+        ...(comment !== undefined ? { teacher_comment: trimmedComment } : {}),
+      })
       .eq("id", bestAnswer.id);
 
     if (bestUpdateError) {
@@ -1362,5 +1383,73 @@ export async function gradeShortAnswerAction(
     }
 
     await recomputeBestScore(supabase, attempt.id);
+  }
+}
+
+/**
+ * Adds, edits, or clears a teacher's free-text comment on one answer -
+ * independent of grading, works for any question type, and doesn't touch
+ * is_correct/points_awarded. `table` says which snapshot the row belongs
+ * to: the official first-attempt answer (quiz_attempt_answers) or a later
+ * retry's best-attempt answer (quiz_attempt_best_answers) - the two are
+ * separate rows with their own ids, so the caller (which already knows
+ * whether it's rendering QuizAttemptReview's `answers` or `best.answers`)
+ * must say which one it's editing. No first/best sync here, unlike
+ * gradeShortAnswerAction - a comment is tied to the specific row a teacher
+ * was looking at, not something that needs to follow matching submissions.
+ */
+export async function setAnswerCommentAction(
+  answerId: string,
+  comment: string | null,
+  table: "attempt" | "best" = "attempt",
+): Promise<void> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error("Not authenticated");
+  }
+
+  await requireTeacher(supabase, user.id);
+
+  const tableName =
+    table === "best" ? "quiz_attempt_best_answers" : "quiz_attempt_answers";
+
+  const { data: answer, error: answerError } = await supabase
+    .from(tableName)
+    .select("id, attempt_id")
+    .eq("id", answerId)
+    .single();
+
+  if (answerError || !answer) {
+    throw new Error("Answer not found");
+  }
+
+  // Both tables' attempt_id points at quiz_attempts.id (quiz_attempt_bests
+  // uses that same id as its own primary key), so this ownership check
+  // works the same regardless of which table we're editing.
+  const { data: attempt, error: attemptError } = await supabase
+    .from("quiz_attempts")
+    .select("quiz_id")
+    .eq("id", answer.attempt_id)
+    .single();
+
+  if (attemptError || !attempt) {
+    throw new Error("Attempt not found");
+  }
+
+  await requireOwnedQuiz(supabase, attempt.quiz_id, user.id);
+
+  const trimmedComment = comment?.trim() || null;
+
+  const { error: updateError } = await supabase
+    .from(tableName)
+    .update({ teacher_comment: trimmedComment })
+    .eq("id", answerId);
+
+  if (updateError) {
+    throw updateError;
   }
 }

@@ -265,6 +265,7 @@ describe("TeacherDashboard class detail - rendering and navigation", () => {
     vi.mocked(quizActions.getClassPendingGradingAction).mockResolvedValue([]);
 
     await openAlgebraDetail(user);
+    await user.click(screen.getByText("Chapter 3 Quiz"));
 
     await waitFor(() => {
       expect(
@@ -292,6 +293,7 @@ describe("TeacherDashboard class detail - rendering and navigation", () => {
         studentId: "student-1",
         studentName: "Maya Carter",
         textAnswer: "Because 2x = 4, so x = 2",
+        teacherComment: null,
       },
     ]);
     gradeShortAnswerAction.mockResolvedValue(undefined);
@@ -300,6 +302,12 @@ describe("TeacherDashboard class detail - rendering and navigation", () => {
 
     await waitFor(() => {
       expect(getClassPendingGradingAction).toHaveBeenCalledWith("class-1");
+      expect(screen.getByText(/1 pending review/i)).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText("Chapter 3 Quiz"));
+
+    await waitFor(() => {
       expect(screen.getByText("Explain your reasoning")).toBeInTheDocument();
       expect(
         screen.getByText(/because 2x = 4, so x = 2/i),
@@ -309,7 +317,11 @@ describe("TeacherDashboard class detail - rendering and navigation", () => {
     await user.click(screen.getByRole("button", { name: /mark correct/i }));
 
     await waitFor(() => {
-      expect(gradeShortAnswerAction).toHaveBeenCalledWith("answer-1", true);
+      expect(gradeShortAnswerAction).toHaveBeenCalledWith(
+        "answer-1",
+        true,
+        null,
+      );
       expect(
         screen.queryByText("Explain your reasoning"),
       ).not.toBeInTheDocument();

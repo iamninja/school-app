@@ -185,6 +185,7 @@ export interface QuizAnswerInput {
 }
 
 export interface QuizAttemptAnswerReview {
+  answerId: string;
   questionId: string;
   questionText: string;
   questionType: QuizQuestionType;
@@ -197,6 +198,7 @@ export interface QuizAttemptAnswerReview {
   isCorrect: boolean | null;
   pointsAwarded: number | null;
   pointsPossible: number;
+  teacherComment: string | null;
 }
 
 // The current best-scoring attempt, once it has ever diverged from the
@@ -343,11 +345,13 @@ export interface QuizQuestionOptionBreakdown {
 }
 
 export interface QuizQuestionStudentAnswer {
+  answerId: string;
   studentId: string;
   studentName: string;
   selectedOptionText: string | null;
   textAnswer: string | null;
   isCorrect: boolean | null;
+  teacherComment: string | null;
 }
 
 export interface QuizQuestionBreakdown {
@@ -379,6 +383,7 @@ export interface PendingGradingItem {
   studentId: string;
   studentName: string;
   textAnswer: string | null;
+  teacherComment: string | null;
 }
 
 // Dashboard data types

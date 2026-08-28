@@ -21,6 +21,7 @@ import {
   getQuizQuestionBreakdownAction,
   getQuizResultsAction,
   getStudentQuizAttemptAction,
+  setAnswerCommentAction,
   setQuizAssignmentMaxAttemptsAction,
   setQuizAssignmentShuffleAction,
   unassignQuizFromClassAction,
@@ -44,6 +45,10 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  EDITABLE_COMMENT_LABELS,
+  EditableComment,
+} from "@/components/editable-comment";
 import { MathText } from "@/components/math-text";
 import { QuizQuestionImage } from "@/components/quiz-question-image";
 import { QuizReviewAnswers } from "@/components/quiz-review-answers";
@@ -63,6 +68,7 @@ import {
   type QuestionDraft,
 } from "@/components/quiz-question-editor";
 import type {
+  QuizAttemptAnswerReview,
   QuizAttemptReview,
   QuizQuestionBreakdownResult,
   QuizResults,
@@ -294,6 +300,79 @@ export function TeacherQuizBuilder({
       );
     } finally {
       setIsLoadingAttempt(false);
+    }
+  };
+
+  const handleSaveAnswerComment = async (
+    table: "attempt" | "best",
+    answer: QuizAttemptAnswerReview,
+    comment: string | null,
+  ) => {
+    try {
+      await setAnswerCommentAction(answer.answerId, comment, table);
+      setStudentReview((prev) => {
+        if (!prev) return prev;
+        if (table === "attempt") {
+          return {
+            ...prev,
+            answers: prev.answers.map((row) =>
+              row.questionId === answer.questionId
+                ? { ...row, teacherComment: comment }
+                : row,
+            ),
+          };
+        }
+        if (!prev.best) return prev;
+        return {
+          ...prev,
+          best: {
+            ...prev.best,
+            answers: prev.best.answers.map((row) =>
+              row.questionId === answer.questionId
+                ? { ...row, teacherComment: comment }
+                : row,
+            ),
+          },
+        };
+      });
+    } catch (error: unknown) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to save comment",
+      );
+    }
+  };
+
+  const handleSaveBreakdownComment = async (
+    questionId: string,
+    answerId: string,
+    comment: string | null,
+  ) => {
+    try {
+      // The breakdown view only ever reads quiz_attempt_answers (the first/
+      // official attempt) - see getQuizQuestionBreakdownAction.
+      await setAnswerCommentAction(answerId, comment, "attempt");
+      setBreakdown((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          questions: prev.questions.map((question) =>
+            question.questionId === questionId
+              ? {
+                  ...question,
+                  studentAnswers: question.studentAnswers.map((row) =>
+                    row.answerId === answerId
+                      ? { ...row, teacherComment: comment }
+                      : row,
+                  ),
+                }
+              : question,
+          ),
+        };
+      });
+    } catch (error: unknown) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to save comment",
+      );
     }
   };
 
@@ -583,12 +662,22 @@ export function TeacherQuizBuilder({
                   <p className="mb-2 text-sm font-medium">
                     First attempt
                   </p>
-                  <QuizReviewAnswers answers={studentReview.answers} />
+                  <QuizReviewAnswers
+                    answers={studentReview.answers}
+                    onSaveComment={(answer, comment) =>
+                      handleSaveAnswerComment("attempt", answer, comment)
+                    }
+                  />
                 </div>
                 {studentReview.best && (
                   <div>
                     <p className="mb-2 text-sm font-medium">Best attempt</p>
-                    <QuizReviewAnswers answers={studentReview.best.answers} />
+                    <QuizReviewAnswers
+                      answers={studentReview.best.answers}
+                      onSaveComment={(answer, comment) =>
+                        handleSaveAnswerComment("best", answer, comment)
+                      }
+                    />
                   </div>
                 )}
               </>
@@ -688,34 +777,47 @@ export function TeacherQuizBuilder({
                           </p>
                           {question.studentAnswers.map((answer) => (
                             <div
-                              key={answer.studentId}
-                              className="flex items-center justify-between rounded-md border px-3 py-1.5 text-sm"
+                              key={answer.answerId}
+                              className="rounded-md border px-3 py-1.5 text-sm"
                             >
-                              <span>{answer.studentName}</span>
-                              <span className="flex items-center gap-2">
-                                <span className="text-muted-foreground">
-                                  {answer.selectedOptionText ? (
-                                    <MathText text={answer.selectedOptionText} />
-                                  ) : (
-                                    answer.textAnswer || "(no answer)"
+                              <div className="flex items-center justify-between">
+                                <span>{answer.studentName}</span>
+                                <span className="flex items-center gap-2">
+                                  <span className="text-muted-foreground">
+                                    {answer.selectedOptionText ? (
+                                      <MathText text={answer.selectedOptionText} />
+                                    ) : (
+                                      answer.textAnswer || "(no answer)"
+                                    )}
+                                  </span>
+                                  {answer.isCorrect === true && (
+                                    <Badge>Correct</Badge>
                                   )}
-                                </span>
-                                {answer.isCorrect === true && (
-                                  <Badge>Correct</Badge>
-                                )}
-                                {answer.isCorrect === false && (
-                                  <Badge variant="destructive">
-                                    Incorrect
-                                  </Badge>
-                                )}
-                                {answer.isCorrect === null &&
-                                  question.questionType ===
-                                    "short_answer" && (
-                                    <Badge variant="outline">
-                                      Awaiting review
+                                  {answer.isCorrect === false && (
+                                    <Badge variant="destructive">
+                                      Incorrect
                                     </Badge>
                                   )}
-                              </span>
+                                  {answer.isCorrect === null &&
+                                    question.questionType ===
+                                      "short_answer" && (
+                                      <Badge variant="outline">
+                                        Awaiting review
+                                      </Badge>
+                                    )}
+                                </span>
+                              </div>
+                              <EditableComment
+                                comment={answer.teacherComment}
+                                labels={EDITABLE_COMMENT_LABELS.en}
+                                onSave={(comment) =>
+                                  handleSaveBreakdownComment(
+                                    question.questionId,
+                                    answer.answerId,
+                                    comment,
+                                  )
+                                }
+                              />
                             </div>
                           ))}
                         </div>
