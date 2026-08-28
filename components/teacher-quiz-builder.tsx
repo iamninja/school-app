@@ -21,6 +21,8 @@ import {
   getQuizQuestionBreakdownAction,
   getQuizResultsAction,
   getStudentQuizAttemptAction,
+  setQuizAssignmentMaxAttemptsAction,
+  setQuizAssignmentShuffleAction,
   unassignQuizFromClassAction,
   updateQuizAction,
 } from "@/app/protected/teacher/quiz-actions";
@@ -103,6 +105,9 @@ export function TeacherQuizBuilder({
   const [manageQuizId, setManageQuizId] = React.useState<string | null>(null);
   const [isTogglingAssignment, setIsTogglingAssignment] =
     React.useState(false);
+  const [maxAttemptsDrafts, setMaxAttemptsDrafts] = React.useState<
+    Record<string, string>
+  >({});
 
   const [editQuizId, setEditQuizId] = React.useState<string | null>(null);
   const [editTitle, setEditTitle] = React.useState("");
@@ -322,7 +327,12 @@ export function TeacherQuizBuilder({
             ...quiz,
             assignedClasses: [
               ...quiz.assignedClasses,
-              { id: classId, name: classOption?.name ?? "" },
+              {
+                id: classId,
+                name: classOption?.name ?? "",
+                shuffleQuestions: false,
+                maxAttempts: 1,
+              },
             ],
           };
         }),
@@ -330,6 +340,80 @@ export function TeacherQuizBuilder({
     } catch (error: unknown) {
       toast.error(
         error instanceof Error ? error.message : "Failed to update assignment",
+      );
+    } finally {
+      setIsTogglingAssignment(false);
+    }
+  };
+
+  const handleSetMaxAttempts = async (classId: string, raw: string) => {
+    if (!manageQuizId) return;
+    const trimmed = raw.trim();
+    const nextMaxAttempts = trimmed === "" ? null : Number.parseInt(trimmed, 10);
+    if (
+      nextMaxAttempts !== null &&
+      (!Number.isInteger(nextMaxAttempts) || nextMaxAttempts < 1)
+    ) {
+      toast.error("Max attempts must be a positive number, or blank for unlimited");
+      setMaxAttemptsDrafts((prev) => {
+        const next = { ...prev };
+        delete next[classId];
+        return next;
+      });
+      return;
+    }
+
+    setIsTogglingAssignment(true);
+    try {
+      await setQuizAssignmentMaxAttemptsAction(
+        manageQuizId,
+        classId,
+        nextMaxAttempts,
+      );
+      setQuizzes((prev) =>
+        prev.map((quiz) => {
+          if (quiz.id !== manageQuizId) return quiz;
+          return {
+            ...quiz,
+            assignedClasses: quiz.assignedClasses.map((c) =>
+              c.id === classId ? { ...c, maxAttempts: nextMaxAttempts } : c,
+            ),
+          };
+        }),
+      );
+    } catch (error: unknown) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to update max attempts",
+      );
+    } finally {
+      setIsTogglingAssignment(false);
+      setMaxAttemptsDrafts((prev) => {
+        const next = { ...prev };
+        delete next[classId];
+        return next;
+      });
+    }
+  };
+
+  const handleToggleShuffle = async (classId: string, next: boolean) => {
+    if (!manageQuizId) return;
+    setIsTogglingAssignment(true);
+    try {
+      await setQuizAssignmentShuffleAction(manageQuizId, classId, next);
+      setQuizzes((prev) =>
+        prev.map((quiz) => {
+          if (quiz.id !== manageQuizId) return quiz;
+          return {
+            ...quiz,
+            assignedClasses: quiz.assignedClasses.map((c) =>
+              c.id === classId ? { ...c, shuffleQuestions: next } : c,
+            ),
+          };
+        }),
+      );
+    } catch (error: unknown) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to update shuffle setting",
       );
     } finally {
       setIsTogglingAssignment(false);
@@ -488,7 +572,25 @@ export function TeacherQuizBuilder({
                 <p className="text-2xl font-bold">
                   {studentReview.score} / {studentReview.maxScore}
                 </p>
-                <QuizReviewAnswers answers={studentReview.answers} />
+                {studentReview.attemptsUsed > 1 && (
+                  <p className="text-xs text-muted-foreground">
+                    {studentReview.attemptsUsed} attempts used
+                    {studentReview.best &&
+                      ` — best: ${studentReview.best.score} / ${studentReview.maxScore}`}
+                  </p>
+                )}
+                <div>
+                  <p className="mb-2 text-sm font-medium">
+                    First attempt
+                  </p>
+                  <QuizReviewAnswers answers={studentReview.answers} />
+                </div>
+                {studentReview.best && (
+                  <div>
+                    <p className="mb-2 text-sm font-medium">Best attempt</p>
+                    <QuizReviewAnswers answers={studentReview.best.answers} />
+                  </div>
+                )}
               </>
             ) : null}
           </CardContent>
@@ -670,6 +772,8 @@ export function TeacherQuizBuilder({
                         <p className="text-xs text-muted-foreground">
                           Submitted{" "}
                           {new Date(row.submittedAt).toLocaleDateString()}
+                          {row.attemptsUsed > 1 &&
+                            ` · ${row.attemptsUsed} attempts, best ${row.bestScore} / ${row.maxScore}`}
                         </p>
                       )}
                     </div>
@@ -995,24 +1099,71 @@ export function TeacherQuizBuilder({
           </DialogHeader>
           <div className="grid gap-2">
             {classes.map((classOption) => {
-              const isAssigned =
-                managedQuiz?.assignedClasses.some(
-                  (c) => c.id === classOption.id,
-                ) ?? false;
+              const assignedClass = managedQuiz?.assignedClasses.find(
+                (c) => c.id === classOption.id,
+              );
+              const isAssigned = assignedClass !== undefined;
               return (
-                <label
+                <div
                   key={classOption.id}
-                  className="flex items-center gap-3 rounded-md border p-3 text-sm"
+                  className="flex flex-col gap-2 rounded-md border p-3 text-sm"
                 >
-                  <Checkbox
-                    checked={isAssigned}
-                    disabled={isTogglingAssignment}
-                    onCheckedChange={() =>
-                      handleToggleAssignment(classOption.id, isAssigned)
-                    }
-                  />
-                  <span className="flex-1">{classOption.name}</span>
-                </label>
+                  <label className="flex items-center gap-3">
+                    <Checkbox
+                      checked={isAssigned}
+                      disabled={isTogglingAssignment}
+                      onCheckedChange={() =>
+                        handleToggleAssignment(classOption.id, isAssigned)
+                      }
+                    />
+                    <span className="flex-1">{classOption.name}</span>
+                  </label>
+                  {isAssigned && (
+                    <div className="flex flex-wrap items-center gap-4 pl-7 text-xs text-muted-foreground">
+                      <label className="flex items-center gap-2">
+                        <Checkbox
+                          checked={assignedClass.shuffleQuestions}
+                          disabled={isTogglingAssignment}
+                          onCheckedChange={() =>
+                            handleToggleShuffle(
+                              classOption.id,
+                              !assignedClass.shuffleQuestions,
+                            )
+                          }
+                        />
+                        Shuffle questions
+                      </label>
+                      <label className="flex items-center gap-2">
+                        Max attempts
+                        <Input
+                          type="number"
+                          min={1}
+                          className="h-7 w-16"
+                          placeholder="∞"
+                          disabled={isTogglingAssignment}
+                          value={
+                            maxAttemptsDrafts[classOption.id] ??
+                            (assignedClass.maxAttempts === null
+                              ? ""
+                              : String(assignedClass.maxAttempts))
+                          }
+                          onChange={(event) =>
+                            setMaxAttemptsDrafts((prev) => ({
+                              ...prev,
+                              [classOption.id]: event.target.value,
+                            }))
+                          }
+                          onBlur={(event) =>
+                            handleSetMaxAttempts(
+                              classOption.id,
+                              event.target.value,
+                            )
+                          }
+                        />
+                      </label>
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>

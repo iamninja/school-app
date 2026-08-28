@@ -28,6 +28,10 @@ const quizzes = [
     maxScore: 1,
     submittedAt: null,
     quizDeleted: false,
+    bestScore: null,
+    attemptsUsed: 0,
+    maxAttempts: null,
+    canRetake: false,
   },
 ];
 
@@ -82,7 +86,7 @@ describe("StudentQuizPanel", () => {
     expect(container.querySelector(".katex")).not.toBeNull();
   });
 
-  it("shows a Review button with score for a completed quiz", () => {
+  it("shows a Review button and an official-score badge for a completed quiz", () => {
     render(
       <StudentQuizPanel
         quizzes={[
@@ -97,8 +101,9 @@ describe("StudentQuizPanel", () => {
     );
 
     expect(
-      screen.getByRole("button", { name: /1 \/ 1.*ανασκόπηση/i }),
+      screen.getByRole("button", { name: /ανασκόπηση/i }),
     ).toBeInTheDocument();
+    expect(screen.getByText(/βαθμός: 1 \/ 1/i)).toBeInTheDocument();
   });
 
   it("shows a plain score badge with no review button for a deleted quiz", () => {
@@ -229,6 +234,10 @@ describe("StudentQuizPanel", () => {
           pointsPossible: 1,
         },
       ],
+      attemptsUsed: 1,
+      maxAttempts: null,
+      canRetake: false,
+      best: null,
     });
 
     render(<StudentQuizPanel quizzes={quizzes} />);
@@ -245,7 +254,7 @@ describe("StudentQuizPanel", () => {
       expect(submitQuizAttemptAction).toHaveBeenCalledWith("quiz-1", [
         { questionId: "q1", selectedOptionId: "opt-1" },
       ]);
-      expect(screen.getByText("1 / 1")).toBeInTheDocument();
+      expect(screen.getByText(/βαθμός: 1 \/ 1/i)).toBeInTheDocument();
       expect(screen.getByText(/σωστό/i)).toBeInTheDocument();
     });
   });
@@ -299,6 +308,10 @@ describe("StudentQuizPanel", () => {
           pointsPossible: 1,
         },
       ],
+      attemptsUsed: 1,
+      maxAttempts: null,
+      canRetake: false,
+      best: null,
     });
 
     render(
@@ -314,13 +327,101 @@ describe("StudentQuizPanel", () => {
       />,
     );
 
-    await user.click(
-      screen.getByRole("button", { name: /1 \/ 1.*ανασκόπηση/i }),
-    );
+    await user.click(screen.getByRole("button", { name: /ανασκόπηση/i }));
 
     await waitFor(() => {
       expect(getQuizReviewAction).toHaveBeenCalledWith("quiz-1");
-      expect(screen.getByText("1 / 1")).toBeInTheDocument();
+      expect(screen.getByText(/βαθμός: 1 \/ 1/i)).toBeInTheDocument();
+    });
+  });
+
+  it("shows the first and best attempts as separate tabs, switching content on click", async () => {
+    const user = userEvent.setup();
+    const getQuizReviewAction = vi.mocked(quizActions.getQuizReviewAction);
+    getQuizReviewAction.mockResolvedValue({
+      attemptId: "attempt-1",
+      quizId: "quiz-1",
+      quizTitle: "Chapter 3 Quiz",
+      score: 0,
+      maxScore: 1,
+      submittedAt: "2026-01-01T00:00:00Z",
+      answers: [
+        {
+          questionId: "q1",
+          questionText: "2 + 2 = ?",
+          questionType: "multiple_choice",
+          imageUrl: null,
+          selectedOptionId: "opt-2",
+          selectedOptionText: "Wrong first answer",
+          textAnswer: null,
+          correctOptionId: "opt-1",
+          correctOptionText: "4",
+          isCorrect: false,
+          pointsAwarded: 0,
+          pointsPossible: 1,
+        },
+      ],
+      attemptsUsed: 2,
+      maxAttempts: null,
+      canRetake: true,
+      best: {
+        score: 1,
+        submittedAt: "2026-01-03T00:00:00Z",
+        answers: [
+          {
+            questionId: "q1",
+            questionText: "2 + 2 = ?",
+            questionType: "multiple_choice",
+            imageUrl: null,
+            selectedOptionId: "opt-1",
+            selectedOptionText: "Correct best answer",
+            textAnswer: null,
+            correctOptionId: "opt-1",
+            correctOptionText: "4",
+            isCorrect: true,
+            pointsAwarded: 1,
+            pointsPossible: 1,
+          },
+        ],
+      },
+    });
+
+    render(
+      <StudentQuizPanel
+        quizzes={[
+          {
+            ...quizzes[0],
+            completed: true,
+            score: 0,
+            bestScore: 1,
+            attemptsUsed: 2,
+            canRetake: true,
+            submittedAt: "2026-01-01T00:00:00Z",
+          },
+        ]}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /ανασκόπηση/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("tab", { name: /πρώτη προσπάθεια/i }),
+      ).toBeInTheDocument();
+    });
+
+    // The first tab is active by default, and its attempt was wrong.
+    expect(screen.getByText("Λάθος")).toBeInTheDocument();
+    expect(screen.queryByText("Σωστό")).not.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("tab", { name: /καλύτερη προσπάθεια/i }),
+    );
+
+    // The best attempt was correct, and the first attempt's panel is gone.
+    await waitFor(() => {
+      expect(screen.getByText("Σωστό")).toBeInTheDocument();
+      expect(screen.queryByText("Λάθος")).not.toBeInTheDocument();
     });
   });
 
@@ -425,6 +526,10 @@ describe("StudentQuizPanel", () => {
           pointsPossible: 1,
         },
       ],
+      attemptsUsed: 1,
+      maxAttempts: null,
+      canRetake: false,
+      best: null,
     });
 
     const { container } = render(
@@ -440,7 +545,7 @@ describe("StudentQuizPanel", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: /0 \/ 1.*ανασκόπηση/i }));
+    await user.click(screen.getByRole("button", { name: /ανασκόπηση/i }));
 
     await waitFor(() => {
       expect(
@@ -496,6 +601,10 @@ describe("StudentQuizPanel", () => {
       maxScore: 1,
       submittedAt: "2026-01-02T00:00:00Z",
       answers: [],
+      attemptsUsed: 1,
+      maxAttempts: null,
+      canRetake: false,
+      best: null,
     });
 
     render(<StudentQuizPanel quizzes={quizzes} />);

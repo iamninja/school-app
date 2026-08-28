@@ -98,6 +98,9 @@ export interface QuizAssignment {
   quiz_id: string;
   class_id: string;
   assigned_at: string;
+  shuffle_questions: boolean;
+  // Number of attempts a student gets under this assignment; null = unlimited.
+  max_attempts: number | null;
 }
 
 export type QuizQuestionType = "multiple_choice" | "true_false" | "short_answer";
@@ -196,6 +199,16 @@ export interface QuizAttemptAnswerReview {
   pointsPossible: number;
 }
 
+// The current best-scoring attempt, once it has ever diverged from the
+// official (first) one - i.e. present only once attemptsUsed > 1. Never
+// itself a source of "how many tries are left" - see attemptsUsed/
+// maxAttempts on the containing QuizAttemptReview for that.
+export interface QuizAttemptBestSummary {
+  score: number;
+  submittedAt: string;
+  answers: QuizAttemptAnswerReview[];
+}
+
 export interface QuizAttemptReview {
   attemptId: string;
   quizId: string;
@@ -204,6 +217,12 @@ export interface QuizAttemptReview {
   maxScore: number;
   submittedAt: string;
   answers: QuizAttemptAnswerReview[];
+  attemptsUsed: number;
+  // null = unlimited retakes for this student's assignment(s) of this quiz.
+  maxAttempts: number | null;
+  canRetake: boolean;
+  // null when there's been no retry yet (best === official).
+  best: QuizAttemptBestSummary | null;
 }
 
 // Quiz summary shown on student/parent dashboards - covers both
@@ -221,6 +240,13 @@ export interface QuizSummary {
   // quiz - `id` is the attempt's own id in that case, not a real quiz id,
   // so there's nothing left to fetch a review/breakdown for.
   quizDeleted: boolean;
+  // Retake tracking - null/0 until the quiz has been completed at least
+  // once. bestScore only ever differs from score once a retry has beaten
+  // the official attempt.
+  bestScore: number | null;
+  attemptsUsed: number;
+  maxAttempts: number | null;
+  canRetake: boolean;
 }
 
 // Teacher-side: authoring input
@@ -271,7 +297,12 @@ export interface QuizForEditing {
 
 export interface TeacherQuizListItem {
   id: string;
-  assignedClasses: { id: string; name: string }[];
+  assignedClasses: {
+    id: string;
+    name: string;
+    shuffleQuestions: boolean;
+    maxAttempts: number | null;
+  }[];
   title: string;
   description: string | null;
   timeLimitMinutes: number | null;
@@ -289,6 +320,10 @@ export interface QuizResultRow {
   maxScore: number;
   submittedAt: string | null;
   pendingShortAnswerCount: number;
+  // null/0 until completed; bestScore only differs from score once a
+  // retry has beaten the student's official (first) attempt.
+  bestScore: number | null;
+  attemptsUsed: number;
 }
 
 export interface QuizResults {
@@ -329,6 +364,21 @@ export interface QuizQuestionBreakdownResult {
   quizId: string;
   quizTitle: string;
   questions: QuizQuestionBreakdown[];
+}
+
+// A short-answer response awaiting manual grading, scoped to one class -
+// spans every quiz assigned to that class, for the grading panel on the
+// class-detail view.
+export interface PendingGradingItem {
+  answerId: string;
+  quizId: string;
+  quizTitle: string;
+  questionId: string;
+  questionText: string;
+  points: number;
+  studentId: string;
+  studentName: string;
+  textAnswer: string | null;
 }
 
 // Dashboard data types

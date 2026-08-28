@@ -71,6 +71,10 @@ describe("getParentDashboardDataAction - orphaned quiz attempts", () => {
         maxScore: 5,
         submittedAt: "2026-01-02T00:00:00Z",
         quizDeleted: true,
+        bestScore: 3,
+        attemptsUsed: 1,
+        maxAttempts: null,
+        canRetake: false,
       },
     ]);
   });

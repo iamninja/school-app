@@ -25,6 +25,7 @@ import { PortalHistoryDialog } from "@/components/portal-history-dialog";
 import { QuizQuestionImage } from "@/components/quiz-question-image";
 import { QuizReviewAnswers } from "@/components/quiz-review-answers";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type {
   QuizAnswerInput,
   QuizAttemptReview,
@@ -140,6 +141,10 @@ export function StudentQuizPanel({
                 score: review.score,
                 maxScore: review.maxScore,
                 submittedAt: review.submittedAt,
+                bestScore: review.best?.score ?? review.score,
+                attemptsUsed: review.attemptsUsed,
+                maxAttempts: review.maxAttempts,
+                canRetake: review.canRetake,
               }
             : quiz,
         ),
@@ -293,13 +298,56 @@ export function StudentQuizPanel({
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-2xl font-bold">
-            {view.review.score} / {view.review.maxScore}
-          </p>
-          <QuizReviewAnswers answers={view.review.answers} locale="el" />
-          <Button variant="outline" onClick={() => setView({ mode: "list" })}>
-            Πίσω στα τεστ
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline" className="text-base font-bold">
+              Βαθμός: {view.review.score} / {view.review.maxScore}
+            </Badge>
+            {view.review.best && (
+              <Badge className="text-base font-bold">
+                Καλύτερη προσπάθεια: {view.review.best.score} / {view.review.maxScore}
+              </Badge>
+            )}
+          </div>
+          {view.review.attemptsUsed > 1 && (
+            <p className="text-sm text-muted-foreground">
+              {view.review.attemptsUsed} προσπάθειες
+            </p>
+          )}
+          {view.review.best ? (
+            <Tabs defaultValue="first">
+              <TabsList>
+                <TabsTrigger value="first">Πρώτη προσπάθεια</TabsTrigger>
+                <TabsTrigger value="best">Καλύτερη προσπάθεια</TabsTrigger>
+              </TabsList>
+              <TabsContent value="first">
+                <QuizReviewAnswers answers={view.review.answers} locale="el" />
+              </TabsContent>
+              <TabsContent value="best">
+                <QuizReviewAnswers
+                  answers={view.review.best.answers}
+                  locale="el"
+                />
+              </TabsContent>
+            </Tabs>
+          ) : (
+            <QuizReviewAnswers answers={view.review.answers} locale="el" />
+          )}
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setView({ mode: "list" })}
+            >
+              Πίσω στα τεστ
+            </Button>
+            {view.review.canRetake && (
+              <Button
+                disabled={isLoading}
+                onClick={() => handleTakeQuiz(view.review.quizId)}
+              >
+                Επανάληψη τεστ
+              </Button>
+            )}
+          </div>
         </CardContent>
       </Card>
     );
@@ -328,14 +376,31 @@ export function StudentQuizPanel({
           {quiz.score} / {quiz.maxScore}
         </Badge>
       ) : quiz.completed ? (
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={isLoading}
-          onClick={() => handleViewReview(quiz.id)}
-        >
-          {quiz.score} / {quiz.maxScore} · Ανασκόπηση
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="outline">
+            Βαθμός: {quiz.score} / {quiz.maxScore}
+          </Badge>
+          {quiz.attemptsUsed > 1 && (
+            <Badge>Καλύτερη προσπάθεια: {quiz.bestScore} / {quiz.maxScore}</Badge>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={isLoading}
+            onClick={() => handleViewReview(quiz.id)}
+          >
+            Ανασκόπηση
+          </Button>
+          {quiz.canRetake && (
+            <Button
+              size="sm"
+              disabled={isLoading}
+              onClick={() => handleTakeQuiz(quiz.id)}
+            >
+              Επανάληψη
+            </Button>
+          )}
+        </div>
       ) : (
         <Button
           size="sm"

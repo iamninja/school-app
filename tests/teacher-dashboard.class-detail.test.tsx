@@ -6,6 +6,7 @@ import { vi } from "vitest";
 
 import { TeacherDashboard } from "@/components/teacher-dashboard";
 import * as actions from "@/app/protected/teacher/actions";
+import * as quizActions from "@/app/protected/teacher/quiz-actions";
 
 vi.mock("@/app/protected/teacher/actions", () => ({
   archiveClassAction: vi.fn(),
@@ -21,6 +22,23 @@ vi.mock("@/app/protected/teacher/actions", () => ({
   unenrollStudentFromClassAction: vi.fn(),
   updateClassAction: vi.fn(),
   withdrawStudentAction: vi.fn(),
+}));
+
+vi.mock("@/app/protected/teacher/quiz-actions", () => ({
+  createQuizAction: vi.fn(),
+  assignQuizToClassAction: vi.fn(),
+  unassignQuizFromClassAction: vi.fn(),
+  setQuizAssignmentShuffleAction: vi.fn(),
+  setQuizAssignmentMaxAttemptsAction: vi.fn(),
+  getQuizForEditingAction: vi.fn(),
+  updateQuizAction: vi.fn(),
+  duplicateQuizAction: vi.fn(),
+  deleteQuizAction: vi.fn(),
+  getQuizResultsAction: vi.fn(),
+  getStudentQuizAttemptAction: vi.fn(),
+  getQuizQuestionBreakdownAction: vi.fn(),
+  getClassPendingGradingAction: vi.fn().mockResolvedValue([]),
+  gradeShortAnswerAction: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -203,7 +221,14 @@ describe("TeacherDashboard class detail - rendering and navigation", () => {
         title: "Chapter 3 Quiz",
         description: null,
         timeLimitMinutes: 20,
-        assignedClasses: [{ id: "class-1", name: "Algebra II" }],
+        assignedClasses: [
+          {
+            id: "class-1",
+            name: "Algebra II",
+            shuffleQuestions: false,
+            maxAttempts: null,
+          },
+        ],
         questionCount: 5,
         hasAttempts: false,
       },
@@ -233,6 +258,62 @@ describe("TeacherDashboard class detail - rendering and navigation", () => {
     expect(screen.getByText(/5 questions/i)).toBeInTheDocument();
     expect(screen.getByText(/20 min/i)).toBeInTheDocument();
     expect(screen.getByText("Active")).toBeInTheDocument();
+  });
+
+  it("shows 'no answers waiting for review' when there's nothing pending", async () => {
+    const user = userEvent.setup();
+    vi.mocked(quizActions.getClassPendingGradingAction).mockResolvedValue([]);
+
+    await openAlgebraDetail(user);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/no answers waiting for review/i),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("shows a pending short-answer response and grades it correct", async () => {
+    const user = userEvent.setup();
+    const getClassPendingGradingAction = vi.mocked(
+      quizActions.getClassPendingGradingAction,
+    );
+    const gradeShortAnswerAction = vi.mocked(
+      quizActions.gradeShortAnswerAction,
+    );
+    getClassPendingGradingAction.mockResolvedValue([
+      {
+        answerId: "answer-1",
+        quizId: "quiz-1",
+        quizTitle: "Chapter 3 Quiz",
+        questionId: "q1",
+        questionText: "Explain your reasoning",
+        points: 2,
+        studentId: "student-1",
+        studentName: "Maya Carter",
+        textAnswer: "Because 2x = 4, so x = 2",
+      },
+    ]);
+    gradeShortAnswerAction.mockResolvedValue(undefined);
+
+    await openAlgebraDetail(user);
+
+    await waitFor(() => {
+      expect(getClassPendingGradingAction).toHaveBeenCalledWith("class-1");
+      expect(screen.getByText("Explain your reasoning")).toBeInTheDocument();
+      expect(
+        screen.getByText(/because 2x = 4, so x = 2/i),
+      ).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: /mark correct/i }));
+
+    await waitFor(() => {
+      expect(gradeShortAnswerAction).toHaveBeenCalledWith("answer-1", true);
+      expect(
+        screen.queryByText("Explain your reasoning"),
+      ).not.toBeInTheDocument();
+    });
   });
 
   it("excludes a withdrawn student from the enrolled-students panel", async () => {

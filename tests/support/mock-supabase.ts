@@ -28,6 +28,7 @@ const CHAIN_METHODS = [
   "upsert",
   "eq",
   "is",
+  "not",
   "match",
   "in",
   "gte",
@@ -41,6 +42,7 @@ const CHAIN_METHODS = [
 export function createMockSupabaseClient(
   tableResponses: Record<string, TableResponse | TableResponse[]>,
   user: { id: string } | null = { id: "teacher-1" },
+  rpcResponse: { data: unknown; error: unknown } = { data: null, error: null },
 ) {
   const callIndex: Record<string, number> = {};
 
@@ -69,6 +71,7 @@ export function createMockSupabaseClient(
   return {
     from: vi.fn((table: string) => builder(table)),
     auth: { getUser: vi.fn(async () => ({ data: { user } })) },
+    rpc: vi.fn(async () => rpcResponse),
     // Not stubbed by default - tests that touch Storage (quiz images) set
     // this themselves, e.g. `client.storage = { from: vi.fn(...) }`.
     storage: undefined as unknown,

@@ -21,6 +21,7 @@ import type {
   QuizQuestionBreakdownResult,
   QuizQuestionType,
   UpdateQuizInput,
+  PendingGradingItem,
 } from "@/lib/types/database";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
@@ -86,6 +87,16 @@ async function insertQuestions(
   }
 }
 
+// The most generous max_attempts across every one of a student's classes
+// this quiz is assigned to - null (unlimited) wins over any finite number,
+// mirroring is_quiz_shuffled_for_student's permissive-OR resolution.
+function resolveMaxAttempts(rows: { max_attempts: number | null }[]): number | null {
+  if (rows.length === 0 || rows.some((row) => row.max_attempts === null)) {
+    return null;
+  }
+  return Math.max(...rows.map((row) => row.max_attempts as number));
+}
+
 async function getQuizAttemptCount(
   supabase: SupabaseServerClient,
   quizId: string,
@@ -112,7 +123,9 @@ async function buildQuizListItem(
     await Promise.all([
       supabase
         .from("quiz_assignments")
-        .select("class_id, classes:class_id (id, name)")
+        .select(
+          "class_id, shuffle_questions, max_attempts, classes:class_id (id, name)",
+        )
         .eq("quiz_id", quiz.id),
       supabase
         .from("quiz_questions")
@@ -126,7 +139,12 @@ async function buildQuizListItem(
       id: string;
       name: string;
     } | null;
-    return { id: classRow?.id ?? assignment.class_id, name: classRow?.name ?? "" };
+    return {
+      id: classRow?.id ?? assignment.class_id,
+      name: classRow?.name ?? "",
+      shuffleQuestions: assignment.shuffle_questions,
+      maxAttempts: assignment.max_attempts,
+    };
   });
 
   return {
@@ -239,6 +257,68 @@ export async function unassignQuizFromClassAction(
   const { error } = await supabase
     .from("quiz_assignments")
     .delete()
+    .eq("quiz_id", quizId)
+    .eq("class_id", classId);
+
+  if (error) {
+    throw error;
+  }
+}
+
+export async function setQuizAssignmentShuffleAction(
+  quizId: string,
+  classId: string,
+  shuffleQuestions: boolean,
+): Promise<void> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error("Not authenticated");
+  }
+
+  await requireTeacher(supabase, user.id);
+
+  await requireOwnedQuiz(supabase, quizId, user.id);
+
+  const { error } = await supabase
+    .from("quiz_assignments")
+    .update({ shuffle_questions: shuffleQuestions })
+    .eq("quiz_id", quizId)
+    .eq("class_id", classId);
+
+  if (error) {
+    throw error;
+  }
+}
+
+export async function setQuizAssignmentMaxAttemptsAction(
+  quizId: string,
+  classId: string,
+  maxAttempts: number | null,
+): Promise<void> {
+  if (maxAttempts !== null && (!Number.isInteger(maxAttempts) || maxAttempts < 1)) {
+    throw new ExpectedError("Max attempts must be a positive whole number, or unlimited.");
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error("Not authenticated");
+  }
+
+  await requireTeacher(supabase, user.id);
+
+  await requireOwnedQuiz(supabase, quizId, user.id);
+
+  const { error } = await supabase
+    .from("quiz_assignments")
+    .update({ max_attempts: maxAttempts })
     .eq("quiz_id", quizId)
     .eq("class_id", classId);
 
@@ -598,6 +678,17 @@ export async function getQuizResultsAction(
   const attemptIds = (attempts ?? []).map((attempt) => attempt.id);
   const pendingByAttempt = new Map<string, number>();
 
+  const { data: bestRows } =
+    attemptIds.length > 0
+      ? await supabase
+          .from("quiz_attempt_bests")
+          .select("attempt_id, score, attempts_used")
+          .in("attempt_id", attemptIds)
+      : { data: [] as { attempt_id: string; score: number; attempts_used: number }[] };
+  const bestByAttempt = new Map(
+    (bestRows ?? []).map((row) => [row.attempt_id, row]),
+  );
+
   if (attemptIds.length > 0) {
     const { data: pendingAnswers } = await supabase
       .from("quiz_attempt_answers")
@@ -617,6 +708,7 @@ export async function getQuizResultsAction(
   const results: QuizResultRow[] = studentIds.map((studentId) => {
     const student = studentById.get(studentId);
     const attempt = attemptByStudent.get(studentId);
+    const best = attempt ? bestByAttempt.get(attempt.id) : undefined;
 
     return {
       studentId,
@@ -630,6 +722,8 @@ export async function getQuizResultsAction(
       pendingShortAnswerCount: attempt
         ? (pendingByAttempt.get(attempt.id) ?? 0)
         : 0,
+      bestScore: best?.score ?? attempt?.score ?? null,
+      attemptsUsed: best?.attempts_used ?? (attempt ? 1 : 0),
     };
   });
 
@@ -731,33 +825,81 @@ export async function getStudentQuizAttemptAction(
     0,
   );
 
-  const reviewAnswers: QuizAttemptAnswerReview[] = (answers ?? []).map(
-    (answer) => {
-      const question = questionById.get(answer.question_id);
-      const correctOption = correctOptionByQuestion.get(answer.question_id);
-      const selectedOption = answer.selected_option_id
-        ? optionById.get(answer.selected_option_id)
-        : undefined;
+  function mapToReview(row: {
+    question_id: string;
+    selected_option_id: string | null;
+    text_answer: string | null;
+    is_correct: boolean | null;
+    points_awarded: number | null;
+  }): QuizAttemptAnswerReview {
+    const question = questionById.get(row.question_id);
+    const correctOption = correctOptionByQuestion.get(row.question_id);
+    const selectedOption = row.selected_option_id
+      ? optionById.get(row.selected_option_id)
+      : undefined;
 
-      return {
-        questionId: answer.question_id,
-        questionText: question?.question_text ?? "",
-        questionType:
-          (question?.question_type as QuizQuestionType) ?? "short_answer",
-        imageUrl: question?.image_path
-          ? (imageUrlByPath.get(question.image_path) ?? null)
-          : null,
-        selectedOptionId: answer.selected_option_id,
-        selectedOptionText: selectedOption?.option_text ?? null,
-        textAnswer: answer.text_answer,
-        correctOptionId: correctOption?.id ?? null,
-        correctOptionText: correctOption?.option_text ?? null,
-        isCorrect: answer.is_correct,
-        pointsAwarded: answer.points_awarded,
-        pointsPossible: question?.points ?? 0,
-      };
-    },
+    return {
+      questionId: row.question_id,
+      questionText: question?.question_text ?? "",
+      questionType:
+        (question?.question_type as QuizQuestionType) ?? "short_answer",
+      imageUrl: question?.image_path
+        ? (imageUrlByPath.get(question.image_path) ?? null)
+        : null,
+      selectedOptionId: row.selected_option_id,
+      selectedOptionText: selectedOption?.option_text ?? null,
+      textAnswer: row.text_answer,
+      correctOptionId: correctOption?.id ?? null,
+      correctOptionText: correctOption?.option_text ?? null,
+      isCorrect: row.is_correct,
+      pointsAwarded: row.points_awarded,
+      pointsPossible: question?.points ?? 0,
+    };
+  }
+
+  const reviewAnswers: QuizAttemptAnswerReview[] = (answers ?? []).map(
+    mapToReview,
   );
+
+  const { data: bestRow } = await supabase
+    .from("quiz_attempt_bests")
+    .select("score, submitted_at, attempts_used")
+    .eq("attempt_id", attempt.id)
+    .single();
+
+  let best: QuizAttemptReview["best"] = null;
+  if (bestRow && bestRow.attempts_used > 1) {
+    const { data: bestAnswerRows } = await supabase
+      .from("quiz_attempt_best_answers")
+      .select(
+        "question_id, selected_option_id, text_answer, is_correct, points_awarded",
+      )
+      .eq("attempt_id", attempt.id);
+
+    best = {
+      score: bestRow.score,
+      submittedAt: bestRow.submitted_at,
+      answers: (bestAnswerRows ?? []).map(mapToReview),
+    };
+  }
+
+  const { data: studentClasses } = await supabase
+    .from("student_class_assignments")
+    .select("class_id")
+    .eq("student_id", studentId);
+  const classIds = (studentClasses ?? []).map((row) => row.class_id);
+
+  const { data: assignmentRows } =
+    classIds.length > 0
+      ? await supabase
+          .from("quiz_assignments")
+          .select("max_attempts")
+          .eq("quiz_id", quizId)
+          .in("class_id", classIds)
+      : { data: [] as { max_attempts: number | null }[] };
+
+  const maxAttempts = resolveMaxAttempts(assignmentRows ?? []);
+  const attemptsUsed = bestRow?.attempts_used ?? 1;
 
   return {
     attemptId: attempt.id,
@@ -767,6 +909,10 @@ export async function getStudentQuizAttemptAction(
     maxScore,
     submittedAt: attempt.submitted_at,
     answers: reviewAnswers,
+    attemptsUsed,
+    maxAttempts,
+    canRetake: maxAttempts === null || attemptsUsed < maxAttempts,
+    best,
   };
 }
 
@@ -946,4 +1092,275 @@ export async function getQuizQuestionBreakdownAction(
     quizTitle: quiz.title,
     questions,
   };
+}
+
+/**
+ * Every short-answer response awaiting manual grading, across every quiz
+ * assigned to this class - scoped to the class-detail view rather than a
+ * specific quiz, since a teacher thinks about grading in terms of "this
+ * class's pending work," not one quiz at a time.
+ */
+export async function getClassPendingGradingAction(
+  classId: string,
+): Promise<PendingGradingItem[]> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error("Not authenticated");
+  }
+
+  await requireTeacher(supabase, user.id);
+
+  const { data: classRow, error: classError } = await supabase
+    .from("classes")
+    .select("id")
+    .eq("id", classId)
+    .eq("teacher_id", user.id)
+    .single();
+
+  if (classError || !classRow) {
+    throw new Error("Class not found");
+  }
+
+  const { data: assignments } = await supabase
+    .from("quiz_assignments")
+    .select("quiz_id")
+    .eq("class_id", classId);
+  const quizIds = [
+    ...new Set((assignments ?? []).map((assignment) => assignment.quiz_id)),
+  ];
+
+  const { data: rosterRows } = await supabase
+    .from("student_class_assignments")
+    .select("student_id")
+    .eq("class_id", classId);
+  const studentIds = [
+    ...new Set((rosterRows ?? []).map((row) => row.student_id)),
+  ];
+
+  if (quizIds.length === 0 || studentIds.length === 0) {
+    return [];
+  }
+
+  const { data: attempts, error: attemptsError } = await supabase
+    .from("quiz_attempts")
+    .select("id, quiz_id, student_id")
+    .in("quiz_id", quizIds)
+    .in("student_id", studentIds);
+
+  if (attemptsError) {
+    throw attemptsError;
+  }
+
+  const attemptIds = (attempts ?? []).map((attempt) => attempt.id);
+  if (attemptIds.length === 0) {
+    return [];
+  }
+
+  const { data: answers, error: answersError } = await supabase
+    .from("quiz_attempt_answers")
+    .select("id, attempt_id, question_id, text_answer")
+    .in("attempt_id", attemptIds)
+    .is("is_correct", null)
+    .not("text_answer", "is", null);
+
+  if (answersError) {
+    throw answersError;
+  }
+
+  if (!answers || answers.length === 0) {
+    return [];
+  }
+
+  const attemptById = new Map((attempts ?? []).map((a) => [a.id, a]));
+  const questionIds = [
+    ...new Set(answers.map((answer) => answer.question_id)),
+  ];
+  const quizIdsInUse = [
+    ...new Set((attempts ?? []).map((attempt) => attempt.quiz_id)),
+  ];
+
+  const [{ data: questions }, { data: quizzes }, { data: students }] =
+    await Promise.all([
+      supabase
+        .from("quiz_questions")
+        .select("id, question_text, points")
+        .in("id", questionIds),
+      supabase.from("quizzes").select("id, title").in("id", quizIdsInUse),
+      supabase
+        .from("students")
+        .select("id, first_name, last_name")
+        .in("id", studentIds),
+    ]);
+
+  const questionById = new Map((questions ?? []).map((q) => [q.id, q]));
+  const quizById = new Map((quizzes ?? []).map((q) => [q.id, q]));
+  const studentById = new Map((students ?? []).map((s) => [s.id, s]));
+
+  return answers
+    .map((answer) => {
+      const attempt = attemptById.get(answer.attempt_id);
+      const question = questionById.get(answer.question_id);
+      const quiz = attempt ? quizById.get(attempt.quiz_id) : undefined;
+      const student = attempt
+        ? studentById.get(attempt.student_id)
+        : undefined;
+
+      return {
+        answerId: answer.id,
+        quizId: attempt?.quiz_id ?? "",
+        quizTitle: quiz?.title ?? "",
+        questionId: answer.question_id,
+        questionText: question?.question_text ?? "",
+        points: question?.points ?? 0,
+        studentId: attempt?.student_id ?? "",
+        studentName: student
+          ? `${student.first_name} ${student.last_name}`
+          : "Unknown student",
+        textAnswer: answer.text_answer,
+      };
+    })
+    .sort(
+      (a, b) =>
+        a.studentName.localeCompare(b.studentName) ||
+        a.quizTitle.localeCompare(b.quizTitle),
+    );
+}
+
+async function recomputeAttemptScore(
+  supabase: SupabaseServerClient,
+  attemptId: string,
+) {
+  const { data: rows } = await supabase
+    .from("quiz_attempt_answers")
+    .select("points_awarded")
+    .eq("attempt_id", attemptId);
+
+  const total = (rows ?? []).reduce(
+    (sum, row) => sum + (row.points_awarded ?? 0),
+    0,
+  );
+
+  await supabase
+    .from("quiz_attempts")
+    .update({ score: total })
+    .eq("id", attemptId);
+}
+
+async function recomputeBestScore(
+  supabase: SupabaseServerClient,
+  attemptId: string,
+) {
+  const { data: rows } = await supabase
+    .from("quiz_attempt_best_answers")
+    .select("points_awarded")
+    .eq("attempt_id", attemptId);
+
+  const total = (rows ?? []).reduce(
+    (sum, row) => sum + (row.points_awarded ?? 0),
+    0,
+  );
+
+  await supabase
+    .from("quiz_attempt_bests")
+    .update({ score: total })
+    .eq("attempt_id", attemptId);
+}
+
+/**
+ * Manually grades a short-answer response - the only question type that
+ * isn't auto-graded at submission (is_correct/points_awarded stay null
+ * until a teacher does this). Recomputes and writes back the attempt's
+ * total score so it's reflected everywhere score is read.
+ */
+export async function gradeShortAnswerAction(
+  answerId: string,
+  isCorrect: boolean,
+): Promise<void> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error("Not authenticated");
+  }
+
+  await requireTeacher(supabase, user.id);
+
+  const { data: answer, error: answerError } = await supabase
+    .from("quiz_attempt_answers")
+    .select("id, attempt_id, question_id, text_answer")
+    .eq("id", answerId)
+    .single();
+
+  if (answerError || !answer) {
+    throw new Error("Answer not found");
+  }
+
+  const { data: attempt, error: attemptError } = await supabase
+    .from("quiz_attempts")
+    .select("id, quiz_id")
+    .eq("id", answer.attempt_id)
+    .single();
+
+  if (attemptError || !attempt) {
+    throw new Error("Attempt not found");
+  }
+
+  // Ownership check, not just existence - requireOwnedQuiz throws unless
+  // this quiz belongs to the calling teacher.
+  await requireOwnedQuiz(supabase, attempt.quiz_id, user.id);
+
+  const { data: question, error: questionError } = await supabase
+    .from("quiz_questions")
+    .select("points")
+    .eq("id", answer.question_id)
+    .single();
+
+  if (questionError || !question) {
+    throw new Error("Question not found");
+  }
+
+  const pointsAwarded = isCorrect ? question.points : 0;
+
+  const { error: updateError } = await supabase
+    .from("quiz_attempt_answers")
+    .update({ is_correct: isCorrect, points_awarded: pointsAwarded })
+    .eq("id", answerId);
+
+  if (updateError) {
+    throw updateError;
+  }
+
+  await recomputeAttemptScore(supabase, attempt.id);
+
+  // The "best" attempt is a separate snapshot that only sometimes matches
+  // this one (quiz_attempts is always the first/official submission,
+  // quiz_attempt_bests may hold a later retry's answers instead). Only
+  // keep it in sync when its answer to this exact question is the same
+  // submission (identical text) - a retry that answered differently needs
+  // grading separately, not silently overwritten here.
+  const { data: bestAnswer } = await supabase
+    .from("quiz_attempt_best_answers")
+    .select("id, text_answer")
+    .eq("attempt_id", attempt.id)
+    .eq("question_id", answer.question_id)
+    .maybeSingle();
+
+  if (bestAnswer && bestAnswer.text_answer === answer.text_answer) {
+    const { error: bestUpdateError } = await supabase
+      .from("quiz_attempt_best_answers")
+      .update({ is_correct: isCorrect, points_awarded: pointsAwarded })
+      .eq("id", bestAnswer.id);
+
+    if (bestUpdateError) {
+      throw bestUpdateError;
+    }
+
+    await recomputeBestScore(supabase, attempt.id);
+  }
 }

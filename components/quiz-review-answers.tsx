@@ -65,7 +65,13 @@ export function QuizReviewAnswers({
               <p>
                 {labels.answer} {answer.textAnswer || labels.noAnswer}
               </p>
-              <Badge variant="outline">{labels.awaitingReview}</Badge>
+              {answer.isCorrect === null ? (
+                <Badge variant="outline">{labels.awaitingReview}</Badge>
+              ) : (
+                <Badge variant={answer.isCorrect ? "default" : "destructive"}>
+                  {answer.isCorrect ? labels.correct : labels.incorrect}
+                </Badge>
+              )}
             </div>
           ) : (
             <div className="mt-2 space-y-1 text-sm">
