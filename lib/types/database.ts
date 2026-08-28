@@ -366,6 +366,21 @@ export interface QuizQuestionBreakdownResult {
   questions: QuizQuestionBreakdown[];
 }
 
+// A short-answer response awaiting manual grading, scoped to one class -
+// spans every quiz assigned to that class, for the grading panel on the
+// class-detail view.
+export interface PendingGradingItem {
+  answerId: string;
+  quizId: string;
+  quizTitle: string;
+  questionId: string;
+  questionText: string;
+  points: number;
+  studentId: string;
+  studentName: string;
+  textAnswer: string | null;
+}
+
 // Dashboard data types
 export interface StudentDashboardData {
   student: {

@@ -9,7 +9,12 @@ import {
   UserPlusIcon,
   XIcon,
 } from "lucide-react";
+import { toast } from "sonner";
 
+import {
+  getClassPendingGradingAction,
+  gradeShortAnswerAction,
+} from "@/app/protected/teacher/quiz-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,7 +28,10 @@ import {
 } from "@/components/ui/dialog";
 import { MathText } from "@/components/math-text";
 import { CLASS_GRADE_LABELS } from "@/lib/class-grades";
-import type { TeacherQuizListItem } from "@/lib/types/database";
+import type {
+  PendingGradingItem,
+  TeacherQuizListItem,
+} from "@/lib/types/database";
 
 const DAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
@@ -81,6 +89,58 @@ export function TeacherClassDetail({
   onUnenrollStudent,
 }: TeacherClassDetailProps) {
   const [isManageStudentsOpen, setIsManageStudentsOpen] = React.useState(false);
+  const [pendingGrading, setPendingGrading] = React.useState<
+    PendingGradingItem[] | null
+  >(null);
+  const [isLoadingPendingGrading, setIsLoadingPendingGrading] =
+    React.useState(false);
+  const [gradingAnswerId, setGradingAnswerId] = React.useState<string | null>(
+    null,
+  );
+
+  const loadPendingGrading = React.useCallback(async () => {
+    setIsLoadingPendingGrading(true);
+    try {
+      const items = await getClassPendingGradingAction(classItem.id);
+      setPendingGrading(items);
+    } catch (error: unknown) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to load pending grading",
+      );
+    } finally {
+      setIsLoadingPendingGrading(false);
+    }
+  }, [classItem.id]);
+
+  React.useEffect(() => {
+    // Fetching this class's pending grading when it's opened is a real
+    // "synchronize with an external system" effect, not derived state -
+    // same exception category already established in this codebase for
+    // the family ledger dialog and the quiz-timer countdown reset.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadPendingGrading();
+  }, [loadPendingGrading]);
+
+  const handleGrade = async (
+    item: PendingGradingItem,
+    isCorrect: boolean,
+  ) => {
+    setGradingAnswerId(item.answerId);
+    try {
+      await gradeShortAnswerAction(item.answerId, isCorrect);
+      setPendingGrading(
+        (prev) =>
+          prev?.filter((row) => row.answerId !== item.answerId) ?? null,
+      );
+    } catch (error: unknown) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to save grade",
+      );
+    } finally {
+      setGradingAnswerId(null);
+    }
+  };
+
   const enrolledIds = new Set(enrolledStudents.map((student) => student.id));
   const sortedSlots = [...scheduledSlots].sort((a, b) => {
     const dayDiff = DAY_ORDER.indexOf(a.day as (typeof DAY_ORDER)[number]) -
@@ -158,6 +218,58 @@ export function TeacherClassDetail({
           </div>
         </CardHeader>
         <CardContent className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+          <div className="rounded-lg border p-4 xl:col-span-2">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">
+              Pending grading
+            </div>
+            <div className="mt-3 space-y-2">
+              {isLoadingPendingGrading ? (
+                <p className="text-xs text-muted-foreground">Loading...</p>
+              ) : !pendingGrading || pendingGrading.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  No answers waiting for review.
+                </p>
+              ) : (
+                pendingGrading.map((item) => (
+                  <div
+                    key={item.answerId}
+                    className="space-y-2 rounded-md border p-3 text-sm"
+                  >
+                    <p className="text-xs text-muted-foreground">
+                      <MathText text={item.quizTitle} /> &middot;{" "}
+                      {item.studentName}
+                    </p>
+                    <p className="font-medium">
+                      <MathText text={item.questionText} />
+                    </p>
+                    <p className="text-muted-foreground">
+                      Answer: {item.textAnswer || "(no answer)"}
+                    </p>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={gradingAnswerId === item.answerId}
+                        onClick={() => handleGrade(item, true)}
+                      >
+                        Mark correct
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={gradingAnswerId === item.answerId}
+                        onClick={() => handleGrade(item, false)}
+                      >
+                        Mark incorrect
+                      </Button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
           <div className="space-y-4">
             <div className="rounded-lg border p-4">
               <div className="flex items-center justify-between gap-2">

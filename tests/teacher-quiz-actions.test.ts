@@ -6,7 +6,9 @@ import {
   assignQuizToClassAction,
   createQuizAction,
   deleteQuizAction,
+  getClassPendingGradingAction,
   getQuizResultsAction,
+  gradeShortAnswerAction,
   updateQuizAction,
 } from "@/app/protected/teacher/quiz-actions";
 import { createMockSupabaseClient } from "./support/mock-supabase";
@@ -381,5 +383,172 @@ describe("teacher quiz actions - requireOwnedQuiz gate", () => {
     await expect(
       assignQuizToClassAction("quiz-missing", "class-1"),
     ).rejects.toThrow("Quiz not found");
+  });
+});
+
+describe("teacher quiz actions - getClassPendingGradingAction", () => {
+  it("returns short-answer responses awaiting grading, scoped to the class", async () => {
+    vi.mocked(requireTeacher).mockResolvedValue(undefined);
+    vi.mocked(createClient).mockResolvedValue(
+      createMockSupabaseClient({
+        classes: { data: { id: "class-1" }, error: null },
+        quiz_assignments: { data: [{ quiz_id: "quiz-1" }], error: null },
+        student_class_assignments: {
+          data: [{ student_id: "student-1" }],
+          error: null,
+        },
+        quiz_attempts: {
+          data: [
+            { id: "attempt-1", quiz_id: "quiz-1", student_id: "student-1" },
+          ],
+          error: null,
+        },
+        quiz_attempt_answers: {
+          data: [
+            {
+              id: "answer-1",
+              attempt_id: "attempt-1",
+              question_id: "q1",
+              text_answer: "Because 2x = 4, so x = 2",
+            },
+          ],
+          error: null,
+        },
+        quiz_questions: {
+          data: [{ id: "q1", question_text: "Explain your reasoning", points: 2 }],
+          error: null,
+        },
+        quizzes: { data: [{ id: "quiz-1", title: "Chapter 3 Quiz" }], error: null },
+        students: {
+          data: [{ id: "student-1", first_name: "Maya", last_name: "Carter" }],
+          error: null,
+        },
+      }) as never,
+    );
+
+    const result = await getClassPendingGradingAction("class-1");
+
+    expect(result).toEqual([
+      {
+        answerId: "answer-1",
+        quizId: "quiz-1",
+        quizTitle: "Chapter 3 Quiz",
+        questionId: "q1",
+        questionText: "Explain your reasoning",
+        points: 2,
+        studentId: "student-1",
+        studentName: "Maya Carter",
+        textAnswer: "Because 2x = 4, so x = 2",
+      },
+    ]);
+  });
+
+  it("returns an empty list without querying attempts when no quizzes are assigned", async () => {
+    vi.mocked(requireTeacher).mockResolvedValue(undefined);
+    const client = createMockSupabaseClient({
+      classes: { data: { id: "class-1" }, error: null },
+      quiz_assignments: { data: [], error: null },
+      student_class_assignments: {
+        data: [{ student_id: "student-1" }],
+        error: null,
+      },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    const result = await getClassPendingGradingAction("class-1");
+
+    expect(result).toEqual([]);
+    expect(
+      client.from.mock.calls.filter(([t]) => t === "quiz_attempts"),
+    ).toHaveLength(0);
+  });
+});
+
+describe("teacher quiz actions - gradeShortAnswerAction", () => {
+  it("grades an answer correct and syncs the score onto the attempt and its matching best-attempt row", async () => {
+    vi.mocked(requireTeacher).mockResolvedValue(undefined);
+    vi.mocked(createClient).mockResolvedValue(
+      createMockSupabaseClient({
+        quiz_attempt_answers: [
+          {
+            data: {
+              id: "answer-1",
+              attempt_id: "attempt-1",
+              question_id: "q1",
+              text_answer: "Because 2x = 4, so x = 2",
+            },
+            error: null,
+          }, // fetch the answer
+          { data: null, error: null }, // update is_correct/points_awarded
+          { data: [{ points_awarded: 2 }], error: null }, // recompute attempt score
+        ],
+        quiz_attempts: [
+          { data: { id: "attempt-1", quiz_id: "quiz-1" }, error: null }, // fetch attempt
+          { data: null, error: null }, // update score
+        ],
+        quizzes: { data: quizRow, error: null }, // requireOwnedQuiz
+        quiz_questions: { data: { points: 2 }, error: null },
+        quiz_attempt_best_answers: [
+          {
+            data: {
+              id: "best-answer-1",
+              text_answer: "Because 2x = 4, so x = 2",
+            },
+            error: null,
+          }, // matching best answer for this question
+          { data: null, error: null }, // update
+          { data: [{ points_awarded: 2 }], error: null }, // recompute best score
+        ],
+        quiz_attempt_bests: { data: null, error: null }, // update score
+      }) as never,
+    );
+
+    await expect(
+      gradeShortAnswerAction("answer-1", true),
+    ).resolves.toBeUndefined();
+  });
+
+  it("does not touch the best-attempt row when its answer to this question differs", async () => {
+    vi.mocked(requireTeacher).mockResolvedValue(undefined);
+    const client = createMockSupabaseClient({
+      quiz_attempt_answers: [
+        {
+          data: {
+            id: "answer-1",
+            attempt_id: "attempt-1",
+            question_id: "q1",
+            text_answer: "wrong answer text",
+          },
+          error: null,
+        },
+        { data: null, error: null }, // update
+        { data: [{ points_awarded: 0 }], error: null }, // recompute
+      ],
+      quiz_attempts: [
+        { data: { id: "attempt-1", quiz_id: "quiz-1" }, error: null },
+        { data: null, error: null },
+      ],
+      quizzes: { data: quizRow, error: null },
+      quiz_questions: { data: { points: 2 }, error: null },
+      quiz_attempt_best_answers: {
+        // The best attempt answered this question differently (a later
+        // retry) - grading the official attempt must not overwrite it.
+        data: { id: "best-answer-1", text_answer: "a different retry answer" },
+        error: null,
+      },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await gradeShortAnswerAction("answer-1", false);
+
+    expect(
+      client.from.mock.calls.filter(
+        ([t]) => t === "quiz_attempt_bests",
+      ),
+    ).toHaveLength(0);
+    const bestAnswersCalls = client.from.mock.calls.filter(
+      ([t]) => t === "quiz_attempt_best_answers",
+    );
+    expect(bestAnswersCalls).toHaveLength(1);
   });
 });

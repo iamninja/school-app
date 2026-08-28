@@ -28,6 +28,7 @@ const CHAIN_METHODS = [
   "upsert",
   "eq",
   "is",
+  "not",
   "match",
   "in",
   "gte",
