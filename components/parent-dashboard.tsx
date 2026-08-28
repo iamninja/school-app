@@ -86,10 +86,16 @@ function QuizRow({ quiz }: { quiz: QuizSummary }) {
         </p>
       </div>
       {quiz.completed ? (
-        <Badge>
-          {quiz.score} / {quiz.maxScore}
-          {quiz.attemptsUsed > 1 && ` · καλύτερη ${quiz.bestScore}`}
-        </Badge>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Badge variant="outline">
+            Βαθμός: {quiz.score} / {quiz.maxScore}
+          </Badge>
+          {quiz.attemptsUsed > 1 && (
+            <Badge>
+              Καλύτερη προσπάθεια: {quiz.bestScore} / {quiz.maxScore}
+            </Badge>
+          )}
+        </div>
       ) : (
         <Badge variant="outline">Δεν έχει γίνει ακόμα</Badge>
       )}

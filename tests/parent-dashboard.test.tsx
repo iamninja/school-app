@@ -272,7 +272,7 @@ describe("ParentDashboard", () => {
     );
 
     expect(screen.getByText("Old Chapter 2 Quiz")).toBeInTheDocument();
-    expect(screen.getByText("3 / 5")).toBeInTheDocument();
+    expect(screen.getByText(/βαθμός: 3 \/ 5/i)).toBeInTheDocument();
     expect(screen.getByText(/2 Ιανουαρίου 2026/i)).toBeInTheDocument();
   });
 
@@ -318,9 +318,42 @@ describe("ParentDashboard", () => {
     );
 
     expect(screen.getByText("Chapter 3 Quiz")).toBeInTheDocument();
-    expect(screen.getByText("4 / 5")).toBeInTheDocument();
+    expect(screen.getByText(/βαθμός: 4 \/ 5/i)).toBeInTheDocument();
     expect(screen.getByText("Pop Quiz")).toBeInTheDocument();
     expect(screen.getByText(/δεν έχει γίνει ακόμα/i)).toBeInTheDocument();
+  });
+
+  it("shows a separate best-attempt badge once a retry has beaten the official score", () => {
+    render(
+      <ParentDashboard
+        {...baseProps}
+        kids={[
+          makeChild({
+            quizzes: [
+              {
+                id: "quiz-1",
+                title: "Chapter 3 Quiz",
+                className: "Algebra II",
+                completed: true,
+                score: 3,
+                maxScore: 5,
+                submittedAt: "2026-01-02T00:00:00Z",
+                quizDeleted: false,
+                bestScore: 5,
+                attemptsUsed: 2,
+                maxAttempts: null,
+                canRetake: true,
+              },
+            ],
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText(/βαθμός: 3 \/ 5/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/καλύτερη προσπάθεια: 5 \/ 5/i),
+    ).toBeInTheDocument();
   });
 
   it("renders LaTeX in a quiz title", () => {
