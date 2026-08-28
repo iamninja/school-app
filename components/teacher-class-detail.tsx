@@ -27,6 +27,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { MathText } from "@/components/math-text";
+import { Textarea } from "@/components/ui/textarea";
 import { CLASS_GRADE_LABELS } from "@/lib/class-grades";
 import type {
   PendingGradingItem,
@@ -97,6 +98,12 @@ export function TeacherClassDetail({
   const [gradingAnswerId, setGradingAnswerId] = React.useState<string | null>(
     null,
   );
+  const [viewingQuizId, setViewingQuizId] = React.useState<string | null>(
+    null,
+  );
+  const [commentDrafts, setCommentDrafts] = React.useState<
+    Record<string, string>
+  >({});
 
   const loadPendingGrading = React.useCallback(async () => {
     setIsLoadingPendingGrading(true);
@@ -127,11 +134,17 @@ export function TeacherClassDetail({
   ) => {
     setGradingAnswerId(item.answerId);
     try {
-      await gradeShortAnswerAction(item.answerId, isCorrect);
+      const comment = commentDrafts[item.answerId]?.trim() || null;
+      await gradeShortAnswerAction(item.answerId, isCorrect, comment);
       setPendingGrading(
         (prev) =>
           prev?.filter((row) => row.answerId !== item.answerId) ?? null,
       );
+      setCommentDrafts((prev) => {
+        const rest = { ...prev };
+        delete rest[item.answerId];
+        return rest;
+      });
     } catch (error: unknown) {
       toast.error(
         error instanceof Error ? error.message : "Failed to save grade",
@@ -140,6 +153,24 @@ export function TeacherClassDetail({
       setGradingAnswerId(null);
     }
   };
+
+  const pendingByQuiz = React.useMemo(() => {
+    const map = new Map<string, PendingGradingItem[]>();
+    for (const item of pendingGrading ?? []) {
+      const list = map.get(item.quizId);
+      if (list) {
+        list.push(item);
+      } else {
+        map.set(item.quizId, [item]);
+      }
+    }
+    return map;
+  }, [pendingGrading]);
+
+  const viewingQuiz = assignedQuizzes.find((quiz) => quiz.id === viewingQuizId);
+  const viewingQuizPending = viewingQuizId
+    ? (pendingByQuiz.get(viewingQuizId) ?? [])
+    : [];
 
   const enrolledIds = new Set(enrolledStudents.map((student) => student.id));
   const sortedSlots = [...scheduledSlots].sort((a, b) => {
@@ -218,58 +249,6 @@ export function TeacherClassDetail({
           </div>
         </CardHeader>
         <CardContent className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-          <div className="rounded-lg border p-4 xl:col-span-2">
-            <div className="text-xs uppercase tracking-wide text-muted-foreground">
-              Pending grading
-            </div>
-            <div className="mt-3 space-y-2">
-              {isLoadingPendingGrading ? (
-                <p className="text-xs text-muted-foreground">Loading...</p>
-              ) : !pendingGrading || pendingGrading.length === 0 ? (
-                <p className="text-xs text-muted-foreground">
-                  No answers waiting for review.
-                </p>
-              ) : (
-                pendingGrading.map((item) => (
-                  <div
-                    key={item.answerId}
-                    className="space-y-2 rounded-md border p-3 text-sm"
-                  >
-                    <p className="text-xs text-muted-foreground">
-                      <MathText text={item.quizTitle} /> &middot;{" "}
-                      {item.studentName}
-                    </p>
-                    <p className="font-medium">
-                      <MathText text={item.questionText} />
-                    </p>
-                    <p className="text-muted-foreground">
-                      Answer: {item.textAnswer || "(no answer)"}
-                    </p>
-                    <div className="flex gap-2">
-                      <Button
-                        type="button"
-                        size="sm"
-                        disabled={gradingAnswerId === item.answerId}
-                        onClick={() => handleGrade(item, true)}
-                      >
-                        Mark correct
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        disabled={gradingAnswerId === item.answerId}
-                        onClick={() => handleGrade(item, false)}
-                      >
-                        Mark incorrect
-                      </Button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
           <div className="space-y-4">
             <div className="rounded-lg border p-4">
               <div className="flex items-center justify-between gap-2">
@@ -360,29 +339,39 @@ export function TeacherClassDetail({
                     No quizzes assigned to this class.
                   </p>
                 ) : (
-                  assignedQuizzes.map((quiz) => (
-                    <div
-                      key={quiz.id}
-                      className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
-                    >
-                      <span className="font-medium">
-                        <MathText text={quiz.title} />
-                      </span>
-                      <span className="flex items-center gap-2 text-xs text-muted-foreground">
-                        {quiz.hasAttempts && (
-                          <Badge variant="secondary">Locked</Badge>
-                        )}
-                        {quiz.timeLimitMinutes !== null && (
+                  assignedQuizzes.map((quiz) => {
+                    const pendingCount = pendingByQuiz.get(quiz.id)?.length ?? 0;
+                    return (
+                      <button
+                        key={quiz.id}
+                        type="button"
+                        onClick={() => setViewingQuizId(quiz.id)}
+                        className="flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm hover:bg-muted/50"
+                      >
+                        <span className="font-medium">
+                          <MathText text={quiz.title} />
+                        </span>
+                        <span className="flex items-center gap-2 text-xs text-muted-foreground">
+                          {pendingCount > 0 && (
+                            <Badge variant="destructive">
+                              {pendingCount} pending review
+                            </Badge>
+                          )}
+                          {quiz.hasAttempts && (
+                            <Badge variant="secondary">Locked</Badge>
+                          )}
+                          {quiz.timeLimitMinutes !== null && (
+                            <Badge variant="outline">
+                              &#9201; {quiz.timeLimitMinutes} min
+                            </Badge>
+                          )}
                           <Badge variant="outline">
-                            &#9201; {quiz.timeLimitMinutes} min
+                            {quiz.questionCount} questions
                           </Badge>
-                        )}
-                        <Badge variant="outline">
-                          {quiz.questionCount} questions
-                        </Badge>
-                      </span>
-                    </div>
-                  ))
+                        </span>
+                      </button>
+                    );
+                  })
                 )}
                 <Button
                   type="button"
@@ -435,6 +424,83 @@ export function TeacherClassDetail({
                   </label>
                 );
               })
+            )}
+          </div>
+          <DialogFooter showCloseButton />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={viewingQuizId !== null}
+        onOpenChange={(open) => !open && setViewingQuizId(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Pending review
+              {viewingQuiz ? (
+                <>
+                  {" — "}
+                  <MathText text={viewingQuiz.title} />
+                </>
+              ) : null}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="max-h-[60vh] space-y-2 overflow-y-auto">
+            {isLoadingPendingGrading ? (
+              <p className="text-xs text-muted-foreground">Loading...</p>
+            ) : viewingQuizPending.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No answers waiting for review.
+              </p>
+            ) : (
+              viewingQuizPending.map((item) => (
+                <div
+                  key={item.answerId}
+                  className="space-y-2 rounded-md border p-3 text-sm"
+                >
+                  <p className="text-xs text-muted-foreground">
+                    {item.studentName}
+                  </p>
+                  <p className="font-medium">
+                    <MathText text={item.questionText} />
+                  </p>
+                  <p className="text-muted-foreground">
+                    Answer: {item.textAnswer || "(no answer)"}
+                  </p>
+                  <Textarea
+                    value={commentDrafts[item.answerId] ?? ""}
+                    onChange={(event) =>
+                      setCommentDrafts((prev) => ({
+                        ...prev,
+                        [item.answerId]: event.target.value,
+                      }))
+                    }
+                    placeholder="Optional feedback for the student..."
+                    rows={2}
+                    className="text-sm"
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={gradingAnswerId === item.answerId}
+                      onClick={() => handleGrade(item, true)}
+                    >
+                      Mark correct
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={gradingAnswerId === item.answerId}
+                      onClick={() => handleGrade(item, false)}
+                    >
+                      Mark incorrect
+                    </Button>
+                  </div>
+                </div>
+              ))
             )}
           </div>
           <DialogFooter showCloseButton />

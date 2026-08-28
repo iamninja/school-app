@@ -17,6 +17,7 @@ vi.mock("@/app/protected/teacher/quiz-actions", () => ({
   updateQuizAction: vi.fn(),
   duplicateQuizAction: vi.fn(),
   getQuizQuestionBreakdownAction: vi.fn(),
+  setAnswerCommentAction: vi.fn(),
 }));
 
 vi.mock("sonner", () => ({
@@ -478,6 +479,7 @@ describe("TeacherQuizBuilder", () => {
       submittedAt: "2026-01-02T00:00:00Z",
       answers: [
         {
+          answerId: "answer-1",
           questionId: "q1",
           questionText: "2 + 2 = ?",
           questionType: "multiple_choice",
@@ -490,6 +492,7 @@ describe("TeacherQuizBuilder", () => {
           isCorrect: true,
           pointsAwarded: 1,
           pointsPossible: 1,
+          teacherComment: null,
         },
       ],
       attemptsUsed: 1,
@@ -840,25 +843,31 @@ describe("TeacherQuizBuilder", () => {
           ],
           studentAnswers: [
             {
+              answerId: "answer-1",
               studentId: "student-1",
               studentName: "Ava Chen",
               selectedOptionText: "4",
               textAnswer: null,
               isCorrect: true,
+              teacherComment: null,
             },
             {
+              answerId: "answer-2",
               studentId: "student-2",
               studentName: "Maya Carter",
               selectedOptionText: "5",
               textAnswer: null,
               isCorrect: false,
+              teacherComment: null,
             },
             {
+              answerId: "answer-3",
               studentId: "student-3",
               studentName: "Noah Diaz",
               selectedOptionText: "4",
               textAnswer: null,
               isCorrect: true,
+              teacherComment: null,
             },
           ],
         },
@@ -903,11 +912,13 @@ describe("TeacherQuizBuilder", () => {
           optionBreakdown: [],
           studentAnswers: [
             {
+              answerId: "answer-1",
               studentId: "student-1",
               studentName: "Ava Chen",
               selectedOptionText: null,
               textAnswer: "Because math",
               isCorrect: null,
+              teacherComment: null,
             },
           ],
         },
@@ -955,11 +966,13 @@ describe("TeacherQuizBuilder", () => {
           ],
           studentAnswers: [
             {
+              answerId: "answer-1",
               studentId: "student-1",
               studentName: "Ava Chen",
               selectedOptionText: "$\\pi r^2$",
               textAnswer: null,
               isCorrect: true,
+              teacherComment: null,
             },
           ],
         },
@@ -972,11 +985,13 @@ describe("TeacherQuizBuilder", () => {
           optionBreakdown: [],
           studentAnswers: [
             {
+              answerId: "answer-2",
               studentId: "student-2",
               studentName: "Maya Carter",
               selectedOptionText: null,
               textAnswer: "I used $2 worth of pi",
               isCorrect: null,
+              teacherComment: null,
             },
           ],
         },

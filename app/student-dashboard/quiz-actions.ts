@@ -29,11 +29,13 @@ async function getStudentId(
 
 function buildStoredAnswerReview(
   row: {
+    id: string;
     question_id: string;
     selected_option_id: string | null;
     text_answer: string | null;
     is_correct: boolean | null;
     points_awarded: number | null;
+    teacher_comment: string | null;
   },
   questionById: Map<
     string,
@@ -58,6 +60,7 @@ function buildStoredAnswerReview(
     : undefined;
 
   return {
+    answerId: row.id,
     questionId: row.question_id,
     questionText: question?.question_text ?? "",
     questionType:
@@ -74,6 +77,7 @@ function buildStoredAnswerReview(
     isCorrect: row.is_correct,
     pointsAwarded: row.points_awarded,
     pointsPossible: question?.points ?? 0,
+    teacherComment: row.teacher_comment,
   };
 }
 
@@ -355,6 +359,9 @@ export async function submitQuizAttemptAction(
         points_awarded: null,
       });
       reviewAnswers.push({
+        // Overwritten once the row is actually inserted below - this
+        // in-memory snapshot has no id yet.
+        answerId: "",
         questionId: question.id,
         questionText: question.question_text,
         questionType: "short_answer",
@@ -367,6 +374,7 @@ export async function submitQuizAttemptAction(
         isCorrect: null,
         pointsAwarded: null,
         pointsPossible: question.points,
+        teacherComment: null,
       });
       continue;
     }
@@ -388,6 +396,9 @@ export async function submitQuizAttemptAction(
       points_awarded: pointsAwarded,
     });
     reviewAnswers.push({
+      // Overwritten once the row is actually inserted below - this
+      // in-memory snapshot has no id yet.
+      answerId: "",
       questionId: question.id,
       questionText: question.question_text,
       questionType:
@@ -401,6 +412,7 @@ export async function submitQuizAttemptAction(
       isCorrect,
       pointsAwarded,
       pointsPossible: question.points,
+      teacherComment: null,
     });
   }
 
@@ -456,12 +468,21 @@ export async function submitQuizAttemptAction(
     officialScore = totalScore;
     officialSubmittedAt = attempt.submitted_at;
 
-    const { error: answersError } = await supabase
+    const { data: insertedAnswers, error: answersError } = await supabase
       .from("quiz_attempt_answers")
-      .insert(answerRows.map((row) => ({ attempt_id: attemptId, ...row })));
+      .insert(answerRows.map((row) => ({ attempt_id: attemptId, ...row })))
+      .select("id, question_id");
 
     if (answersError) {
       throw answersError;
+    }
+
+    const insertedAnswerIdByQuestion = new Map(
+      (insertedAnswers ?? []).map((row) => [row.question_id, row.id]),
+    );
+    for (const review of reviewAnswers) {
+      review.answerId =
+        insertedAnswerIdByQuestion.get(review.questionId) ?? "";
     }
 
     const { data: bestRow, error: bestError } = await supabase
@@ -543,12 +564,22 @@ export async function submitQuizAttemptAction(
         throw deleteBestAnswersError;
       }
 
-      const { error: insertBestAnswersError } = await supabase
-        .from("quiz_attempt_best_answers")
-        .insert(answerRows.map((row) => ({ attempt_id: attemptId, ...row })));
+      const { data: insertedBestAnswers, error: insertBestAnswersError } =
+        await supabase
+          .from("quiz_attempt_best_answers")
+          .insert(answerRows.map((row) => ({ attempt_id: attemptId, ...row })))
+          .select("id, question_id");
 
       if (insertBestAnswersError) {
         throw insertBestAnswersError;
+      }
+
+      const insertedBestAnswerIdByQuestion = new Map(
+        (insertedBestAnswers ?? []).map((row) => [row.question_id, row.id]),
+      );
+      for (const review of reviewAnswers) {
+        review.answerId =
+          insertedBestAnswerIdByQuestion.get(review.questionId) ?? "";
       }
 
       bestAnswers = reviewAnswers;
@@ -556,7 +587,7 @@ export async function submitQuizAttemptAction(
       const { data: storedBestAnswers } = await supabase
         .from("quiz_attempt_best_answers")
         .select(
-          "question_id, selected_option_id, text_answer, is_correct, points_awarded",
+          "id, question_id, selected_option_id, text_answer, is_correct, points_awarded, teacher_comment",
         )
         .eq("attempt_id", attemptId);
 
@@ -584,7 +615,7 @@ export async function submitQuizAttemptAction(
     const { data: officialAnswerRows } = await supabase
       .from("quiz_attempt_answers")
       .select(
-        "question_id, selected_option_id, text_answer, is_correct, points_awarded",
+        "id, question_id, selected_option_id, text_answer, is_correct, points_awarded, teacher_comment",
       )
       .eq("attempt_id", attemptId);
 
@@ -667,7 +698,7 @@ export async function getQuizReviewAction(
   const { data: answers, error: answersError } = await supabase
     .from("quiz_attempt_answers")
     .select(
-      "question_id, selected_option_id, text_answer, is_correct, points_awarded",
+      "id, question_id, selected_option_id, text_answer, is_correct, points_awarded, teacher_comment",
     )
     .eq("attempt_id", attempt.id);
 
@@ -743,7 +774,7 @@ export async function getQuizReviewAction(
     const { data: bestAnswerRows } = await supabase
       .from("quiz_attempt_best_answers")
       .select(
-        "question_id, selected_option_id, text_answer, is_correct, points_awarded",
+        "id, question_id, selected_option_id, text_answer, is_correct, points_awarded, teacher_comment",
       )
       .eq("attempt_id", attempt.id);
 
