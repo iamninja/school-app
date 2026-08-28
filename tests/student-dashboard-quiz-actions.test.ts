@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { createClient } from "@/lib/supabase/server";
-import { submitQuizAttemptAction } from "@/app/student-dashboard/quiz-actions";
+import {
+  getQuizForTakingAction,
+  submitQuizAttemptAction,
+} from "@/app/student-dashboard/quiz-actions";
 import { createMockSupabaseClient } from "./support/mock-supabase";
 
 vi.mock("@/lib/supabase/server", () => ({
@@ -14,6 +17,111 @@ function findChain(client: ReturnType<typeof createMockSupabaseClient>, table: s
   }
   return client.from.mock.results[index].value;
 }
+
+const twoQuestions = [
+  { id: "q1", question_text: "First?", question_type: "short_answer", order_index: 0, points: 1, image_path: null },
+  { id: "q2", question_text: "Second?", question_type: "short_answer", order_index: 1, points: 1, image_path: null },
+];
+
+describe("getQuizForTakingAction - question shuffle", () => {
+  it("keeps authored order_index order when shuffle is off for this student", async () => {
+    const client = createMockSupabaseClient(
+      {
+        students: { data: { id: "student-1" }, error: null },
+        quiz_attempts: { data: null, error: null },
+        quizzes: {
+          data: { id: "quiz-1", title: "T", description: null, time_limit_minutes: null },
+          error: null,
+        },
+        quiz_attempt_starts: [
+          { data: null, error: null }, // upsert
+          { data: { started_at: null, question_order: null }, error: null }, // select
+        ],
+        quiz_questions: { data: twoQuestions, error: null },
+        quiz_question_options: { data: [], error: null },
+      },
+      { id: "user-1" },
+      { data: false, error: null }, // is_quiz_shuffled_for_student
+    );
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    const quiz = await getQuizForTakingAction("quiz-1");
+
+    expect(quiz.questions.map((q) => q.id)).toEqual(["q1", "q2"]);
+  });
+
+  it("shuffles and persists the order on first load when shuffle is on", async () => {
+    const client = createMockSupabaseClient(
+      {
+        students: { data: { id: "student-1" }, error: null },
+        quiz_attempts: { data: null, error: null },
+        quizzes: {
+          data: { id: "quiz-1", title: "T", description: null, time_limit_minutes: null },
+          error: null,
+        },
+        quiz_attempt_starts: [
+          { data: null, error: null }, // upsert
+          { data: { started_at: null, question_order: null }, error: null }, // select, no stored order yet
+          { data: null, error: null }, // update, persisting the freshly shuffled order
+        ],
+        quiz_questions: { data: twoQuestions, error: null },
+        quiz_question_options: { data: [], error: null },
+      },
+      { id: "user-1" },
+      { data: true, error: null }, // is_quiz_shuffled_for_student
+    );
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    // Forces the Fisher-Yates swap on a 2-item array to reverse it deterministically.
+    vi.spyOn(Math, "random").mockReturnValue(0);
+
+    const quiz = await getQuizForTakingAction("quiz-1");
+
+    expect(quiz.questions.map((q) => q.id)).toEqual(["q2", "q1"]);
+
+    const attemptStartCalls = client.from.mock.calls.filter(
+      ([table]) => table === "quiz_attempt_starts",
+    );
+    expect(attemptStartCalls).toHaveLength(3);
+    const updateChain = client.from.mock.results[
+      client.from.mock.calls.indexOf(attemptStartCalls[2])
+    ].value;
+    expect(updateChain.update).toHaveBeenCalledWith({
+      question_order: ["q2", "q1"],
+    });
+
+    vi.spyOn(Math, "random").mockRestore();
+  });
+
+  it("reuses the stored order on a later load instead of reshuffling", async () => {
+    const client = createMockSupabaseClient(
+      {
+        students: { data: { id: "student-1" }, error: null },
+        quiz_attempts: { data: null, error: null },
+        quizzes: {
+          data: { id: "quiz-1", title: "T", description: null, time_limit_minutes: null },
+          error: null,
+        },
+        quiz_attempt_starts: [
+          { data: null, error: null }, // upsert
+          { data: { started_at: null, question_order: ["q2", "q1"] }, error: null },
+        ],
+        quiz_questions: { data: twoQuestions, error: null },
+        quiz_question_options: { data: [], error: null },
+      },
+      { id: "user-1" },
+      { data: true, error: null }, // is_quiz_shuffled_for_student
+    );
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    const quiz = await getQuizForTakingAction("quiz-1");
+
+    expect(quiz.questions.map((q) => q.id)).toEqual(["q2", "q1"]);
+    expect(
+      client.from.mock.calls.filter(([table]) => table === "quiz_attempt_starts"),
+    ).toHaveLength(2);
+  });
+});
 
 describe("submitQuizAttemptAction - snapshot columns", () => {
   it("saves quiz_title and max_score on the attempt row, so the attempt survives the quiz being deleted", async () => {

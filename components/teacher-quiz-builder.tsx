@@ -21,6 +21,7 @@ import {
   getQuizQuestionBreakdownAction,
   getQuizResultsAction,
   getStudentQuizAttemptAction,
+  setQuizAssignmentShuffleAction,
   unassignQuizFromClassAction,
   updateQuizAction,
 } from "@/app/protected/teacher/quiz-actions";
@@ -322,7 +323,11 @@ export function TeacherQuizBuilder({
             ...quiz,
             assignedClasses: [
               ...quiz.assignedClasses,
-              { id: classId, name: classOption?.name ?? "" },
+              {
+                id: classId,
+                name: classOption?.name ?? "",
+                shuffleQuestions: false,
+              },
             ],
           };
         }),
@@ -330,6 +335,31 @@ export function TeacherQuizBuilder({
     } catch (error: unknown) {
       toast.error(
         error instanceof Error ? error.message : "Failed to update assignment",
+      );
+    } finally {
+      setIsTogglingAssignment(false);
+    }
+  };
+
+  const handleToggleShuffle = async (classId: string, next: boolean) => {
+    if (!manageQuizId) return;
+    setIsTogglingAssignment(true);
+    try {
+      await setQuizAssignmentShuffleAction(manageQuizId, classId, next);
+      setQuizzes((prev) =>
+        prev.map((quiz) => {
+          if (quiz.id !== manageQuizId) return quiz;
+          return {
+            ...quiz,
+            assignedClasses: quiz.assignedClasses.map((c) =>
+              c.id === classId ? { ...c, shuffleQuestions: next } : c,
+            ),
+          };
+        }),
+      );
+    } catch (error: unknown) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to update shuffle setting",
       );
     } finally {
       setIsTogglingAssignment(false);
@@ -995,24 +1025,41 @@ export function TeacherQuizBuilder({
           </DialogHeader>
           <div className="grid gap-2">
             {classes.map((classOption) => {
-              const isAssigned =
-                managedQuiz?.assignedClasses.some(
-                  (c) => c.id === classOption.id,
-                ) ?? false;
+              const assignedClass = managedQuiz?.assignedClasses.find(
+                (c) => c.id === classOption.id,
+              );
+              const isAssigned = assignedClass !== undefined;
               return (
-                <label
+                <div
                   key={classOption.id}
                   className="flex items-center gap-3 rounded-md border p-3 text-sm"
                 >
-                  <Checkbox
-                    checked={isAssigned}
-                    disabled={isTogglingAssignment}
-                    onCheckedChange={() =>
-                      handleToggleAssignment(classOption.id, isAssigned)
-                    }
-                  />
-                  <span className="flex-1">{classOption.name}</span>
-                </label>
+                  <label className="flex flex-1 items-center gap-3">
+                    <Checkbox
+                      checked={isAssigned}
+                      disabled={isTogglingAssignment}
+                      onCheckedChange={() =>
+                        handleToggleAssignment(classOption.id, isAssigned)
+                      }
+                    />
+                    <span className="flex-1">{classOption.name}</span>
+                  </label>
+                  {isAssigned && (
+                    <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Checkbox
+                        checked={assignedClass.shuffleQuestions}
+                        disabled={isTogglingAssignment}
+                        onCheckedChange={() =>
+                          handleToggleShuffle(
+                            classOption.id,
+                            !assignedClass.shuffleQuestions,
+                          )
+                        }
+                      />
+                      Shuffle questions
+                    </label>
+                  )}
+                </div>
               );
             })}
           </div>

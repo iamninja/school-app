@@ -98,6 +98,7 @@ export interface QuizAssignment {
   quiz_id: string;
   class_id: string;
   assigned_at: string;
+  shuffle_questions: boolean;
 }
 
 export type QuizQuestionType = "multiple_choice" | "true_false" | "short_answer";
@@ -271,7 +272,7 @@ export interface QuizForEditing {
 
 export interface TeacherQuizListItem {
   id: string;
-  assignedClasses: { id: string; name: string }[];
+  assignedClasses: { id: string; name: string; shuffleQuestions: boolean }[];
   title: string;
   description: string | null;
   timeLimitMinutes: number | null;

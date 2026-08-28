@@ -112,7 +112,7 @@ async function buildQuizListItem(
     await Promise.all([
       supabase
         .from("quiz_assignments")
-        .select("class_id, classes:class_id (id, name)")
+        .select("class_id, shuffle_questions, classes:class_id (id, name)")
         .eq("quiz_id", quiz.id),
       supabase
         .from("quiz_questions")
@@ -126,7 +126,11 @@ async function buildQuizListItem(
       id: string;
       name: string;
     } | null;
-    return { id: classRow?.id ?? assignment.class_id, name: classRow?.name ?? "" };
+    return {
+      id: classRow?.id ?? assignment.class_id,
+      name: classRow?.name ?? "",
+      shuffleQuestions: assignment.shuffle_questions,
+    };
   });
 
   return {
@@ -239,6 +243,35 @@ export async function unassignQuizFromClassAction(
   const { error } = await supabase
     .from("quiz_assignments")
     .delete()
+    .eq("quiz_id", quizId)
+    .eq("class_id", classId);
+
+  if (error) {
+    throw error;
+  }
+}
+
+export async function setQuizAssignmentShuffleAction(
+  quizId: string,
+  classId: string,
+  shuffleQuestions: boolean,
+): Promise<void> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error("Not authenticated");
+  }
+
+  await requireTeacher(supabase, user.id);
+
+  await requireOwnedQuiz(supabase, quizId, user.id);
+
+  const { error } = await supabase
+    .from("quiz_assignments")
+    .update({ shuffle_questions: shuffleQuestions })
     .eq("quiz_id", quizId)
     .eq("class_id", classId);
 

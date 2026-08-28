@@ -27,6 +27,15 @@ async function getStudentId(
   return student.id;
 }
 
+function shuffleQuestionOrder<T>(items: T[]): T[] {
+  const shuffled = [...items];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
+
 /**
  * Fetches a quiz for a student to take. Deliberately never selects
  * is_correct from quiz_question_options - the answer key must not reach
@@ -67,22 +76,28 @@ export async function getQuizForTakingAction(
     throw new Error("Quiz not found");
   }
 
-  let startedAt: string | null = null;
-  if (quiz.time_limit_minutes !== null) {
-    await supabase.from("quiz_attempt_starts").upsert(
-      { quiz_id: quizId, student_id: studentId },
-      { onConflict: "quiz_id,student_id", ignoreDuplicates: true },
-    );
+  const { data: shuffleEnabled } = await supabase.rpc(
+    "is_quiz_shuffled_for_student",
+    { quiz_id_param: quizId },
+  );
 
-    const { data: startRow } = await supabase
-      .from("quiz_attempt_starts")
-      .select("started_at")
-      .eq("quiz_id", quizId)
-      .eq("student_id", studentId)
-      .single();
+  // Anchor a quiz_attempt_starts row regardless of time_limit_minutes (not
+  // just for timed quizzes) so a shuffled question order stays stable
+  // across a resume/refresh.
+  await supabase.from("quiz_attempt_starts").upsert(
+    { quiz_id: quizId, student_id: studentId },
+    { onConflict: "quiz_id,student_id", ignoreDuplicates: true },
+  );
 
-    startedAt = startRow?.started_at ?? null;
-  }
+  const { data: startRow } = await supabase
+    .from("quiz_attempt_starts")
+    .select("started_at, question_order")
+    .eq("quiz_id", quizId)
+    .eq("student_id", studentId)
+    .single();
+
+  const startedAt =
+    quiz.time_limit_minutes !== null ? (startRow?.started_at ?? null) : null;
 
   const { data: questions, error: questionsError } = await supabase
     .from("quiz_questions")
@@ -94,8 +109,34 @@ export async function getQuizForTakingAction(
     throw questionsError;
   }
 
-  const questionIds = (questions ?? []).map((question) => question.id);
-  const takingImagePaths = (questions ?? [])
+  let orderedQuestions = questions ?? [];
+  if (shuffleEnabled) {
+    const storedOrder = (startRow?.question_order as string[] | null) ?? null;
+    const byId = new Map(
+      orderedQuestions.map((question) => [question.id, question]),
+    );
+    const reordered = storedOrder
+      ?.map((id) => byId.get(id))
+      .filter((question): question is (typeof orderedQuestions)[number] =>
+        question !== undefined,
+      );
+
+    if (reordered && reordered.length === orderedQuestions.length) {
+      orderedQuestions = reordered;
+    } else {
+      orderedQuestions = shuffleQuestionOrder(orderedQuestions);
+      await supabase
+        .from("quiz_attempt_starts")
+        .update({
+          question_order: orderedQuestions.map((question) => question.id),
+        })
+        .eq("quiz_id", quizId)
+        .eq("student_id", studentId);
+    }
+  }
+
+  const questionIds = orderedQuestions.map((question) => question.id);
+  const takingImagePaths = orderedQuestions
     .map((question) => question.image_path)
     .filter((path): path is string => typeof path === "string");
   const takingImageUrlByPath = await signQuizImageUrls(
@@ -125,7 +166,7 @@ export async function getQuizForTakingAction(
     }
   }
 
-  const mappedQuestions: QuizQuestionForTaking[] = (questions ?? []).map(
+  const mappedQuestions: QuizQuestionForTaking[] = orderedQuestions.map(
     (question) => ({
       id: question.id,
       questionText: question.question_text,

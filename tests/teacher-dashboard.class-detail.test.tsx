@@ -203,7 +203,9 @@ describe("TeacherDashboard class detail - rendering and navigation", () => {
         title: "Chapter 3 Quiz",
         description: null,
         timeLimitMinutes: 20,
-        assignedClasses: [{ id: "class-1", name: "Algebra II" }],
+        assignedClasses: [
+          { id: "class-1", name: "Algebra II", shuffleQuestions: false },
+        ],
         questionCount: 5,
         hasAttempts: false,
       },

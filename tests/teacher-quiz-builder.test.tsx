@@ -37,7 +37,9 @@ const classes = [
 
 const baseQuiz = {
   id: "quiz-1",
-  assignedClasses: [{ id: "class-1", name: "Algebra II" }],
+  assignedClasses: [
+    { id: "class-1", name: "Algebra II", shuffleQuestions: false },
+  ],
   title: "Chapter 3 Quiz",
   description: null,
   timeLimitMinutes: null,
@@ -261,8 +263,8 @@ describe("TeacherQuizBuilder", () => {
     createQuizAction.mockResolvedValue({
       id: "quiz-1",
       assignedClasses: [
-        { id: "class-1", name: "Algebra II" },
-        { id: "class-2", name: "Biology" },
+        { id: "class-1", name: "Algebra II", shuffleQuestions: false },
+        { id: "class-2", name: "Biology", shuffleQuestions: false },
       ],
       title: "Chapter 3 Quiz",
       description: null,
@@ -1155,13 +1157,17 @@ describe("TeacherQuizBuilder", () => {
         ...baseQuiz,
         id: "quiz-1",
         title: "Chapter 3 Quiz",
-        assignedClasses: [{ id: "class-1", name: "Algebra II" }],
+        assignedClasses: [
+          { id: "class-1", name: "Algebra II", shuffleQuestions: false },
+        ],
       },
       {
         ...baseQuiz,
         id: "quiz-2",
         title: "Cell Biology Basics",
-        assignedClasses: [{ id: "class-2", name: "Biology" }],
+        assignedClasses: [
+          { id: "class-2", name: "Biology", shuffleQuestions: false },
+        ],
       },
       {
         ...baseQuiz,

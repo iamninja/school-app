@@ -186,7 +186,7 @@ export default async function TeacherPage() {
   const questionCountByQuiz = new Map<string, number>();
   const assignedClassesByQuiz = new Map<
     string,
-    { id: string; name: string }[]
+    { id: string; name: string; shuffleQuestions: boolean }[]
   >();
   const quizzesWithAttempts = new Set<string>();
   if (quizIds.length > 0) {
@@ -199,7 +199,7 @@ export default async function TeacherPage() {
         supabase.from("quiz_questions").select("quiz_id").in("quiz_id", quizIds),
         supabase
           .from("quiz_assignments")
-          .select("quiz_id, class_id")
+          .select("quiz_id, class_id, shuffle_questions")
           .in("quiz_id", quizIds),
         supabase.from("quiz_attempts").select("quiz_id").in("quiz_id", quizIds),
       ]);
@@ -213,7 +213,11 @@ export default async function TeacherPage() {
 
     for (const row of assignmentRows ?? []) {
       const list = assignedClassesByQuiz.get(row.quiz_id) ?? [];
-      list.push({ id: row.class_id, name: classNameById.get(row.class_id) ?? "" });
+      list.push({
+        id: row.class_id,
+        name: classNameById.get(row.class_id) ?? "",
+        shuffleQuestions: row.shuffle_questions,
+      });
       assignedClassesByQuiz.set(row.quiz_id, list);
     }
 
