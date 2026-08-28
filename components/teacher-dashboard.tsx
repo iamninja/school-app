@@ -196,6 +196,8 @@ type ClassItem = {
   grade: string | null;
   color: string;
   archivedAt: string | null;
+  startDate: string | null;
+  finishDate: string | null;
 };
 
 type ScheduleState = Record<string, string | null>;
@@ -244,6 +246,8 @@ type TeacherDashboardProps = {
     hoursPerWeek: number;
     grade?: string | null;
     archivedAt: string | null;
+    startDate?: string | null;
+    finishDate?: string | null;
   }>;
   initialSlots: Array<{
     day: string;
@@ -477,6 +481,8 @@ export function TeacherDashboard({
   const [classFormName, setClassFormName] = React.useState("");
   const [classFormHours, setClassFormHours] = React.useState("2");
   const [classFormGrade, setClassFormGrade] = React.useState("");
+  const [classFormStartDate, setClassFormStartDate] = React.useState("");
+  const [classFormFinishDate, setClassFormFinishDate] = React.useState("");
   const [isSavingClass, setIsSavingClass] = React.useState(false);
   const [isMutatingEnrollment, setIsMutatingEnrollment] = React.useState(false);
   const [showArchivedClasses, setShowArchivedClasses] = React.useState(false);
@@ -487,6 +493,8 @@ export function TeacherDashboard({
     initialClasses.map((item, index) => ({
       ...item,
       grade: item.grade ?? null,
+      startDate: item.startDate ?? null,
+      finishDate: item.finishDate ?? null,
       color: COLOR_CLASSES[index % COLOR_CLASSES.length],
     })),
   );
@@ -604,6 +612,8 @@ export function TeacherDashboard({
     setClassFormName("");
     setClassFormHours("2");
     setClassFormGrade("");
+    setClassFormStartDate("");
+    setClassFormFinishDate("");
   };
 
   const handleCreateClass = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -618,6 +628,14 @@ export function TeacherDashboard({
       toast.error("Hours per week must be at least 1");
       return;
     }
+    if (
+      classFormStartDate &&
+      classFormFinishDate &&
+      classFormFinishDate < classFormStartDate
+    ) {
+      toast.error("Finish date can't be before the start date");
+      return;
+    }
     setIsSavingClass(true);
     try {
       const nextColor = COLOR_CLASSES[classes.length % COLOR_CLASSES.length];
@@ -625,6 +643,8 @@ export function TeacherDashboard({
         name: trimmed,
         hoursPerWeek: hours,
         grade: classFormGrade || null,
+        startDate: classFormStartDate || null,
+        finishDate: classFormFinishDate || null,
       });
       setClasses((prev) => [
         ...prev,
@@ -635,6 +655,8 @@ export function TeacherDashboard({
           grade: created.grade,
           color: nextColor,
           archivedAt: null,
+          startDate: created.startDate,
+          finishDate: created.finishDate,
         },
       ]);
       toast.success("Class created");
@@ -657,6 +679,8 @@ export function TeacherDashboard({
     setClassFormName(classItem.name);
     setClassFormHours(String(classItem.hoursPerWeek));
     setClassFormGrade(classItem.grade ?? "");
+    setClassFormStartDate(classItem.startDate ?? "");
+    setClassFormFinishDate(classItem.finishDate ?? "");
     setEditClassId(classId);
   };
 
@@ -679,6 +703,14 @@ export function TeacherDashboard({
       toast.error("Hours per week must be at least 1");
       return;
     }
+    if (
+      classFormStartDate &&
+      classFormFinishDate &&
+      classFormFinishDate < classFormStartDate
+    ) {
+      toast.error("Finish date can't be before the start date");
+      return;
+    }
     setIsSavingClass(true);
     try {
       const updated = await updateClassAction({
@@ -686,6 +718,8 @@ export function TeacherDashboard({
         name: trimmed,
         hoursPerWeek: hours,
         grade: classFormGrade || null,
+        startDate: classFormStartDate || null,
+        finishDate: classFormFinishDate || null,
       });
       setClasses((prev) =>
         prev.map((item) =>
@@ -695,6 +729,8 @@ export function TeacherDashboard({
                 name: updated.name,
                 hoursPerWeek: updated.hoursPerWeek,
                 grade: updated.grade,
+                startDate: updated.startDate,
+                finishDate: updated.finishDate,
               }
             : item,
         ),
@@ -1923,6 +1959,34 @@ export function TeacherDashboard({
                     ))}
                   </select>
                 </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="class-start-date">
+                      Start date (optional)
+                    </Label>
+                    <Input
+                      id="class-start-date"
+                      type="date"
+                      value={classFormStartDate}
+                      onChange={(event) =>
+                        setClassFormStartDate(event.target.value)
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="class-finish-date">
+                      Finish date (optional)
+                    </Label>
+                    <Input
+                      id="class-finish-date"
+                      type="date"
+                      value={classFormFinishDate}
+                      onChange={(event) =>
+                        setClassFormFinishDate(event.target.value)
+                      }
+                    />
+                  </div>
+                </div>
                 <Button
                   type="submit"
                   className="w-full"
@@ -1977,6 +2041,34 @@ export function TeacherDashboard({
                       </option>
                     ))}
                   </select>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-class-start-date">
+                      Start date (optional)
+                    </Label>
+                    <Input
+                      id="edit-class-start-date"
+                      type="date"
+                      value={classFormStartDate}
+                      onChange={(event) =>
+                        setClassFormStartDate(event.target.value)
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-class-finish-date">
+                      Finish date (optional)
+                    </Label>
+                    <Input
+                      id="edit-class-finish-date"
+                      type="date"
+                      value={classFormFinishDate}
+                      onChange={(event) =>
+                        setClassFormFinishDate(event.target.value)
+                      }
+                    />
+                  </div>
                 </div>
               </div>
               <DialogFooter>

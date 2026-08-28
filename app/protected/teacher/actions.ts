@@ -10,6 +10,8 @@ export async function createClassAction(data: {
   name: string;
   hoursPerWeek: number;
   grade?: string | null;
+  startDate?: string | null;
+  finishDate?: string | null;
 }) {
   const supabase = await createClient();
   const {
@@ -29,8 +31,10 @@ export async function createClassAction(data: {
       name: data.name,
       hours_per_week: data.hoursPerWeek,
       grade: data.grade ?? null,
+      start_date: data.startDate ?? null,
+      finish_date: data.finishDate ?? null,
     })
-    .select("id, name, hours_per_week, grade")
+    .select("id, name, hours_per_week, grade, start_date, finish_date")
     .single();
 
   if (error) {
@@ -42,6 +46,8 @@ export async function createClassAction(data: {
     name: row.name,
     hoursPerWeek: row.hours_per_week,
     grade: row.grade,
+    startDate: row.start_date,
+    finishDate: row.finish_date,
   };
 }
 
@@ -50,6 +56,8 @@ export async function updateClassAction(data: {
   name: string;
   hoursPerWeek: number;
   grade?: string | null;
+  startDate?: string | null;
+  finishDate?: string | null;
 }) {
   const supabase = await createClient();
   const {
@@ -68,10 +76,12 @@ export async function updateClassAction(data: {
       name: data.name,
       hours_per_week: data.hoursPerWeek,
       grade: data.grade ?? null,
+      start_date: data.startDate ?? null,
+      finish_date: data.finishDate ?? null,
     })
     .eq("id", data.classId)
     .eq("teacher_id", user.id)
-    .select("id, name, hours_per_week, grade")
+    .select("id, name, hours_per_week, grade, start_date, finish_date")
     .single();
 
   if (error) {
@@ -83,6 +93,8 @@ export async function updateClassAction(data: {
     name: row.name,
     hoursPerWeek: row.hours_per_week,
     grade: row.grade,
+    startDate: row.start_date,
+    finishDate: row.finish_date,
   };
 }
 

@@ -61,6 +61,11 @@ export interface ProjectionClass {
   id: string;
   name: string;
   archivedAt: string | null;
+  // Optional so callers that don't carry a class's date window (tests, the
+  // portal "upcoming" cards) keep today's "project indefinitely" behavior -
+  // only a caller that actually threads these through opts into gating.
+  startDate?: string | null;
+  finishDate?: string | null;
 }
 
 export type ProjectionEvent = Pick<
@@ -166,6 +171,8 @@ export function projectOccurrences(input: ProjectionInput): Occurrence[] {
       if (slot.day !== weekday) continue;
       const cls = classById.get(slot.classId);
       if (!cls) continue;
+      if (cls.startDate && date < cls.startDate) continue;
+      if (cls.finishDate && date > cls.finishDate) continue;
 
       const coverage = cancellationsByClassDate.get(`${slot.classId}|${date}`);
       const matchedEventId =

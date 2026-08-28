@@ -79,6 +79,8 @@ describe("TeacherDashboard class grade", () => {
       name: "Physics",
       hoursPerWeek: 2,
       grade: "gym_c",
+      startDate: null,
+      finishDate: null,
     });
 
     render(<TeacherDashboard {...baseProps} initialClasses={[]} />);
@@ -105,6 +107,8 @@ describe("TeacherDashboard class grade", () => {
       name: "Algebra II",
       hoursPerWeek: 3,
       grade: "lyk_b",
+      startDate: null,
+      finishDate: null,
     });
 
     render(<TeacherDashboard {...baseProps} />);
