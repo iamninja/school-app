@@ -299,11 +299,11 @@ export function StudentQuizPanel({
         <CardContent className="space-y-4">
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="outline" className="text-base font-bold">
-              Επίσημος: {view.review.score} / {view.review.maxScore}
+              Βαθμός: {view.review.score} / {view.review.maxScore}
             </Badge>
             {view.review.best && (
               <Badge className="text-base font-bold">
-                Καλύτερος: {view.review.best.score} / {view.review.maxScore}
+                Καλύτερη προσπάθεια: {view.review.best.score} / {view.review.maxScore}
               </Badge>
             )}
           </div>
@@ -373,10 +373,10 @@ export function StudentQuizPanel({
       ) : quiz.completed ? (
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="outline">
-            Επίσημος: {quiz.score} / {quiz.maxScore}
+            Βαθμός: {quiz.score} / {quiz.maxScore}
           </Badge>
           {quiz.attemptsUsed > 1 && (
-            <Badge>Καλύτερος: {quiz.bestScore} / {quiz.maxScore}</Badge>
+            <Badge>Καλύτερη προσπάθεια: {quiz.bestScore} / {quiz.maxScore}</Badge>
           )}
           <Button
             variant="outline"
