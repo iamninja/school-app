@@ -204,7 +204,12 @@ describe("TeacherDashboard class detail - rendering and navigation", () => {
         description: null,
         timeLimitMinutes: 20,
         assignedClasses: [
-          { id: "class-1", name: "Algebra II", shuffleQuestions: false },
+          {
+            id: "class-1",
+            name: "Algebra II",
+            shuffleQuestions: false,
+            maxAttempts: null,
+          },
         ],
         questionCount: 5,
         hasAttempts: false,

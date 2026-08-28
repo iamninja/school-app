@@ -27,6 +27,56 @@ async function getStudentId(
   return student.id;
 }
 
+function buildStoredAnswerReview(
+  row: {
+    question_id: string;
+    selected_option_id: string | null;
+    text_answer: string | null;
+    is_correct: boolean | null;
+    points_awarded: number | null;
+  },
+  questionById: Map<
+    string,
+    {
+      question_text: string;
+      question_type: string;
+      points: number;
+      image_path: string | null;
+    }
+  >,
+  optionsByQuestion: Map<
+    string,
+    { id: string; question_id: string; option_text: string; is_correct: boolean }[]
+  >,
+  imageUrlByPath: Map<string, string>,
+): QuizAttemptAnswerReview {
+  const question = questionById.get(row.question_id);
+  const questionOptions = optionsByQuestion.get(row.question_id) ?? [];
+  const correctOption = questionOptions.find((option) => option.is_correct);
+  const selectedOption = row.selected_option_id
+    ? questionOptions.find((option) => option.id === row.selected_option_id)
+    : undefined;
+
+  return {
+    questionId: row.question_id,
+    questionText: question?.question_text ?? "",
+    questionType:
+      (question?.question_type as QuizQuestionForTaking["questionType"]) ??
+      "short_answer",
+    imageUrl: question?.image_path
+      ? (imageUrlByPath.get(question.image_path) ?? null)
+      : null,
+    selectedOptionId: row.selected_option_id,
+    selectedOptionText: selectedOption?.option_text ?? null,
+    textAnswer: row.text_answer,
+    correctOptionId: correctOption?.id ?? null,
+    correctOptionText: correctOption?.option_text ?? null,
+    isCorrect: row.is_correct,
+    pointsAwarded: row.points_awarded,
+    pointsPossible: question?.points ?? 0,
+  };
+}
+
 function shuffleQuestionOrder<T>(items: T[]): T[] {
   const shuffled = [...items];
   for (let i = shuffled.length - 1; i > 0; i--) {
@@ -63,7 +113,21 @@ export async function getQuizForTakingAction(
     .maybeSingle();
 
   if (existingAttempt) {
-    throw new Error("You have already submitted this quiz");
+    const { data: bestRow } = await supabase
+      .from("quiz_attempt_bests")
+      .select("attempts_used")
+      .eq("attempt_id", existingAttempt.id)
+      .single();
+
+    const { data: maxAttempts } = await supabase.rpc(
+      "quiz_max_attempts_for_student",
+      { quiz_id_param: quizId },
+    );
+
+    const attemptsUsed = bestRow?.attempts_used ?? 1;
+    if (maxAttempts !== null && attemptsUsed >= maxAttempts) {
+      throw new Error("You have used all your attempts for this quiz");
+    }
   }
 
   const { data: quiz, error: quizError } = await supabase
@@ -344,41 +408,198 @@ export async function submitQuizAttemptAction(
     (sum, question) => sum + question.points,
     0,
   );
+  const questionById = new Map((questions ?? []).map((q) => [q.id, q]));
 
-  // quiz_title/max_score are a snapshot, not a live join - if the quiz is
-  // later deleted, this attempt (and the student's history of it) survives
-  // via ON DELETE SET NULL, even though the questions/answer detail don't.
-  const { data: attempt, error: attemptError } = await supabase
+  const { data: existingAttempt } = await supabase
     .from("quiz_attempts")
-    .insert({
-      quiz_id: quizId,
-      student_id: studentId,
-      score: totalScore,
-      quiz_title: quiz.title,
-      max_score: maxScore,
-    })
-    .select("id, submitted_at")
-    .single();
+    .select("id, submitted_at, score")
+    .eq("quiz_id", quizId)
+    .eq("student_id", studentId)
+    .maybeSingle();
 
-  if (attemptError) {
-    throw attemptError;
+  const { data: maxAttempts } = await supabase.rpc(
+    "quiz_max_attempts_for_student",
+    { quiz_id_param: quizId },
+  );
+
+  let attemptId: string;
+  let officialScore: number;
+  let officialSubmittedAt: string;
+  let bestScore: number;
+  let bestSubmittedAt: string;
+  let bestAnswers: QuizAttemptAnswerReview[];
+  let attemptsUsed: number;
+
+  if (!existingAttempt) {
+    // First attempt - this row becomes the permanent "official" record and
+    // is never touched again. quiz_title/max_score are a snapshot, not a
+    // live join - if the quiz is later deleted, this attempt (and the
+    // student's history of it) survives via ON DELETE SET NULL, even
+    // though the questions/answer detail don't.
+    const { data: attempt, error: attemptError } = await supabase
+      .from("quiz_attempts")
+      .insert({
+        quiz_id: quizId,
+        student_id: studentId,
+        score: totalScore,
+        quiz_title: quiz.title,
+        max_score: maxScore,
+      })
+      .select("id, submitted_at")
+      .single();
+
+    if (attemptError) {
+      throw attemptError;
+    }
+
+    attemptId = attempt.id;
+    officialScore = totalScore;
+    officialSubmittedAt = attempt.submitted_at;
+
+    const { error: answersError } = await supabase
+      .from("quiz_attempt_answers")
+      .insert(answerRows.map((row) => ({ attempt_id: attemptId, ...row })));
+
+    if (answersError) {
+      throw answersError;
+    }
+
+    const { data: bestRow, error: bestError } = await supabase
+      .from("quiz_attempt_bests")
+      .insert({
+        attempt_id: attemptId,
+        score: totalScore,
+        submitted_at: attempt.submitted_at,
+        attempts_used: 1,
+      })
+      .select("score, submitted_at, attempts_used")
+      .single();
+
+    if (bestError) {
+      throw bestError;
+    }
+
+    const { error: bestAnswersError } = await supabase
+      .from("quiz_attempt_best_answers")
+      .insert(answerRows.map((row) => ({ attempt_id: attemptId, ...row })));
+
+    if (bestAnswersError) {
+      throw bestAnswersError;
+    }
+
+    bestScore = bestRow.score;
+    bestSubmittedAt = bestRow.submitted_at;
+    bestAnswers = reviewAnswers;
+    attemptsUsed = bestRow.attempts_used;
+  } else {
+    // Retry - quiz_attempts (the official/first attempt) is never touched
+    // again. Only replace the best row (score + full answer detail) if
+    // this retry beats it; a worse retry's answers are discarded
+    // entirely, never written anywhere - matching the product decision to
+    // persist only the first and best results, never every retry.
+    attemptId = existingAttempt.id;
+    officialScore = existingAttempt.score;
+    officialSubmittedAt = existingAttempt.submitted_at;
+
+    const { data: currentBest, error: currentBestError } = await supabase
+      .from("quiz_attempt_bests")
+      .select("score, attempts_used")
+      .eq("attempt_id", attemptId)
+      .single();
+
+    if (currentBestError || !currentBest) {
+      throw currentBestError ?? new Error("No prior attempt found to retry");
+    }
+
+    if (maxAttempts !== null && currentBest.attempts_used >= maxAttempts) {
+      throw new Error("You have used all your attempts for this quiz");
+    }
+
+    const improves = totalScore > currentBest.score;
+
+    const { data: updatedBest, error: updateBestError } = await supabase
+      .from("quiz_attempt_bests")
+      .update({
+        attempts_used: currentBest.attempts_used + 1,
+        ...(improves
+          ? { score: totalScore, submitted_at: new Date().toISOString() }
+          : {}),
+      })
+      .eq("attempt_id", attemptId)
+      .select("score, submitted_at, attempts_used")
+      .single();
+
+    if (updateBestError) {
+      throw updateBestError;
+    }
+
+    if (improves) {
+      const { error: deleteBestAnswersError } = await supabase
+        .from("quiz_attempt_best_answers")
+        .delete()
+        .eq("attempt_id", attemptId);
+
+      if (deleteBestAnswersError) {
+        throw deleteBestAnswersError;
+      }
+
+      const { error: insertBestAnswersError } = await supabase
+        .from("quiz_attempt_best_answers")
+        .insert(answerRows.map((row) => ({ attempt_id: attemptId, ...row })));
+
+      if (insertBestAnswersError) {
+        throw insertBestAnswersError;
+      }
+
+      bestAnswers = reviewAnswers;
+    } else {
+      const { data: storedBestAnswers } = await supabase
+        .from("quiz_attempt_best_answers")
+        .select(
+          "question_id, selected_option_id, text_answer, is_correct, points_awarded",
+        )
+        .eq("attempt_id", attemptId);
+
+      bestAnswers = (storedBestAnswers ?? []).map((row) =>
+        buildStoredAnswerReview(
+          row,
+          questionById,
+          optionsByQuestion,
+          submitImageUrlByPath,
+        ),
+      );
+    }
+
+    bestScore = updatedBest.score;
+    bestSubmittedAt = updatedBest.submitted_at;
+    attemptsUsed = updatedBest.attempts_used;
   }
 
-  const { error: answersError } = await supabase
-    .from("quiz_attempt_answers")
-    .insert(
-      answerRows.map((row) => ({
-        attempt_id: attempt.id,
-        ...row,
-      })),
+  // The just-graded reviewAnswers are this submission's own answers - for
+  // a first attempt that IS the official record, but for a retry the
+  // top-level "official" answers must instead be re-fetched from the
+  // untouched quiz_attempt_answers row written back on the first attempt.
+  let officialAnswers = reviewAnswers;
+  if (existingAttempt) {
+    const { data: officialAnswerRows } = await supabase
+      .from("quiz_attempt_answers")
+      .select(
+        "question_id, selected_option_id, text_answer, is_correct, points_awarded",
+      )
+      .eq("attempt_id", attemptId);
+
+    officialAnswers = (officialAnswerRows ?? []).map((row) =>
+      buildStoredAnswerReview(
+        row,
+        questionById,
+        optionsByQuestion,
+        submitImageUrlByPath,
+      ),
     );
-
-  if (answersError) {
-    throw answersError;
   }
 
-  // Tidy cleanup, not load-bearing - the quiz_attempts unique constraint
-  // already prevents a second attempt regardless of this row's presence.
+  // Tidy cleanup, not load-bearing - the next getQuizForTakingAction call
+  // re-upserts a fresh row (fresh timer, fresh shuffle order) regardless.
   await supabase
     .from("quiz_attempt_starts")
     .delete()
@@ -386,13 +607,20 @@ export async function submitQuizAttemptAction(
     .eq("student_id", studentId);
 
   return {
-    attemptId: attempt.id,
+    attemptId,
     quizId: quiz.id,
     quizTitle: quiz.title,
-    score: totalScore,
+    score: officialScore,
     maxScore,
-    submittedAt: attempt.submitted_at,
-    answers: reviewAnswers,
+    submittedAt: officialSubmittedAt,
+    answers: officialAnswers,
+    attemptsUsed,
+    maxAttempts,
+    canRetake: maxAttempts === null || attemptsUsed < maxAttempts,
+    best:
+      attemptsUsed > 1
+        ? { score: bestScore, submittedAt: bestSubmittedAt, answers: bestAnswers }
+        : null,
   };
 }
 
@@ -478,48 +706,66 @@ export async function getQuizReviewAction(
     supabase,
     reviewImagePaths,
   );
-  const optionById = new Map(
-    (options ?? []).map((option) => [option.id, option]),
-  );
-  const correctOptionByQuestion = new Map(
-    (options ?? [])
-      .filter((option) => option.is_correct)
-      .map((option) => [option.question_id, option]),
-  );
 
   const maxScore = (questionRows ?? []).reduce(
     (sum, question) => sum + question.points,
     0,
   );
 
-  const reviewAnswers: QuizAttemptAnswerReview[] = (answers ?? []).map(
-    (answer) => {
-      const question = questionById.get(answer.question_id);
-      const correctOption = correctOptionByQuestion.get(answer.question_id);
-      const selectedOption = answer.selected_option_id
-        ? optionById.get(answer.selected_option_id)
-        : undefined;
+  const optionsByQuestion = new Map<
+    string,
+    { id: string; question_id: string; option_text: string; is_correct: boolean }[]
+  >();
+  for (const option of options ?? []) {
+    const list = optionsByQuestion.get(option.question_id) ?? [];
+    list.push(option);
+    optionsByQuestion.set(option.question_id, list);
+  }
 
-      return {
-        questionId: answer.question_id,
-        questionText: question?.question_text ?? "",
-        questionType:
-          (question?.question_type as QuizQuestionForTaking["questionType"]) ??
-          "short_answer",
-        imageUrl: question?.image_path
-          ? (reviewImageUrlByPath.get(question.image_path) ?? null)
-          : null,
-        selectedOptionId: answer.selected_option_id,
-        selectedOptionText: selectedOption?.option_text ?? null,
-        textAnswer: answer.text_answer,
-        correctOptionId: correctOption?.id ?? null,
-        correctOptionText: correctOption?.option_text ?? null,
-        isCorrect: answer.is_correct,
-        pointsAwarded: answer.points_awarded,
-        pointsPossible: question?.points ?? 0,
-      };
-    },
+  const reviewAnswers: QuizAttemptAnswerReview[] = (answers ?? []).map(
+    (answer) =>
+      buildStoredAnswerReview(
+        answer,
+        questionById,
+        optionsByQuestion,
+        reviewImageUrlByPath,
+      ),
   );
+
+  const { data: bestRow } = await supabase
+    .from("quiz_attempt_bests")
+    .select("score, submitted_at, attempts_used")
+    .eq("attempt_id", attempt.id)
+    .single();
+
+  let best: QuizAttemptReview["best"] = null;
+  if (bestRow && bestRow.attempts_used > 1) {
+    const { data: bestAnswerRows } = await supabase
+      .from("quiz_attempt_best_answers")
+      .select(
+        "question_id, selected_option_id, text_answer, is_correct, points_awarded",
+      )
+      .eq("attempt_id", attempt.id);
+
+    best = {
+      score: bestRow.score,
+      submittedAt: bestRow.submitted_at,
+      answers: (bestAnswerRows ?? []).map((row) =>
+        buildStoredAnswerReview(
+          row,
+          questionById,
+          optionsByQuestion,
+          reviewImageUrlByPath,
+        ),
+      ),
+    };
+  }
+
+  const { data: maxAttempts } = await supabase.rpc(
+    "quiz_max_attempts_for_student",
+    { quiz_id_param: quizId },
+  );
+  const attemptsUsed = bestRow?.attempts_used ?? 1;
 
   return {
     attemptId: attempt.id,
@@ -529,5 +775,9 @@ export async function getQuizReviewAction(
     maxScore,
     submittedAt: attempt.submitted_at,
     answers: reviewAnswers,
+    attemptsUsed,
+    maxAttempts,
+    canRetake: maxAttempts === null || attemptsUsed < maxAttempts,
+    best,
   };
 }

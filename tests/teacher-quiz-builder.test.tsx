@@ -38,7 +38,7 @@ const classes = [
 const baseQuiz = {
   id: "quiz-1",
   assignedClasses: [
-    { id: "class-1", name: "Algebra II", shuffleQuestions: false },
+    { id: "class-1", name: "Algebra II", shuffleQuestions: false, maxAttempts: null },
   ],
   title: "Chapter 3 Quiz",
   description: null,
@@ -263,8 +263,8 @@ describe("TeacherQuizBuilder", () => {
     createQuizAction.mockResolvedValue({
       id: "quiz-1",
       assignedClasses: [
-        { id: "class-1", name: "Algebra II", shuffleQuestions: false },
-        { id: "class-2", name: "Biology", shuffleQuestions: false },
+        { id: "class-1", name: "Algebra II", shuffleQuestions: false, maxAttempts: null },
+        { id: "class-2", name: "Biology", shuffleQuestions: false, maxAttempts: null },
       ],
       title: "Chapter 3 Quiz",
       description: null,
@@ -417,6 +417,8 @@ describe("TeacherQuizBuilder", () => {
           maxScore: 5,
           submittedAt: "2026-01-02T00:00:00Z",
           pendingShortAnswerCount: 0,
+          bestScore: 4,
+          attemptsUsed: 1,
         },
       ],
     });
@@ -461,6 +463,8 @@ describe("TeacherQuizBuilder", () => {
           maxScore: 1,
           submittedAt: "2026-01-02T00:00:00Z",
           pendingShortAnswerCount: 0,
+          bestScore: 1,
+          attemptsUsed: 1,
         },
       ],
     });
@@ -488,6 +492,10 @@ describe("TeacherQuizBuilder", () => {
           pointsPossible: 1,
         },
       ],
+      attemptsUsed: 1,
+      maxAttempts: 1,
+      canRetake: false,
+      best: null,
     });
 
     render(
@@ -1158,7 +1166,7 @@ describe("TeacherQuizBuilder", () => {
         id: "quiz-1",
         title: "Chapter 3 Quiz",
         assignedClasses: [
-          { id: "class-1", name: "Algebra II", shuffleQuestions: false },
+          { id: "class-1", name: "Algebra II", shuffleQuestions: false, maxAttempts: null },
         ],
       },
       {
@@ -1166,7 +1174,7 @@ describe("TeacherQuizBuilder", () => {
         id: "quiz-2",
         title: "Cell Biology Basics",
         assignedClasses: [
-          { id: "class-2", name: "Biology", shuffleQuestions: false },
+          { id: "class-2", name: "Biology", shuffleQuestions: false, maxAttempts: null },
         ],
       },
       {

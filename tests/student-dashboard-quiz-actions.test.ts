@@ -10,10 +10,17 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(),
 }));
 
-function findChain(client: ReturnType<typeof createMockSupabaseClient>, table: string) {
-  const index = client.from.mock.calls.findIndex(([t]) => t === table);
-  if (index === -1) {
-    throw new Error(`"${table}" was never queried`);
+function findChain(
+  client: ReturnType<typeof createMockSupabaseClient>,
+  table: string,
+  occurrence = 0,
+) {
+  const indices = client.from.mock.calls
+    .map((call, i) => (call[0] === table ? i : -1))
+    .filter((i) => i !== -1);
+  const index = indices[occurrence];
+  if (index === undefined) {
+    throw new Error(`"${table}" was not queried ${occurrence + 1} time(s)`);
   }
   return client.from.mock.results[index].value;
 }
@@ -123,6 +130,192 @@ describe("getQuizForTakingAction - question shuffle", () => {
   });
 });
 
+describe("getQuizForTakingAction - retake limit", () => {
+  it("blocks a retake once the student has used all their attempts", async () => {
+    const client = createMockSupabaseClient(
+      {
+        students: { data: { id: "student-1" }, error: null },
+        quiz_attempts: { data: { id: "attempt-1" }, error: null },
+        quiz_attempt_bests: { data: { attempts_used: 3 }, error: null },
+      },
+      { id: "user-1" },
+      { data: 3, error: null }, // quiz_max_attempts_for_student
+    );
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await expect(getQuizForTakingAction("quiz-1")).rejects.toThrow(
+      "You have used all your attempts for this quiz",
+    );
+  });
+
+  it("allows a retake when attempts remain", async () => {
+    const client = createMockSupabaseClient(
+      {
+        students: { data: { id: "student-1" }, error: null },
+        quiz_attempts: { data: { id: "attempt-1" }, error: null },
+        quiz_attempt_bests: { data: { attempts_used: 1 }, error: null },
+        quizzes: {
+          data: { id: "quiz-1", title: "T", description: null, time_limit_minutes: null },
+          error: null,
+        },
+        quiz_attempt_starts: [
+          { data: null, error: null },
+          { data: { started_at: null, question_order: null }, error: null },
+        ],
+        quiz_questions: { data: twoQuestions, error: null },
+        quiz_question_options: { data: [], error: null },
+      },
+      { id: "user-1" },
+      { data: 3, error: null }, // quiz_max_attempts_for_student
+    );
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    const quiz = await getQuizForTakingAction("quiz-1");
+
+    expect(quiz.id).toBe("quiz-1");
+  });
+});
+
+describe("submitQuizAttemptAction - retake best-tracking", () => {
+  const oneMultipleChoiceQuestion = [
+    { id: "q1", question_text: "2 + 2 = ?", question_type: "multiple_choice", points: 5, image_path: null },
+  ];
+  const options = [
+    { id: "opt-1", question_id: "q1", option_text: "4", is_correct: true },
+    { id: "opt-2", question_id: "q1", option_text: "5", is_correct: false },
+  ];
+
+  it("replaces the best score and answers when a retry beats the current best", async () => {
+    const client = createMockSupabaseClient(
+      {
+        students: { data: { id: "student-1" }, error: null },
+        quizzes: { data: { id: "quiz-1", title: "T" }, error: null },
+        quiz_questions: { data: oneMultipleChoiceQuestion, error: null },
+        quiz_question_options: { data: options, error: null },
+        quiz_attempts: {
+          data: { id: "attempt-1", submitted_at: "2026-01-01T00:00:00Z", score: 0 },
+          error: null,
+        }, // existingAttempt - official score stays 0 forever
+        quiz_attempt_bests: [
+          { data: { score: 0, attempts_used: 1 }, error: null }, // currentBest
+          {
+            data: { score: 5, submitted_at: "2026-01-03T00:00:00Z", attempts_used: 2 },
+            error: null,
+          }, // updatedBest
+        ],
+        quiz_attempt_best_answers: [
+          { data: null, error: null }, // delete
+          { data: null, error: null }, // insert
+        ],
+        quiz_attempt_answers: { data: [], error: null }, // officialAnswers refetch
+        quiz_attempt_starts: { data: null, error: null },
+      },
+      { id: "user-1" },
+      { data: 3, error: null }, // quiz_max_attempts_for_student
+    );
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    const review = await submitQuizAttemptAction("quiz-1", [
+      { questionId: "q1", selectedOptionId: "opt-1" },
+    ]);
+
+    // The official score/answers never change on a retry.
+    expect(review.score).toBe(0);
+    expect(review.attemptsUsed).toBe(2);
+    expect(review.canRetake).toBe(true);
+    expect(review.best).toEqual({
+      score: 5,
+      submittedAt: "2026-01-03T00:00:00Z",
+      answers: expect.any(Array),
+    });
+
+    expect(
+      client.from.mock.calls.filter(
+        ([table]) => table === "quiz_attempt_best_answers",
+      ),
+    ).toHaveLength(2);
+  });
+
+  it("discards a retry that doesn't beat the current best, leaving it unchanged", async () => {
+    const client = createMockSupabaseClient(
+      {
+        students: { data: { id: "student-1" }, error: null },
+        quizzes: { data: { id: "quiz-1", title: "T" }, error: null },
+        quiz_questions: { data: oneMultipleChoiceQuestion, error: null },
+        quiz_question_options: { data: options, error: null },
+        quiz_attempts: {
+          data: { id: "attempt-1", submitted_at: "2026-01-01T00:00:00Z", score: 5 },
+          error: null,
+        },
+        quiz_attempt_bests: [
+          { data: { score: 5, attempts_used: 1 }, error: null }, // currentBest
+          { data: { score: 5, submitted_at: "2026-01-01T00:00:00Z", attempts_used: 2 }, error: null }, // updatedBest (unchanged score)
+        ],
+        quiz_attempt_best_answers: {
+          data: [
+            {
+              question_id: "q1",
+              selected_option_id: "opt-1",
+              text_answer: null,
+              is_correct: true,
+              points_awarded: 5,
+            },
+          ],
+          error: null,
+        }, // storedBestAnswers - the retry's own wrong answer is never written here
+        quiz_attempt_answers: { data: [], error: null },
+        quiz_attempt_starts: { data: null, error: null },
+      },
+      { id: "user-1" },
+      { data: 3, error: null },
+    );
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    // This retry answers wrong (selects the incorrect option), so it scores
+    // 0 - well below the existing best of 5.
+    const review = await submitQuizAttemptAction("quiz-1", [
+      { questionId: "q1", selectedOptionId: "opt-2" },
+    ]);
+
+    expect(review.best?.score).toBe(5);
+    expect(review.best?.answers[0].isCorrect).toBe(true);
+    expect(review.best?.answers[0].pointsAwarded).toBe(5);
+
+    // No delete/insert into quiz_attempt_best_answers - only the read that
+    // re-fetches the untouched stored best answers for the response.
+    expect(
+      client.from.mock.calls.filter(
+        ([table]) => table === "quiz_attempt_best_answers",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("blocks a submission once the student has already used all their attempts", async () => {
+    const client = createMockSupabaseClient(
+      {
+        students: { data: { id: "student-1" }, error: null },
+        quizzes: { data: { id: "quiz-1", title: "T" }, error: null },
+        quiz_questions: { data: oneMultipleChoiceQuestion, error: null },
+        quiz_question_options: { data: options, error: null },
+        quiz_attempts: {
+          data: { id: "attempt-1", submitted_at: "2026-01-01T00:00:00Z", score: 5 },
+          error: null,
+        },
+        quiz_attempt_bests: { data: { score: 5, attempts_used: 3 }, error: null },
+      },
+      { id: "user-1" },
+      { data: 3, error: null },
+    );
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await expect(
+      submitQuizAttemptAction("quiz-1", [
+        { questionId: "q1", selectedOptionId: "opt-1" },
+      ]),
+    ).rejects.toThrow("You have used all your attempts for this quiz");
+  });
+});
+
 describe("submitQuizAttemptAction - snapshot columns", () => {
   it("saves quiz_title and max_score on the attempt row, so the attempt survives the quiz being deleted", async () => {
     const client = createMockSupabaseClient({
@@ -146,12 +339,20 @@ describe("submitQuizAttemptAction - snapshot columns", () => {
         ],
         error: null,
       },
-      quiz_attempts: {
-        data: { id: "attempt-1", submitted_at: "2026-01-02T00:00:00Z" },
-        error: null,
-      },
+      quiz_attempts: [
+        { data: null, error: null }, // existingAttempt check - first attempt
+        {
+          data: { id: "attempt-1", submitted_at: "2026-01-02T00:00:00Z" },
+          error: null,
+        }, // insert
+      ],
       quiz_attempt_answers: { data: null, error: null },
       quiz_attempt_starts: { data: null, error: null },
+      quiz_attempt_bests: {
+        data: { score: 5, submitted_at: "2026-01-02T00:00:00Z", attempts_used: 1 },
+        error: null,
+      },
+      quiz_attempt_best_answers: { data: null, error: null },
     }, { id: "user-1" });
     vi.mocked(createClient).mockResolvedValue(client as never);
 
@@ -162,7 +363,7 @@ describe("submitQuizAttemptAction - snapshot columns", () => {
     expect(review.score).toBe(5);
     expect(review.maxScore).toBe(5);
 
-    const attemptsChain = findChain(client, "quiz_attempts");
+    const attemptsChain = findChain(client, "quiz_attempts", 1);
     expect(attemptsChain.insert).toHaveBeenCalledWith(
       expect.objectContaining({
         quiz_title: "Chapter 3 Quiz",
@@ -199,12 +400,20 @@ describe("submitQuizAttemptAction - snapshot columns", () => {
         ],
         error: null,
       },
-      quiz_attempts: {
-        data: { id: "attempt-2", submitted_at: "2026-01-02T00:00:00Z" },
-        error: null,
-      },
+      quiz_attempts: [
+        { data: null, error: null }, // existingAttempt check - first attempt
+        {
+          data: { id: "attempt-2", submitted_at: "2026-01-02T00:00:00Z" },
+          error: null,
+        }, // insert
+      ],
       quiz_attempt_answers: { data: null, error: null },
       quiz_attempt_starts: { data: null, error: null },
+      quiz_attempt_bests: {
+        data: { score: 5, submitted_at: "2026-01-02T00:00:00Z", attempts_used: 1 },
+        error: null,
+      },
+      quiz_attempt_best_answers: { data: null, error: null },
     }, { id: "user-1" });
     vi.mocked(createClient).mockResolvedValue(client as never);
 
@@ -213,7 +422,7 @@ describe("submitQuizAttemptAction - snapshot columns", () => {
       { questionId: "q1", selectedOptionId: "opt-1" },
     ]);
 
-    const attemptsChain = findChain(client, "quiz_attempts");
+    const attemptsChain = findChain(client, "quiz_attempts", 1);
     expect(attemptsChain.insert).toHaveBeenCalledWith(
       expect.objectContaining({ max_score: 8, score: 5 }),
     );
@@ -245,12 +454,20 @@ describe("submitQuizAttemptAction - question images", () => {
           ],
           error: null,
         },
-        quiz_attempts: {
-          data: { id: "attempt-1", submitted_at: "2026-01-02T00:00:00Z" },
-          error: null,
-        },
+        quiz_attempts: [
+          { data: null, error: null }, // existingAttempt check - first attempt
+          {
+            data: { id: "attempt-1", submitted_at: "2026-01-02T00:00:00Z" },
+            error: null,
+          }, // insert
+        ],
         quiz_attempt_answers: { data: null, error: null },
         quiz_attempt_starts: { data: null, error: null },
+        quiz_attempt_bests: {
+          data: { score: 5, submitted_at: "2026-01-02T00:00:00Z", attempts_used: 1 },
+          error: null,
+        },
+        quiz_attempt_best_answers: { data: null, error: null },
       },
       { id: "user-1" },
     );
@@ -301,12 +518,20 @@ describe("submitQuizAttemptAction - question images", () => {
           ],
           error: null,
         },
-        quiz_attempts: {
-          data: { id: "attempt-1", submitted_at: "2026-01-02T00:00:00Z" },
-          error: null,
-        },
+        quiz_attempts: [
+          { data: null, error: null }, // existingAttempt check - first attempt
+          {
+            data: { id: "attempt-1", submitted_at: "2026-01-02T00:00:00Z" },
+            error: null,
+          }, // insert
+        ],
         quiz_attempt_answers: { data: null, error: null },
         quiz_attempt_starts: { data: null, error: null },
+        quiz_attempt_bests: {
+          data: { score: 5, submitted_at: "2026-01-02T00:00:00Z", attempts_used: 1 },
+          error: null,
+        },
+        quiz_attempt_best_answers: { data: null, error: null },
       },
       { id: "user-1" },
     );

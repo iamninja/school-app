@@ -171,15 +171,32 @@ export async function getStudentDashboardDataAction(): Promise<
 
     const { data: assignmentRows } = await supabase
       .from("quiz_assignments")
-      .select("quiz_id, class_id")
+      .select("quiz_id, class_id, max_attempts")
       .in("class_id", classIds);
 
     const quizIds = [...new Set((assignmentRows ?? []).map((a) => a.quiz_id))];
     const classNamesByQuiz = new Map<string, string[]>();
+    const maxAttemptsRowsByQuiz = new Map<string, (number | null)[]>();
     for (const row of assignmentRows ?? []) {
       const list = classNamesByQuiz.get(row.quiz_id) ?? [];
       list.push(classNameById.get(row.class_id) ?? "");
       classNamesByQuiz.set(row.quiz_id, list);
+
+      const maxAttemptsList = maxAttemptsRowsByQuiz.get(row.quiz_id) ?? [];
+      maxAttemptsList.push(row.max_attempts);
+      maxAttemptsRowsByQuiz.set(row.quiz_id, maxAttemptsList);
+    }
+    // Most generous limit across every class this quiz is assigned to for
+    // this student - null (unlimited) wins over any finite number,
+    // mirroring is_quiz_shuffled_for_student's permissive-OR resolution.
+    const maxAttemptsByQuiz = new Map<string, number | null>();
+    for (const [quizId, rows] of maxAttemptsRowsByQuiz) {
+      maxAttemptsByQuiz.set(
+        quizId,
+        rows.some((value) => value === null)
+          ? null
+          : Math.max(...(rows as number[])),
+      );
     }
 
     if (quizIds.length > 0) {
@@ -188,7 +205,7 @@ export async function getStudentDashboardDataAction(): Promise<
           supabase.from("quizzes").select("id, title").in("id", quizIds),
           supabase
             .from("quiz_attempts")
-            .select("quiz_id, score, submitted_at")
+            .select("id, quiz_id, score, submitted_at")
             .eq("student_id", student.id)
             .in("quiz_id", quizIds),
           supabase.from("quiz_questions").select("quiz_id, points").in(
@@ -208,8 +225,23 @@ export async function getStudentDashboardDataAction(): Promise<
         );
       }
 
+      const attemptIds = (attempts ?? []).map((attempt) => attempt.id);
+      const { data: bestRows } =
+        attemptIds.length > 0
+          ? await supabase
+              .from("quiz_attempt_bests")
+              .select("attempt_id, score, attempts_used")
+              .in("attempt_id", attemptIds)
+          : { data: [] as { attempt_id: string; score: number; attempts_used: number }[] };
+      const bestByAttempt = new Map(
+        (bestRows ?? []).map((row) => [row.attempt_id, row]),
+      );
+
       quizzes = (quizRows ?? []).map((quiz) => {
         const attempt = attemptByQuiz.get(quiz.id);
+        const best = attempt ? bestByAttempt.get(attempt.id) : undefined;
+        const maxAttempts = maxAttemptsByQuiz.get(quiz.id) ?? null;
+        const attemptsUsed = best?.attempts_used ?? (attempt ? 1 : 0);
 
         return {
           id: quiz.id,
@@ -220,6 +252,12 @@ export async function getStudentDashboardDataAction(): Promise<
           maxScore: maxScoreByQuiz.get(quiz.id) ?? 0,
           submittedAt: attempt?.submitted_at ?? null,
           quizDeleted: false,
+          bestScore: best?.score ?? attempt?.score ?? null,
+          attemptsUsed,
+          maxAttempts,
+          canRetake:
+            Boolean(attempt) &&
+            (maxAttempts === null || attemptsUsed < maxAttempts),
         };
       });
     }
@@ -246,6 +284,12 @@ export async function getStudentDashboardDataAction(): Promise<
       maxScore: attempt.max_score,
       submittedAt: attempt.submitted_at,
       quizDeleted: true,
+      // The quiz (and its assignment/retry setting) is gone - nothing left
+      // to retake.
+      bestScore: attempt.score,
+      attemptsUsed: 1,
+      maxAttempts: null,
+      canRetake: false,
     });
   }
 

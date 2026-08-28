@@ -86,6 +86,16 @@ async function insertQuestions(
   }
 }
 
+// The most generous max_attempts across every one of a student's classes
+// this quiz is assigned to - null (unlimited) wins over any finite number,
+// mirroring is_quiz_shuffled_for_student's permissive-OR resolution.
+function resolveMaxAttempts(rows: { max_attempts: number | null }[]): number | null {
+  if (rows.length === 0 || rows.some((row) => row.max_attempts === null)) {
+    return null;
+  }
+  return Math.max(...rows.map((row) => row.max_attempts as number));
+}
+
 async function getQuizAttemptCount(
   supabase: SupabaseServerClient,
   quizId: string,
@@ -112,7 +122,9 @@ async function buildQuizListItem(
     await Promise.all([
       supabase
         .from("quiz_assignments")
-        .select("class_id, shuffle_questions, classes:class_id (id, name)")
+        .select(
+          "class_id, shuffle_questions, max_attempts, classes:class_id (id, name)",
+        )
         .eq("quiz_id", quiz.id),
       supabase
         .from("quiz_questions")
@@ -130,6 +142,7 @@ async function buildQuizListItem(
       id: classRow?.id ?? assignment.class_id,
       name: classRow?.name ?? "",
       shuffleQuestions: assignment.shuffle_questions,
+      maxAttempts: assignment.max_attempts,
     };
   });
 
@@ -272,6 +285,39 @@ export async function setQuizAssignmentShuffleAction(
   const { error } = await supabase
     .from("quiz_assignments")
     .update({ shuffle_questions: shuffleQuestions })
+    .eq("quiz_id", quizId)
+    .eq("class_id", classId);
+
+  if (error) {
+    throw error;
+  }
+}
+
+export async function setQuizAssignmentMaxAttemptsAction(
+  quizId: string,
+  classId: string,
+  maxAttempts: number | null,
+): Promise<void> {
+  if (maxAttempts !== null && (!Number.isInteger(maxAttempts) || maxAttempts < 1)) {
+    throw new ExpectedError("Max attempts must be a positive whole number, or unlimited.");
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error("Not authenticated");
+  }
+
+  await requireTeacher(supabase, user.id);
+
+  await requireOwnedQuiz(supabase, quizId, user.id);
+
+  const { error } = await supabase
+    .from("quiz_assignments")
+    .update({ max_attempts: maxAttempts })
     .eq("quiz_id", quizId)
     .eq("class_id", classId);
 
@@ -631,6 +677,17 @@ export async function getQuizResultsAction(
   const attemptIds = (attempts ?? []).map((attempt) => attempt.id);
   const pendingByAttempt = new Map<string, number>();
 
+  const { data: bestRows } =
+    attemptIds.length > 0
+      ? await supabase
+          .from("quiz_attempt_bests")
+          .select("attempt_id, score, attempts_used")
+          .in("attempt_id", attemptIds)
+      : { data: [] as { attempt_id: string; score: number; attempts_used: number }[] };
+  const bestByAttempt = new Map(
+    (bestRows ?? []).map((row) => [row.attempt_id, row]),
+  );
+
   if (attemptIds.length > 0) {
     const { data: pendingAnswers } = await supabase
       .from("quiz_attempt_answers")
@@ -650,6 +707,7 @@ export async function getQuizResultsAction(
   const results: QuizResultRow[] = studentIds.map((studentId) => {
     const student = studentById.get(studentId);
     const attempt = attemptByStudent.get(studentId);
+    const best = attempt ? bestByAttempt.get(attempt.id) : undefined;
 
     return {
       studentId,
@@ -663,6 +721,8 @@ export async function getQuizResultsAction(
       pendingShortAnswerCount: attempt
         ? (pendingByAttempt.get(attempt.id) ?? 0)
         : 0,
+      bestScore: best?.score ?? attempt?.score ?? null,
+      attemptsUsed: best?.attempts_used ?? (attempt ? 1 : 0),
     };
   });
 
@@ -764,33 +824,81 @@ export async function getStudentQuizAttemptAction(
     0,
   );
 
-  const reviewAnswers: QuizAttemptAnswerReview[] = (answers ?? []).map(
-    (answer) => {
-      const question = questionById.get(answer.question_id);
-      const correctOption = correctOptionByQuestion.get(answer.question_id);
-      const selectedOption = answer.selected_option_id
-        ? optionById.get(answer.selected_option_id)
-        : undefined;
+  function mapToReview(row: {
+    question_id: string;
+    selected_option_id: string | null;
+    text_answer: string | null;
+    is_correct: boolean | null;
+    points_awarded: number | null;
+  }): QuizAttemptAnswerReview {
+    const question = questionById.get(row.question_id);
+    const correctOption = correctOptionByQuestion.get(row.question_id);
+    const selectedOption = row.selected_option_id
+      ? optionById.get(row.selected_option_id)
+      : undefined;
 
-      return {
-        questionId: answer.question_id,
-        questionText: question?.question_text ?? "",
-        questionType:
-          (question?.question_type as QuizQuestionType) ?? "short_answer",
-        imageUrl: question?.image_path
-          ? (imageUrlByPath.get(question.image_path) ?? null)
-          : null,
-        selectedOptionId: answer.selected_option_id,
-        selectedOptionText: selectedOption?.option_text ?? null,
-        textAnswer: answer.text_answer,
-        correctOptionId: correctOption?.id ?? null,
-        correctOptionText: correctOption?.option_text ?? null,
-        isCorrect: answer.is_correct,
-        pointsAwarded: answer.points_awarded,
-        pointsPossible: question?.points ?? 0,
-      };
-    },
+    return {
+      questionId: row.question_id,
+      questionText: question?.question_text ?? "",
+      questionType:
+        (question?.question_type as QuizQuestionType) ?? "short_answer",
+      imageUrl: question?.image_path
+        ? (imageUrlByPath.get(question.image_path) ?? null)
+        : null,
+      selectedOptionId: row.selected_option_id,
+      selectedOptionText: selectedOption?.option_text ?? null,
+      textAnswer: row.text_answer,
+      correctOptionId: correctOption?.id ?? null,
+      correctOptionText: correctOption?.option_text ?? null,
+      isCorrect: row.is_correct,
+      pointsAwarded: row.points_awarded,
+      pointsPossible: question?.points ?? 0,
+    };
+  }
+
+  const reviewAnswers: QuizAttemptAnswerReview[] = (answers ?? []).map(
+    mapToReview,
   );
+
+  const { data: bestRow } = await supabase
+    .from("quiz_attempt_bests")
+    .select("score, submitted_at, attempts_used")
+    .eq("attempt_id", attempt.id)
+    .single();
+
+  let best: QuizAttemptReview["best"] = null;
+  if (bestRow && bestRow.attempts_used > 1) {
+    const { data: bestAnswerRows } = await supabase
+      .from("quiz_attempt_best_answers")
+      .select(
+        "question_id, selected_option_id, text_answer, is_correct, points_awarded",
+      )
+      .eq("attempt_id", attempt.id);
+
+    best = {
+      score: bestRow.score,
+      submittedAt: bestRow.submitted_at,
+      answers: (bestAnswerRows ?? []).map(mapToReview),
+    };
+  }
+
+  const { data: studentClasses } = await supabase
+    .from("student_class_assignments")
+    .select("class_id")
+    .eq("student_id", studentId);
+  const classIds = (studentClasses ?? []).map((row) => row.class_id);
+
+  const { data: assignmentRows } =
+    classIds.length > 0
+      ? await supabase
+          .from("quiz_assignments")
+          .select("max_attempts")
+          .eq("quiz_id", quizId)
+          .in("class_id", classIds)
+      : { data: [] as { max_attempts: number | null }[] };
+
+  const maxAttempts = resolveMaxAttempts(assignmentRows ?? []);
+  const attemptsUsed = bestRow?.attempts_used ?? 1;
 
   return {
     attemptId: attempt.id,
@@ -800,6 +908,10 @@ export async function getStudentQuizAttemptAction(
     maxScore,
     submittedAt: attempt.submitted_at,
     answers: reviewAnswers,
+    attemptsUsed,
+    maxAttempts,
+    canRetake: maxAttempts === null || attemptsUsed < maxAttempts,
+    best,
   };
 }
 

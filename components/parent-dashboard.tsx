@@ -88,6 +88,7 @@ function QuizRow({ quiz }: { quiz: QuizSummary }) {
       {quiz.completed ? (
         <Badge>
           {quiz.score} / {quiz.maxScore}
+          {quiz.attemptsUsed > 1 && ` · καλύτερη ${quiz.bestScore}`}
         </Badge>
       ) : (
         <Badge variant="outline">Δεν έχει γίνει ακόμα</Badge>

@@ -140,6 +140,10 @@ export function StudentQuizPanel({
                 score: review.score,
                 maxScore: review.maxScore,
                 submittedAt: review.submittedAt,
+                bestScore: review.best?.score ?? review.score,
+                attemptsUsed: review.attemptsUsed,
+                maxAttempts: review.maxAttempts,
+                canRetake: review.canRetake,
               }
             : quiz,
         ),
@@ -296,10 +300,44 @@ export function StudentQuizPanel({
           <p className="text-2xl font-bold">
             {view.review.score} / {view.review.maxScore}
           </p>
-          <QuizReviewAnswers answers={view.review.answers} locale="el" />
-          <Button variant="outline" onClick={() => setView({ mode: "list" })}>
-            Πίσω στα τεστ
-          </Button>
+          {view.review.attemptsUsed > 1 && (
+            <p className="text-sm text-muted-foreground">
+              {view.review.attemptsUsed} προσπάθειες
+              {view.review.best &&
+                ` — καλύτερη: ${view.review.best.score} / ${view.review.maxScore}`}
+            </p>
+          )}
+          <div>
+            <p className="mb-2 text-sm font-medium">Πρώτη προσπάθεια</p>
+            <QuizReviewAnswers answers={view.review.answers} locale="el" />
+          </div>
+          {view.review.best && (
+            <div>
+              <p className="mb-2 text-sm font-medium">
+                Καλύτερη προσπάθεια
+              </p>
+              <QuizReviewAnswers
+                answers={view.review.best.answers}
+                locale="el"
+              />
+            </div>
+          )}
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setView({ mode: "list" })}
+            >
+              Πίσω στα τεστ
+            </Button>
+            {view.review.canRetake && (
+              <Button
+                disabled={isLoading}
+                onClick={() => handleTakeQuiz(view.review.quizId)}
+              >
+                Επανάληψη τεστ
+              </Button>
+            )}
+          </div>
         </CardContent>
       </Card>
     );
@@ -328,14 +366,27 @@ export function StudentQuizPanel({
           {quiz.score} / {quiz.maxScore}
         </Badge>
       ) : quiz.completed ? (
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={isLoading}
-          onClick={() => handleViewReview(quiz.id)}
-        >
-          {quiz.score} / {quiz.maxScore} · Ανασκόπηση
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={isLoading}
+            onClick={() => handleViewReview(quiz.id)}
+          >
+            {quiz.score} / {quiz.maxScore}
+            {quiz.attemptsUsed > 1 && ` · καλύτερη ${quiz.bestScore}`}
+            {" · Ανασκόπηση"}
+          </Button>
+          {quiz.canRetake && (
+            <Button
+              size="sm"
+              disabled={isLoading}
+              onClick={() => handleTakeQuiz(quiz.id)}
+            >
+              Επανάληψη
+            </Button>
+          )}
+        </div>
       ) : (
         <Button
           size="sm"

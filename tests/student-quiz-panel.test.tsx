@@ -28,6 +28,10 @@ const quizzes = [
     maxScore: 1,
     submittedAt: null,
     quizDeleted: false,
+    bestScore: null,
+    attemptsUsed: 0,
+    maxAttempts: null,
+    canRetake: false,
   },
 ];
 
@@ -229,6 +233,10 @@ describe("StudentQuizPanel", () => {
           pointsPossible: 1,
         },
       ],
+      attemptsUsed: 1,
+      maxAttempts: null,
+      canRetake: false,
+      best: null,
     });
 
     render(<StudentQuizPanel quizzes={quizzes} />);
@@ -299,6 +307,10 @@ describe("StudentQuizPanel", () => {
           pointsPossible: 1,
         },
       ],
+      attemptsUsed: 1,
+      maxAttempts: null,
+      canRetake: false,
+      best: null,
     });
 
     render(
@@ -425,6 +437,10 @@ describe("StudentQuizPanel", () => {
           pointsPossible: 1,
         },
       ],
+      attemptsUsed: 1,
+      maxAttempts: null,
+      canRetake: false,
+      best: null,
     });
 
     const { container } = render(
@@ -496,6 +512,10 @@ describe("StudentQuizPanel", () => {
       maxScore: 1,
       submittedAt: "2026-01-02T00:00:00Z",
       answers: [],
+      attemptsUsed: 1,
+      maxAttempts: null,
+      canRetake: false,
+      best: null,
     });
 
     render(<StudentQuizPanel quizzes={quizzes} />);
