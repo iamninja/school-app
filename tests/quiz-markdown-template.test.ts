@@ -1,3 +1,5 @@
+import { readFileSync } from "fs";
+import path from "path";
 import { describe, it, expect } from "vitest";
 import { parseQuizMarkdown } from "@/lib/quiz-markdown";
 import { QUIZ_MARKDOWN_TEMPLATE } from "@/lib/quiz-markdown-template";
@@ -23,5 +25,13 @@ describe("QUIZ_MARKDOWN_TEMPLATE", () => {
     expect(result.description).toBe(
       "Covers limits, derivative rules, and basic applications.",
     );
+  });
+
+  it("matches docs/quiz-template.md, the committed copy teachers can browse", () => {
+    const docFile = readFileSync(
+      path.join(__dirname, "..", "docs", "quiz-template.md"),
+      "utf-8",
+    );
+    expect(docFile.replace(/\r\n/g, "\n")).toBe(QUIZ_MARKDOWN_TEMPLATE);
   });
 });
