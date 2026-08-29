@@ -3,6 +3,7 @@ import { el } from "date-fns/locale";
 import type {
   BusinessProfile,
   ParentDashboardData,
+  QuizAttemptReview,
   Receipt,
   StudentDashboardData,
 } from "@/lib/types/database";
@@ -47,7 +48,16 @@ const NIKOS: StudentDashboardData = {
     },
   ],
   classes: [
-    { id: "demo-class-algebra-b", name: "Άλγεβρα Β Λυκείου", hoursPerWeek: 3, archivedAt: null },
+    // Has a start/finish date set - the other class deliberately doesn't,
+    // to show both states (the fields are optional per class).
+    {
+      id: "demo-class-algebra-b",
+      name: "Άλγεβρα Β Λυκείου",
+      hoursPerWeek: 3,
+      archivedAt: null,
+      startDate: isoDate(-60),
+      finishDate: isoDate(220),
+    },
     { id: "demo-class-katefthynsis-b", name: "Μαθηματικά Κατεύθυνσης Β Λυκείου", hoursPerWeek: 2, archivedAt: null },
   ],
   schedules: [
@@ -183,6 +193,95 @@ const NIKOS: StudentDashboardData = {
       notes: "Αργία",
     },
   ],
+};
+
+// Canned full answer review for the "Ανασκόπηση" button on the demo's
+// completed quizzes - the real page fetches this from getQuizReviewAction,
+// which needs a live authenticated session the public /demo page doesn't
+// have. Only demo-quiz-factoring gets one; every other "Ανασκόπηση" click
+// falls through to the real (failing) action, same as before this existed -
+// fine for a hand-picked demo, not worth reviews for every quiz.
+export const DEMO_STUDENT_QUIZ_REVIEWS: Record<string, QuizAttemptReview> = {
+  "demo-quiz-factoring": {
+    attemptId: "demo-attempt-factoring",
+    quizId: "demo-quiz-factoring",
+    quizTitle: "Παραγοντοποίηση Πολυωνύμων",
+    score: 17,
+    maxScore: 20,
+    submittedAt: isoDateTime(-6, 18, 32),
+    attemptsUsed: 1,
+    maxAttempts: null,
+    canRetake: false,
+    best: null,
+    answers: [
+      {
+        answerId: "demo-answer-1",
+        questionId: "demo-question-1",
+        questionText: "Ποιο είναι το ανάπτυγμα του $(x+3)^2$;",
+        questionType: "multiple_choice",
+        imageUrl: null,
+        selectedOptionId: "demo-option-1b",
+        selectedOptionText: "$x^2 + 6x + 9$",
+        textAnswer: null,
+        correctOptionId: "demo-option-1b",
+        correctOptionText: "$x^2 + 6x + 9$",
+        isCorrect: true,
+        pointsAwarded: 5,
+        pointsPossible: 5,
+        teacherComment: null,
+      },
+      {
+        answerId: "demo-answer-2",
+        questionId: "demo-question-2",
+        questionText: "Παραγοντοποίησε: $x^2 - 9$",
+        questionType: "short_answer",
+        imageUrl: null,
+        selectedOptionId: null,
+        selectedOptionText: null,
+        textAnswer: "(x-3)(x+3)",
+        correctOptionId: null,
+        correctOptionText: null,
+        isCorrect: true,
+        pointsAwarded: 5,
+        pointsPossible: 5,
+        teacherComment:
+          "Πολύ καλή δουλειά! Σωστή χρήση της διαφοράς τετραγώνων.",
+      },
+      {
+        answerId: "demo-answer-3",
+        questionId: "demo-question-3",
+        questionText: "Ποιο είναι το ανάπτυγμα του $(x-2)(x+2)$;",
+        questionType: "multiple_choice",
+        imageUrl: null,
+        selectedOptionId: "demo-option-3a",
+        selectedOptionText: "$x^2 - 4$",
+        textAnswer: null,
+        correctOptionId: "demo-option-3a",
+        correctOptionText: "$x^2 - 4$",
+        isCorrect: true,
+        pointsAwarded: 7,
+        pointsPossible: 7,
+        teacherComment: null,
+      },
+      {
+        answerId: "demo-answer-4",
+        questionId: "demo-question-4",
+        questionText: "Παραγοντοποίησε: $x^2 + 5x + 6$",
+        questionType: "short_answer",
+        imageUrl: null,
+        selectedOptionId: null,
+        selectedOptionText: null,
+        textAnswer: "(x+2)(x+4)",
+        correctOptionId: null,
+        correctOptionText: null,
+        isCorrect: false,
+        pointsAwarded: 0,
+        pointsPossible: 3,
+        teacherComment:
+          "Πρόσεξε: το γινόμενο των αριθμών πρέπει να είναι 6 και το άθροισμά τους 5 - δοκίμασε ξανά τους παράγοντες.",
+      },
+    ],
+  },
 };
 
 const MARIA: ParentDashboardData["kids"][number] = {

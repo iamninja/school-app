@@ -15,8 +15,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StudentQuizPanel } from "@/components/student-quiz-panel";
 import { PortalHistoryDialog } from "@/components/portal-history-dialog";
 import { PortalUpcomingCard } from "@/components/portal-upcoming-card";
-import type { PortalCalendarEvent, QuizSummary } from "@/lib/types/database";
-import { ATTENDANCE_STATUS_LABELS_EL, DAY_LABELS_EL } from "@/lib/greek-labels";
+import type {
+  PortalCalendarEvent,
+  QuizAttemptReview,
+  QuizSummary,
+} from "@/lib/types/database";
+import {
+  ATTENDANCE_STATUS_LABELS_EL,
+  DAY_LABELS_EL,
+  formatClassDateRangeEl,
+} from "@/lib/greek-labels";
 
 type StudentDashboardProps = {
   student: {
@@ -55,6 +63,7 @@ type StudentDashboardProps = {
   quizzes: QuizSummary[];
   calendarEvents: PortalCalendarEvent[];
   demoMode?: boolean;
+  demoReviews?: Record<string, QuizAttemptReview>;
 };
 
 const DAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -212,6 +221,13 @@ export function StudentDashboard(props: StudentDashboardProps) {
                               </h3>
                               <p className="text-sm text-muted-foreground">
                                 {classItem.hoursPerWeek} ώρες/εβδομάδα
+                                {(() => {
+                                  const range = formatClassDateRangeEl(
+                                    classItem.startDate,
+                                    classItem.finishDate,
+                                  );
+                                  return range ? ` · ${range}` : "";
+                                })()}
                               </p>
                             </div>
                           </div>
@@ -246,7 +262,10 @@ export function StudentDashboard(props: StudentDashboardProps) {
 
             <div className="space-y-3">
               <SectionLabel>Διαγωνίσματα</SectionLabel>
-              <StudentQuizPanel quizzes={props.quizzes} />
+              <StudentQuizPanel
+                quizzes={props.quizzes}
+                demoReviews={props.demoReviews}
+              />
             </div>
           </div>
 

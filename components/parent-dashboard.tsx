@@ -40,6 +40,7 @@ import {
   ATTENDANCE_STATUS_LABELS_EL,
   BALANCE_TRANSACTION_TYPE_LABELS_EL,
   DAY_LABELS_EL,
+  formatClassDateRangeEl,
 } from "@/lib/greek-labels";
 
 type ParentDashboardProps = {
@@ -309,6 +310,13 @@ function ChildSection({
                           </h3>
                           <p className="text-sm text-muted-foreground">
                             {classItem.hoursPerWeek} ώρες/εβδομάδα
+                            {(() => {
+                              const range = formatClassDateRangeEl(
+                                classItem.startDate,
+                                classItem.finishDate,
+                              );
+                              return range ? ` · ${range}` : "";
+                            })()}
                           </p>
                         </div>
                       </div>

@@ -5,7 +5,11 @@ import { GraduationCap, Users } from "lucide-react";
 
 import { StudentDashboard } from "@/components/student-dashboard";
 import { ParentDashboard } from "@/components/parent-dashboard";
-import { DEMO_PARENT_DASHBOARD, DEMO_STUDENT_DASHBOARD } from "@/lib/demo-data";
+import {
+  DEMO_PARENT_DASHBOARD,
+  DEMO_STUDENT_DASHBOARD,
+  DEMO_STUDENT_QUIZ_REVIEWS,
+} from "@/lib/demo-data";
 import { cn } from "@/lib/utils";
 
 type DemoView = "student" | "parent";
@@ -22,7 +26,11 @@ export default function DemoPage() {
   return (
     <div className="relative">
       {view === "student" ? (
-        <StudentDashboard {...DEMO_STUDENT_DASHBOARD} demoMode />
+        <StudentDashboard
+          {...DEMO_STUDENT_DASHBOARD}
+          demoMode
+          demoReviews={DEMO_STUDENT_QUIZ_REVIEWS}
+        />
       ) : (
         <ParentDashboard {...DEMO_PARENT_DASHBOARD} demoMode />
       )}

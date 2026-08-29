@@ -3,6 +3,35 @@
 // English/as-is in the database and in teacher-facing UI - these are purely
 // presentational lookups for the two Greek-language views.
 
+import { format } from "date-fns";
+import { el } from "date-fns/locale";
+
+import { fromIsoDate } from "@/lib/calendar-projection";
+
+/**
+ * "από 1 Σεπ 2026" / "έως 15 Ιουν 2027" / "1 Σεπ 2026 – 15 Ιουν 2027",
+ * for a class's optional start/finish date on the student/parent dashboards
+ * - null when neither is set, so callers can skip rendering entirely rather
+ * than showing an empty badge.
+ */
+export function formatClassDateRangeEl(
+  startDate: string | null | undefined,
+  finishDate: string | null | undefined,
+): string | null {
+  if (!startDate && !finishDate) {
+    return null;
+  }
+  const fmt = (iso: string) =>
+    format(fromIsoDate(iso), "d MMM yyyy", { locale: el });
+  if (startDate && finishDate) {
+    return `${fmt(startDate)} – ${fmt(finishDate)}`;
+  }
+  if (startDate) {
+    return `από ${fmt(startDate)}`;
+  }
+  return `έως ${fmt(finishDate!)}`;
+}
+
 export const DAY_LABELS_EL: Record<string, string> = {
   Mon: "Δευ",
   Tue: "Τρι",
