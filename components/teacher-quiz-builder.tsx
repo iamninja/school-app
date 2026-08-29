@@ -5,6 +5,8 @@ import { toast } from "sonner";
 import {
   BarChart3Icon,
   CopyIcon,
+  DownloadIcon,
+  FileCheckIcon,
   PencilIcon,
   PlusIcon,
   Trash2Icon,
@@ -45,6 +47,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   EDITABLE_COMMENT_LABELS,
   EditableComment,
@@ -55,7 +58,9 @@ import { QuizReviewAnswers } from "@/components/quiz-review-answers";
 import {
   parseQuizMarkdown,
   QuizMarkdownParseError,
+  type ParsedQuizMarkdown,
 } from "@/lib/quiz-markdown";
+import { QUIZ_MARKDOWN_TEMPLATE } from "@/lib/quiz-markdown-template";
 import { uploadQuizImage } from "@/lib/quiz-images";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -139,6 +144,10 @@ export function TeacherQuizBuilder({
   const [isLoadingBreakdown, setIsLoadingBreakdown] = React.useState(false);
 
   const importFileInputRef = React.useRef<HTMLInputElement>(null);
+  const [isValidateOpen, setIsValidateOpen] = React.useState(false);
+  const [validateText, setValidateText] = React.useState(
+    QUIZ_MARKDOWN_TEMPLATE,
+  );
 
   const resetForm = () => {
     setTitle("");
@@ -178,6 +187,25 @@ export function TeacherQuizBuilder({
     );
   };
 
+  /** Loads a successfully-parsed quiz into the create form for review before saving. */
+  const applyParsedQuiz = (parsed: ParsedQuizMarkdown) => {
+    setTitle(parsed.title);
+    setDescription(parsed.description ?? "");
+    setTimeLimitMinutes(
+      parsed.timeLimitMinutes !== undefined
+        ? String(parsed.timeLimitMinutes)
+        : "",
+    );
+    setClassIds([]);
+    createDraft.setQuestions(questionInputsToDrafts(parsed.questions));
+    setIsCreateOpen(true);
+    toast.success(
+      `Imported ${parsed.questions.length} question${
+        parsed.questions.length === 1 ? "" : "s"
+      } — review before creating`,
+    );
+  };
+
   const handleImportFileChange = async (
     event: React.ChangeEvent<HTMLInputElement>,
   ) => {
@@ -187,22 +215,7 @@ export function TeacherQuizBuilder({
 
     try {
       const text = await file.text();
-      const parsed = parseQuizMarkdown(text);
-      setTitle(parsed.title);
-      setDescription(parsed.description ?? "");
-      setTimeLimitMinutes(
-        parsed.timeLimitMinutes !== undefined
-          ? String(parsed.timeLimitMinutes)
-          : "",
-      );
-      setClassIds([]);
-      createDraft.setQuestions(questionInputsToDrafts(parsed.questions));
-      setIsCreateOpen(true);
-      toast.success(
-        `Imported ${parsed.questions.length} question${
-          parsed.questions.length === 1 ? "" : "s"
-        } — review before creating`,
-      );
+      applyParsedQuiz(parseQuizMarkdown(text));
     } catch (error: unknown) {
       toast.error(
         error instanceof QuizMarkdownParseError || error instanceof Error
@@ -210,6 +223,42 @@ export function TeacherQuizBuilder({
           : "Failed to parse the file",
       );
     }
+  };
+
+  const handleDownloadTemplate = () => {
+    const blob = new Blob([QUIZ_MARKDOWN_TEMPLATE], {
+      type: "text/markdown",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "quiz-template.md";
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const validateResult = React.useMemo(():
+    | { ok: true; parsed: ParsedQuizMarkdown }
+    | { ok: false; message: string }
+    | null => {
+    if (!validateText.trim()) return null;
+    try {
+      return { ok: true, parsed: parseQuizMarkdown(validateText) };
+    } catch (error: unknown) {
+      return {
+        ok: false,
+        message:
+          error instanceof QuizMarkdownParseError || error instanceof Error
+            ? error.message
+            : "Failed to parse the text",
+      };
+    }
+  }, [validateText]);
+
+  const handleUseValidatedQuiz = () => {
+    if (!validateResult?.ok) return;
+    applyParsedQuiz(validateResult.parsed);
+    setIsValidateOpen(false);
   };
 
   const handleToggleCreateClass = (classId: string) => {
@@ -943,6 +992,22 @@ export function TeacherQuizBuilder({
               type="button"
               size="sm"
               variant="outline"
+              onClick={handleDownloadTemplate}
+            >
+              <DownloadIcon className="mr-1 h-3.5 w-3.5" /> Download template
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setIsValidateOpen(true)}
+            >
+              <FileCheckIcon className="mr-1 h-3.5 w-3.5" /> Check quiz markdown
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
               onClick={() => importFileInputRef.current?.click()}
             >
               <UploadIcon className="mr-1 h-3.5 w-3.5" /> Import from file
@@ -1089,6 +1154,76 @@ export function TeacherQuizBuilder({
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={isValidateOpen} onOpenChange={setIsValidateOpen}>
+        <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Check quiz markdown</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Paste or edit a quiz here to check it against the import
+              format before saving it to a file and uploading. Nothing is
+              created until you click &ldquo;Use this quiz&rdquo;.
+            </p>
+            <Textarea
+              value={validateText}
+              onChange={(event) => setValidateText(event.target.value)}
+              aria-label="Quiz markdown to validate"
+              className="min-h-72 font-mono text-xs"
+              spellCheck={false}
+            />
+            {validateResult === null ? (
+              <p className="text-sm text-muted-foreground">
+                Waiting for content&hellip;
+              </p>
+            ) : validateResult.ok ? (
+              <div className="rounded-md border border-green-600/30 bg-green-600/10 p-3 text-sm">
+                <p className="font-medium text-green-700 dark:text-green-400">
+                  Looks good — &ldquo;{validateResult.parsed.title}&rdquo;
+                  with {validateResult.parsed.questions.length} question
+                  {validateResult.parsed.questions.length === 1 ? "" : "s"}
+                  {validateResult.parsed.timeLimitMinutes !== undefined
+                    ? `, ${validateResult.parsed.timeLimitMinutes} min time limit`
+                    : ""}
+                  .
+                </p>
+              </div>
+            ) : (
+              <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm">
+                <p className="font-medium text-destructive">
+                  Found {validateResult.message.split("\n").length} problem
+                  {validateResult.message.split("\n").length === 1
+                    ? ""
+                    : "s"}
+                  :
+                </p>
+                <ul className="mt-1 list-disc space-y-0.5 pl-5">
+                  {validateResult.message.split("\n").map((line, index) => (
+                    <li key={index}>{line}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsValidateOpen(false)}
+            >
+              Close
+            </Button>
+            <Button
+              type="button"
+              disabled={!validateResult?.ok}
+              onClick={handleUseValidatedQuiz}
+            >
+              Use this quiz
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={isCreateOpen}
