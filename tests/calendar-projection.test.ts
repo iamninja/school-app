@@ -94,6 +94,42 @@ describe("projectOccurrences - template only", () => {
       projectOccurrences({ ...input, includeArchivedClasses: true }),
     ).toHaveLength(1);
   });
+
+  it("does not project a class before its start date or after its finish date", () => {
+    // 2026-09-02 (Wed) and 2026-09-07 (Mon) both fall inside the window.
+    const input = baseInput({
+      classes: [
+        { ...CLASS_A, startDate: "2026-09-02", finishDate: "2026-09-02" },
+      ],
+      slots: [
+        { classId: CLASS_A.id, day: "Wed", time: "15:00" },
+        { classId: CLASS_A.id, day: "Mon", time: "15:00" },
+      ],
+    });
+    const result = projectOccurrences(input);
+    expect(result).toHaveLength(1);
+    expect(result[0].date).toBe("2026-09-02");
+  });
+
+  it("still projects indefinitely when startDate/finishDate are absent", () => {
+    const input = baseInput({
+      classes: [CLASS_A],
+      slots: [{ classId: CLASS_A.id, day: "Wed", time: "15:00" }],
+    });
+    expect(projectOccurrences(input)).toHaveLength(1);
+  });
+
+  it("treats the start/finish dates as inclusive boundaries", () => {
+    const input = baseInput({
+      from: "2026-09-01",
+      to: "2026-09-01",
+      classes: [
+        { ...CLASS_A, startDate: "2026-09-01", finishDate: "2026-09-01" },
+      ],
+      slots: [{ classId: CLASS_A.id, day: "Tue", time: "15:00" }],
+    });
+    expect(projectOccurrences(input)).toHaveLength(1);
+  });
 });
 
 describe("projectOccurrences - cancellations", () => {
