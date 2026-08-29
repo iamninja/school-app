@@ -209,6 +209,11 @@ export interface QuizAttemptAnswerReview {
   // null everywhere this is read.
   gradedBy?: "teacher" | "ai" | null;
   aiReasoning?: string | null;
+  // Set on a wrong multiple_choice/true_false answer - why the correct
+  // answer is correct. Purely informational (never affects scoring), so
+  // unlike gradedBy/aiReasoning it's tracked on both the official and
+  // best-attempt rows and shown to students, not just teachers.
+  aiExplanation?: string | null;
 }
 
 // The current best-scoring attempt, once it has ever diverged from the

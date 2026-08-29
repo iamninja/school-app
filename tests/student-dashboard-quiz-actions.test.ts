@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { gradeShortAnswerWithAI } from "@/lib/ai-grading";
+import { explainWrongAnswer } from "@/lib/ai-explanation";
 import {
   getQuizForTakingAction,
   submitQuizAttemptAction,
@@ -14,6 +15,10 @@ vi.mock("@/lib/supabase/server", () => ({
 
 vi.mock("@/lib/ai-grading", () => ({
   gradeShortAnswerWithAI: vi.fn(),
+}));
+
+vi.mock("@/lib/ai-explanation", () => ({
+  explainWrongAnswer: vi.fn(),
 }));
 
 // after() runs its callback once the response is already sent - captured
@@ -480,7 +485,7 @@ describe("submitQuizAttemptAction - AI grading on submit", () => {
     expect(review.answers[0].isCorrect).toBeNull();
     expect(afterCallbacks).toHaveLength(1);
 
-    await expect(afterCallbacks[0]()).resolves.toBeUndefined();
+    await afterCallbacks[0]();
 
     // Nothing was written - no table was ever touched on the service client.
     expect(serviceClient.from).not.toHaveBeenCalled();
@@ -583,6 +588,128 @@ describe("submitQuizAttemptAction - AI grading on submit", () => {
     expect(gradeShortAnswerWithAI).not.toHaveBeenCalled();
     expect(review.best?.score).toBe(5);
     expect(afterCallbacks).toHaveLength(0);
+  });
+});
+
+describe("submitQuizAttemptAction - AI wrong-answer explanations", () => {
+  const oneMultipleChoiceQuestion = [
+    { id: "q1", question_text: "2 + 2 = ?", question_type: "multiple_choice", points: 5, image_path: null },
+  ];
+  const options = [
+    { id: "opt-1", question_id: "q1", option_text: "4", is_correct: true },
+    { id: "opt-2", question_id: "q1", option_text: "5", is_correct: false },
+  ];
+
+  beforeEach(() => {
+    afterCallbacks.length = 0;
+    vi.mocked(explainWrongAnswer).mockReset();
+  });
+
+  it("schedules an explanation for a wrong multiple-choice answer, on both the official and best rows", async () => {
+    const client = createMockSupabaseClient(
+      {
+        students: { data: { id: "student-1" }, error: null },
+        quizzes: { data: { id: "quiz-1", title: "T" }, error: null },
+        quiz_questions: { data: oneMultipleChoiceQuestion, error: null },
+        quiz_question_options: { data: options, error: null },
+        quiz_attempts: [
+          { data: null, error: null }, // existingAttempt lookup - none
+          {
+            data: { id: "attempt-1", submitted_at: "2026-01-01T00:00:00Z" },
+            error: null,
+          },
+        ],
+        quiz_attempt_answers: {
+          data: [{ id: "answer-1", question_id: "q1" }],
+          error: null,
+        },
+        quiz_attempt_bests: {
+          data: { score: 0, submitted_at: "2026-01-01T00:00:00Z", attempts_used: 1 },
+          error: null,
+        },
+        quiz_attempt_best_answers: {
+          data: [{ id: "best-answer-1", question_id: "q1" }],
+          error: null,
+        },
+        quiz_attempt_starts: { data: null, error: null },
+      },
+      { id: "user-1" },
+      { data: null, error: null },
+    );
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    const serviceClient = createMockSupabaseClient({
+      quiz_attempt_answers: { data: null, error: null },
+      quiz_attempt_best_answers: { data: null, error: null },
+    });
+    vi.mocked(createServiceRoleClient).mockReturnValue(serviceClient as never);
+    vi.mocked(explainWrongAnswer).mockResolvedValue("Το 4 είναι σωστό γιατί 2+2=4.");
+
+    await submitQuizAttemptAction("quiz-1", [
+      { questionId: "q1", selectedOptionId: "opt-2" },
+    ]);
+
+    expect(explainWrongAnswer).not.toHaveBeenCalled();
+    expect(afterCallbacks).toHaveLength(1);
+
+    await afterCallbacks[0]();
+
+    expect(explainWrongAnswer).toHaveBeenCalledWith({
+      questionText: "2 + 2 = ?",
+      correctAnswerText: "4",
+      selectedAnswerText: "5",
+    });
+    expect(
+      serviceClient.from.mock.calls.filter(
+        ([table]) => table === "quiz_attempt_answers",
+      ),
+    ).toHaveLength(1);
+    expect(
+      serviceClient.from.mock.calls.filter(
+        ([table]) => table === "quiz_attempt_best_answers",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("never requests an explanation for a correct answer", async () => {
+    const client = createMockSupabaseClient(
+      {
+        students: { data: { id: "student-1" }, error: null },
+        quizzes: { data: { id: "quiz-1", title: "T" }, error: null },
+        quiz_questions: { data: oneMultipleChoiceQuestion, error: null },
+        quiz_question_options: { data: options, error: null },
+        quiz_attempts: [
+          { data: null, error: null },
+          {
+            data: { id: "attempt-1", submitted_at: "2026-01-01T00:00:00Z" },
+            error: null,
+          },
+        ],
+        quiz_attempt_answers: {
+          data: [{ id: "answer-1", question_id: "q1" }],
+          error: null,
+        },
+        quiz_attempt_bests: {
+          data: { score: 5, submitted_at: "2026-01-01T00:00:00Z", attempts_used: 1 },
+          error: null,
+        },
+        quiz_attempt_best_answers: {
+          data: [{ id: "best-answer-1", question_id: "q1" }],
+          error: null,
+        },
+        quiz_attempt_starts: { data: null, error: null },
+      },
+      { id: "user-1" },
+      { data: null, error: null },
+    );
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await submitQuizAttemptAction("quiz-1", [
+      { questionId: "q1", selectedOptionId: "opt-1" },
+    ]);
+
+    expect(afterCallbacks).toHaveLength(0);
+    expect(explainWrongAnswer).not.toHaveBeenCalled();
   });
 });
 

@@ -4,6 +4,7 @@ import { after } from "next/server";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { signQuizImageUrls } from "@/lib/quiz-images";
 import { gradeShortAnswerWithAI } from "@/lib/ai-grading";
+import { explainWrongAnswer } from "@/lib/ai-explanation";
 import { applyShortAnswerGrade } from "@/lib/quiz-grading";
 import type {
   QuizForTaking,
@@ -79,6 +80,59 @@ async function runAiGradingPass(tasks: AiGradingTask[]): Promise<void> {
   );
 }
 
+// One explanation call per wrong multiple_choice/true_false answer,
+// resolved the same way as AiGradingTask - purely informational (doesn't
+// touch score/points), so it's attempted on both the official and
+// best-attempt row whenever either exists.
+interface AiExplanationTask {
+  questionText: string;
+  correctAnswerText: string;
+  selectedAnswerText: string;
+  attemptAnswerId?: string;
+  bestAnswerId?: string;
+}
+
+/**
+ * Explains every wrong closed-question answer from this submission and
+ * writes the results with a service-role client, for the same RLS reason
+ * as runAiGradingPass. No score/points involved, so no recompute needed -
+ * just a plain write of the explanation text.
+ */
+async function runExplanationPass(tasks: AiExplanationTask[]): Promise<void> {
+  if (tasks.length === 0) {
+    return;
+  }
+
+  const supabase = createServiceRoleClient();
+
+  await Promise.all(
+    tasks.map(async (task) => {
+      const explanation = await explainWrongAnswer({
+        questionText: task.questionText,
+        correctAnswerText: task.correctAnswerText,
+        selectedAnswerText: task.selectedAnswerText,
+      });
+
+      if (!explanation) {
+        return;
+      }
+
+      if (task.attemptAnswerId) {
+        await supabase
+          .from("quiz_attempt_answers")
+          .update({ ai_explanation: explanation })
+          .eq("id", task.attemptAnswerId);
+      }
+      if (task.bestAnswerId) {
+        await supabase
+          .from("quiz_attempt_best_answers")
+          .update({ ai_explanation: explanation })
+          .eq("id", task.bestAnswerId);
+      }
+    }),
+  );
+}
+
 async function getStudentId(
   supabase: Awaited<ReturnType<typeof createClient>>,
   userId: string,
@@ -109,6 +163,8 @@ function buildStoredAnswerReview(
     // too, which never carry grading provenance.
     graded_by?: "teacher" | "ai" | null;
     ai_reasoning?: string | null;
+    // Present on both tables, unlike graded_by/ai_reasoning.
+    ai_explanation?: string | null;
   },
   questionById: Map<
     string,
@@ -153,6 +209,7 @@ function buildStoredAnswerReview(
     teacherComment: row.teacher_comment,
     gradedBy: row.graded_by ?? null,
     aiReasoning: row.ai_reasoning ?? null,
+    aiExplanation: row.ai_explanation ?? null,
   };
 }
 
@@ -425,6 +482,15 @@ export async function submitQuizAttemptAction(
     textAnswer: string;
     points: number;
   }[] = [];
+  // Populated per wrong multiple_choice/true_false answer below, resolved
+  // to row ids the same way as pendingAiGrading, then handed to
+  // runExplanationPass.
+  const pendingExplanations: {
+    questionId: string;
+    questionText: string;
+    correctAnswerText: string;
+    selectedAnswerText: string;
+  }[] = [];
 
   for (const question of questions ?? []) {
     const submitted = answerByQuestion.get(question.id);
@@ -461,6 +527,7 @@ export async function submitQuizAttemptAction(
         teacherComment: null,
         gradedBy: null,
         aiReasoning: null,
+        aiExplanation: null,
       });
       const trimmedTextAnswer = submitted?.textAnswer?.trim();
       if (trimmedTextAnswer) {
@@ -483,6 +550,15 @@ export async function submitQuizAttemptAction(
       selectedOptionId !== null && selectedOptionId === correctOption?.id;
     const pointsAwarded = isCorrect ? question.points : 0;
     totalScore += pointsAwarded;
+
+    if (!isCorrect && correctOption) {
+      pendingExplanations.push({
+        questionId: question.id,
+        questionText: question.question_text,
+        correctAnswerText: correctOption.option_text,
+        selectedAnswerText: selectedOption?.option_text ?? "(no answer)",
+      });
+    }
 
     answerRows.push({
       question_id: question.id,
@@ -511,6 +587,7 @@ export async function submitQuizAttemptAction(
       teacherComment: null,
       gradedBy: null,
       aiReasoning: null,
+      aiExplanation: null,
     });
   }
 
@@ -764,7 +841,7 @@ export async function submitQuizAttemptAction(
       const { data: storedBestAnswers } = await supabase
         .from("quiz_attempt_best_answers")
         .select(
-          "id, question_id, selected_option_id, text_answer, is_correct, points_awarded, teacher_comment",
+          "id, question_id, selected_option_id, text_answer, is_correct, points_awarded, teacher_comment, ai_explanation",
         )
         .eq("attempt_id", attemptId);
 
@@ -792,7 +869,7 @@ export async function submitQuizAttemptAction(
     const { data: officialAnswerRows } = await supabase
       .from("quiz_attempt_answers")
       .select(
-        "id, question_id, selected_option_id, text_answer, is_correct, points_awarded, teacher_comment, graded_by, ai_reasoning",
+        "id, question_id, selected_option_id, text_answer, is_correct, points_awarded, teacher_comment, graded_by, ai_reasoning, ai_explanation",
       )
       .eq("attempt_id", attemptId);
 
@@ -831,8 +908,26 @@ export async function submitQuizAttemptAction(
       bestAnswerId: bestAnswerIdByQuestion.get(task.questionId),
     }))
     .filter((task) => task.attemptAnswerId || task.bestAnswerId);
-  if (aiGradingTasks.length > 0) {
-    after(() => runAiGradingPass(aiGradingTasks));
+
+  // Wrong closed-question answers reuse the same id maps - built from
+  // every inserted row above, not just short-answer ones.
+  const explanationTasks: AiExplanationTask[] = pendingExplanations
+    .map((task) => ({
+      questionText: task.questionText,
+      correctAnswerText: task.correctAnswerText,
+      selectedAnswerText: task.selectedAnswerText,
+      attemptAnswerId: attemptAnswerIdByQuestion.get(task.questionId),
+      bestAnswerId: bestAnswerIdByQuestion.get(task.questionId),
+    }))
+    .filter((task) => task.attemptAnswerId || task.bestAnswerId);
+
+  if (aiGradingTasks.length > 0 || explanationTasks.length > 0) {
+    after(() =>
+      Promise.all([
+        runAiGradingPass(aiGradingTasks),
+        runExplanationPass(explanationTasks),
+      ]),
+    );
   }
 
   return {
@@ -896,7 +991,7 @@ export async function getQuizReviewAction(
   const { data: answers, error: answersError } = await supabase
     .from("quiz_attempt_answers")
     .select(
-      "id, question_id, selected_option_id, text_answer, is_correct, points_awarded, teacher_comment, graded_by, ai_reasoning",
+      "id, question_id, selected_option_id, text_answer, is_correct, points_awarded, teacher_comment, graded_by, ai_reasoning, ai_explanation",
     )
     .eq("attempt_id", attempt.id);
 
@@ -972,7 +1067,7 @@ export async function getQuizReviewAction(
     const { data: bestAnswerRows } = await supabase
       .from("quiz_attempt_best_answers")
       .select(
-        "id, question_id, selected_option_id, text_answer, is_correct, points_awarded, teacher_comment",
+        "id, question_id, selected_option_id, text_answer, is_correct, points_awarded, teacher_comment, ai_explanation",
       )
       .eq("attempt_id", attempt.id);
 

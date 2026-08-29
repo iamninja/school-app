@@ -785,7 +785,7 @@ export async function getStudentQuizAttemptAction(
   const { data: answers, error: answersError } = await supabase
     .from("quiz_attempt_answers")
     .select(
-      "id, question_id, selected_option_id, text_answer, is_correct, points_awarded, teacher_comment, graded_by, ai_reasoning",
+      "id, question_id, selected_option_id, text_answer, is_correct, points_awarded, teacher_comment, graded_by, ai_reasoning, ai_explanation",
     )
     .eq("attempt_id", attempt.id);
 
@@ -843,6 +843,8 @@ export async function getStudentQuizAttemptAction(
     // those too, which never carry grading provenance.
     graded_by?: "teacher" | "ai" | null;
     ai_reasoning?: string | null;
+    // Present on both tables, unlike graded_by/ai_reasoning.
+    ai_explanation?: string | null;
   }): QuizAttemptAnswerReview {
     const question = questionById.get(row.question_id);
     const correctOption = correctOptionByQuestion.get(row.question_id);
@@ -870,6 +872,7 @@ export async function getStudentQuizAttemptAction(
       teacherComment: row.teacher_comment,
       gradedBy: row.graded_by ?? null,
       aiReasoning: row.ai_reasoning ?? null,
+      aiExplanation: row.ai_explanation ?? null,
     };
   }
 
@@ -888,7 +891,7 @@ export async function getStudentQuizAttemptAction(
     const { data: bestAnswerRows } = await supabase
       .from("quiz_attempt_best_answers")
       .select(
-        "id, question_id, selected_option_id, text_answer, is_correct, points_awarded, teacher_comment",
+        "id, question_id, selected_option_id, text_answer, is_correct, points_awarded, teacher_comment, ai_explanation",
       )
       .eq("attempt_id", attempt.id);
 

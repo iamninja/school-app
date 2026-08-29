@@ -206,6 +206,11 @@ export function QuizReviewAnswers({
               <Badge variant={answer.isCorrect ? "default" : "destructive"}>
                 {answer.isCorrect ? labels.correct : labels.incorrect}
               </Badge>
+              {!answer.isCorrect && answer.aiExplanation && (
+                <p className="text-xs italic text-muted-foreground">
+                  <MathText text={answer.aiExplanation} />
+                </p>
+              )}
             </div>
           )}
           <EditableComment

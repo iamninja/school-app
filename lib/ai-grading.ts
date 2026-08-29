@@ -1,5 +1,6 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
+import { getAnthropicClient } from "@/lib/anthropic-client";
 
 export interface ShortAnswerGradingInput {
   questionText: string;
@@ -43,17 +44,6 @@ const GRADE_TOOL: Anthropic.Tool = {
   strict: true,
 };
 
-let client: Anthropic | null | undefined;
-
-function getClient(): Anthropic | null {
-  if (client === undefined) {
-    client = process.env.ANTHROPIC_API_KEY
-      ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-      : null;
-  }
-  return client;
-}
-
 /**
  * Grades one short-answer quiz response with Claude. Never throws - a
  * missing API key, API error, or an unparseable response all return null,
@@ -63,7 +53,7 @@ function getClient(): Anthropic | null {
 export async function gradeShortAnswerWithAI(
   input: ShortAnswerGradingInput,
 ): Promise<ShortAnswerGradingResult | null> {
-  const anthropic = getClient();
+  const anthropic = getAnthropicClient();
   if (!anthropic) {
     return null;
   }
