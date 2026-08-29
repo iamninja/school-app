@@ -39,6 +39,7 @@ vi.mock("@/app/protected/teacher/quiz-actions", () => ({
   getQuizQuestionBreakdownAction: vi.fn(),
   getClassPendingGradingAction: vi.fn().mockResolvedValue([]),
   gradeShortAnswerAction: vi.fn(),
+  setAnswerCommentAction: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -260,24 +261,65 @@ describe("TeacherDashboard class detail - rendering and navigation", () => {
     expect(screen.getByText("Active")).toBeInTheDocument();
   });
 
-  it("shows 'no answers waiting for review' when there's nothing pending", async () => {
+  it("shows a student's tab with no pending-review highlight once fully graded", async () => {
     const user = userEvent.setup();
-    vi.mocked(quizActions.getClassPendingGradingAction).mockResolvedValue([]);
+    const getQuizResultsAction = vi.mocked(quizActions.getQuizResultsAction);
+    const getStudentQuizAttemptAction = vi.mocked(
+      quizActions.getStudentQuizAttemptAction,
+    );
+    getQuizResultsAction.mockResolvedValue({
+      quizId: "quiz-1",
+      quizTitle: "Chapter 3 Quiz",
+      results: [
+        {
+          studentId: "student-1",
+          studentName: "Maya Carter",
+          completed: true,
+          score: 5,
+          maxScore: 5,
+          submittedAt: "2026-01-02T00:00:00Z",
+          pendingShortAnswerCount: 0,
+          bestScore: 5,
+          attemptsUsed: 1,
+        },
+      ],
+    });
+    getStudentQuizAttemptAction.mockResolvedValue({
+      attemptId: "attempt-1",
+      quizId: "quiz-1",
+      quizTitle: "Chapter 3 Quiz",
+      score: 5,
+      maxScore: 5,
+      submittedAt: "2026-01-02T00:00:00Z",
+      answers: [],
+      attemptsUsed: 1,
+      maxAttempts: null,
+      canRetake: false,
+      best: null,
+    });
 
     await openAlgebraDetail(user);
     await user.click(screen.getByText("Chapter 3 Quiz"));
 
+    const tab = await screen.findByRole("tab", { name: /maya carter/i });
+    expect(tab.className).not.toContain("text-destructive");
+
     await waitFor(() => {
-      expect(
-        screen.getByText(/no answers waiting for review/i),
-      ).toBeInTheDocument();
+      expect(screen.getByText("5 / 5")).toBeInTheDocument();
     });
+    expect(
+      screen.queryByRole("button", { name: /mark correct/i }),
+    ).not.toBeInTheDocument();
   });
 
-  it("shows a pending short-answer response and grades it correct", async () => {
+  it("highlights a student's tab with a pending short-answer response, and grades it correct from there", async () => {
     const user = userEvent.setup();
     const getClassPendingGradingAction = vi.mocked(
       quizActions.getClassPendingGradingAction,
+    );
+    const getQuizResultsAction = vi.mocked(quizActions.getQuizResultsAction);
+    const getStudentQuizAttemptAction = vi.mocked(
+      quizActions.getStudentQuizAttemptAction,
     );
     const gradeShortAnswerAction = vi.mocked(
       quizActions.gradeShortAnswerAction,
@@ -296,6 +338,66 @@ describe("TeacherDashboard class detail - rendering and navigation", () => {
         teacherComment: null,
       },
     ]);
+    getQuizResultsAction.mockResolvedValue({
+      quizId: "quiz-1",
+      quizTitle: "Chapter 3 Quiz",
+      results: [
+        {
+          studentId: "student-1",
+          studentName: "Maya Carter",
+          completed: true,
+          score: 0,
+          maxScore: 2,
+          submittedAt: "2026-01-02T00:00:00Z",
+          pendingShortAnswerCount: 1,
+          bestScore: 0,
+          attemptsUsed: 1,
+        },
+      ],
+    });
+    const pendingAnswer = {
+      answerId: "answer-1",
+      questionId: "q1",
+      questionText: "Explain your reasoning",
+      questionType: "short_answer" as const,
+      imageUrl: null,
+      selectedOptionId: null,
+      selectedOptionText: null,
+      textAnswer: "Because 2x = 4, so x = 2",
+      correctOptionId: null,
+      correctOptionText: null,
+      isCorrect: null,
+      pointsAwarded: null,
+      pointsPossible: 2,
+      teacherComment: null,
+    };
+    getStudentQuizAttemptAction
+      .mockResolvedValueOnce({
+        attemptId: "attempt-1",
+        quizId: "quiz-1",
+        quizTitle: "Chapter 3 Quiz",
+        score: 0,
+        maxScore: 2,
+        submittedAt: "2026-01-02T00:00:00Z",
+        answers: [pendingAnswer],
+        attemptsUsed: 1,
+        maxAttempts: null,
+        canRetake: false,
+        best: null,
+      })
+      .mockResolvedValueOnce({
+        attemptId: "attempt-1",
+        quizId: "quiz-1",
+        quizTitle: "Chapter 3 Quiz",
+        score: 2,
+        maxScore: 2,
+        submittedAt: "2026-01-02T00:00:00Z",
+        answers: [{ ...pendingAnswer, isCorrect: true, pointsAwarded: 2 }],
+        attemptsUsed: 1,
+        maxAttempts: null,
+        canRetake: false,
+        best: null,
+      });
     gradeShortAnswerAction.mockResolvedValue(undefined);
 
     await openAlgebraDetail(user);
@@ -307,8 +409,11 @@ describe("TeacherDashboard class detail - rendering and navigation", () => {
 
     await user.click(screen.getByText("Chapter 3 Quiz"));
 
+    const tab = await screen.findByRole("tab", { name: /maya carter/i });
+    expect(tab.className).toContain("text-destructive");
+
     await waitFor(() => {
-      expect(screen.getByText("Explain your reasoning")).toBeInTheDocument();
+      expect(screen.getByText(/explain your reasoning/i)).toBeInTheDocument();
       expect(
         screen.getByText(/because 2x = 4, so x = 2/i),
       ).toBeInTheDocument();
@@ -317,14 +422,8 @@ describe("TeacherDashboard class detail - rendering and navigation", () => {
     await user.click(screen.getByRole("button", { name: /mark correct/i }));
 
     await waitFor(() => {
-      expect(gradeShortAnswerAction).toHaveBeenCalledWith(
-        "answer-1",
-        true,
-        null,
-      );
-      expect(
-        screen.queryByText("Explain your reasoning"),
-      ).not.toBeInTheDocument();
+      expect(gradeShortAnswerAction).toHaveBeenCalledWith("answer-1", true);
+      expect(screen.getByText("2 / 2")).toBeInTheDocument();
     });
   });
 
