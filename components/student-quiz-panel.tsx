@@ -48,8 +48,13 @@ function formatRemainingTime(totalSeconds: number): string {
 
 export function StudentQuizPanel({
   quizzes: initialQuizzes,
+  demoReviews,
 }: {
   quizzes: QuizSummary[];
+  // Canned per-quiz review data for the public /demo page, which has no
+  // backend to call getQuizReviewAction against. Real callers never pass
+  // this, so handleViewReview falls through to the real action as usual.
+  demoReviews?: Record<string, QuizAttemptReview>;
 }) {
   const [quizzes, setQuizzes] = React.useState(initialQuizzes);
   const [view, setView] = React.useState<ViewState>({ mode: "list" });
@@ -78,6 +83,11 @@ export function StudentQuizPanel({
   };
 
   const handleViewReview = async (quizId: string) => {
+    const demoReview = demoReviews?.[quizId];
+    if (demoReview) {
+      setView({ mode: "review", review: demoReview });
+      return;
+    }
     setIsLoading(true);
     try {
       const review = await getQuizReviewAction(quizId);
