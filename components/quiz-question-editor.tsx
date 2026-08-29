@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { MathText } from "@/components/math-text";
 import { QuizQuestionImage } from "@/components/quiz-question-image";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -30,6 +31,8 @@ export type QuestionDraft = {
   options: OptionDraft[];
   trueFalseAnswer: "true" | "false";
   image: QuestionImageDraft;
+  // short_answer only - optional reference used for AI grading.
+  modelAnswer: string;
 };
 
 export const QUESTION_TYPE_LABELS: Record<QuizQuestionType, string> = {
@@ -49,6 +52,7 @@ export function createBlankQuestion(): QuestionDraft {
     ],
     trueFalseAnswer: "true",
     image: { kind: "none" },
+    modelAnswer: "",
   };
 }
 
@@ -80,6 +84,7 @@ export function draftsToQuestionInputs(
         points,
         options: [],
         imagePath,
+        modelAnswer: question.modelAnswer.trim() || null,
       };
     }
 
@@ -120,6 +125,7 @@ export function questionInputsToDrafts(
       question.imagePath && question.imageUrl
         ? { kind: "existing", path: question.imagePath, url: question.imageUrl }
         : { kind: "none" },
+    modelAnswer: question.modelAnswer ?? "",
   }));
 }
 
@@ -519,10 +525,34 @@ export function QuizQuestionEditor({
           )}
 
           {question.questionType === "short_answer" && (
-            <p className="text-xs text-muted-foreground">
-              Students will type a free-text answer. Grading it is not part
-              of this version yet.
-            </p>
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">
+                Students will type a free-text answer. AI grades it
+                automatically on submission - you can always override the
+                grade.
+              </p>
+              <Label
+                htmlFor={`q${index}-model-answer`}
+                className="text-xs font-normal text-muted-foreground"
+              >
+                Model answer (optional)
+              </Label>
+              <Textarea
+                id={`q${index}-model-answer`}
+                value={question.modelAnswer}
+                disabled={readOnly}
+                onChange={(event) =>
+                  onQuestionChange(index, { modelAnswer: event.target.value })
+                }
+                placeholder="What should count as correct? Used as the AI's grading reference - left blank, it grades from the question alone."
+                rows={2}
+              />
+              {question.modelAnswer.includes("$") && (
+                <p className="text-xs text-muted-foreground">
+                  <MathText text={question.modelAnswer} />
+                </p>
+              )}
+            </div>
           )}
         </div>
       ))}

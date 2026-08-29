@@ -39,6 +39,7 @@ vi.mock("@/app/protected/teacher/quiz-actions", () => ({
   getQuizQuestionBreakdownAction: vi.fn(),
   getClassPendingGradingAction: vi.fn().mockResolvedValue([]),
   gradeShortAnswerAction: vi.fn(),
+  regradeShortAnswerWithAiAction: vi.fn(),
   setAnswerCommentAction: vi.fn(),
 }));
 
@@ -424,6 +425,118 @@ describe("TeacherDashboard class detail - rendering and navigation", () => {
     await waitFor(() => {
       expect(gradeShortAnswerAction).toHaveBeenCalledWith("answer-1", true);
       expect(screen.getByText("2 / 2")).toBeInTheDocument();
+    });
+  });
+
+  it("shows an AI-graded answer's suggestion and reasoning, and re-runs it on request", async () => {
+    const user = userEvent.setup();
+    const getClassPendingGradingAction = vi.mocked(
+      quizActions.getClassPendingGradingAction,
+    );
+    const getQuizResultsAction = vi.mocked(quizActions.getQuizResultsAction);
+    const getStudentQuizAttemptAction = vi.mocked(
+      quizActions.getStudentQuizAttemptAction,
+    );
+    const regradeShortAnswerWithAiAction = vi.mocked(
+      quizActions.regradeShortAnswerWithAiAction,
+    );
+    getClassPendingGradingAction.mockResolvedValue([]);
+    getQuizResultsAction.mockResolvedValue({
+      quizId: "quiz-1",
+      quizTitle: "Chapter 3 Quiz",
+      results: [
+        {
+          studentId: "student-1",
+          studentName: "Maya Carter",
+          completed: true,
+          score: 2,
+          maxScore: 2,
+          submittedAt: "2026-01-02T00:00:00Z",
+          pendingShortAnswerCount: 0,
+          bestScore: 2,
+          attemptsUsed: 1,
+        },
+      ],
+    });
+    const aiGradedAnswer = {
+      answerId: "answer-1",
+      questionId: "q1",
+      questionText: "Explain your reasoning",
+      questionType: "short_answer" as const,
+      imageUrl: null,
+      selectedOptionId: null,
+      selectedOptionText: null,
+      textAnswer: "Because 2x = 4, so x = 2",
+      correctOptionId: null,
+      correctOptionText: null,
+      isCorrect: true,
+      pointsAwarded: 2,
+      pointsPossible: 2,
+      teacherComment: null,
+      gradedBy: "ai" as const,
+      aiReasoning: "Correctly isolates x using the model answer's method.",
+    };
+    getStudentQuizAttemptAction
+      .mockResolvedValueOnce({
+        attemptId: "attempt-1",
+        quizId: "quiz-1",
+        quizTitle: "Chapter 3 Quiz",
+        score: 2,
+        maxScore: 2,
+        submittedAt: "2026-01-02T00:00:00Z",
+        answers: [aiGradedAnswer],
+        attemptsUsed: 1,
+        maxAttempts: null,
+        canRetake: false,
+        best: null,
+      })
+      .mockResolvedValueOnce({
+        attemptId: "attempt-1",
+        quizId: "quiz-1",
+        quizTitle: "Chapter 3 Quiz",
+        score: 2,
+        maxScore: 2,
+        submittedAt: "2026-01-02T00:00:00Z",
+        answers: [
+          {
+            ...aiGradedAnswer,
+            aiReasoning: "Re-checked against the updated model answer.",
+          },
+        ],
+        attemptsUsed: 1,
+        maxAttempts: null,
+        canRetake: false,
+        best: null,
+      });
+    regradeShortAnswerWithAiAction.mockResolvedValue(undefined);
+
+    await openAlgebraDetail(user);
+    await user.click(screen.getByText("Chapter 3 Quiz"));
+    await screen.findByRole("tab", { name: /maya carter/i });
+
+    await waitFor(() => {
+      expect(screen.getByText(/ai graded/i)).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          /correctly isolates x using the model answer's method/i,
+        ),
+      ).toBeInTheDocument();
+    });
+    // AI's grade is still an editable suggestion, not final.
+    expect(
+      screen.getByRole("button", { name: /mark correct/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /mark incorrect/i }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /re-grade with ai/i }));
+
+    await waitFor(() => {
+      expect(regradeShortAnswerWithAiAction).toHaveBeenCalledWith("answer-1");
+      expect(
+        screen.getByText(/re-checked against the updated model answer/i),
+      ).toBeInTheDocument();
     });
   });
 

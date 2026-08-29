@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createClient } from "@/lib/supabase/server";
 import { requireTeacher } from "@/lib/auth/require-teacher";
 import { ExpectedError } from "@/lib/expected-error";
+import { gradeShortAnswerWithAI } from "@/lib/ai-grading";
 import {
   assignQuizToClassAction,
   createQuizAction,
@@ -9,6 +10,7 @@ import {
   getClassPendingGradingAction,
   getQuizResultsAction,
   gradeShortAnswerAction,
+  regradeShortAnswerWithAiAction,
   updateQuizAction,
 } from "@/app/protected/teacher/quiz-actions";
 import { createMockSupabaseClient } from "./support/mock-supabase";
@@ -19,6 +21,10 @@ vi.mock("@/lib/supabase/server", () => ({
 
 vi.mock("@/lib/auth/require-teacher", () => ({
   requireTeacher: vi.fn(),
+}));
+
+vi.mock("@/lib/ai-grading", () => ({
+  gradeShortAnswerWithAI: vi.fn(),
 }));
 
 const quizRow = {
@@ -550,5 +556,81 @@ describe("teacher quiz actions - gradeShortAnswerAction", () => {
       ([t]) => t === "quiz_attempt_best_answers",
     );
     expect(bestAnswersCalls).toHaveLength(1);
+  });
+});
+
+describe("teacher quiz actions - regradeShortAnswerWithAiAction", () => {
+  it("writes the AI's verdict, marking it ai-graded", async () => {
+    vi.mocked(requireTeacher).mockResolvedValue(undefined);
+    vi.mocked(gradeShortAnswerWithAI).mockResolvedValue({
+      isCorrect: true,
+      reasoning: "Equivalent to the model answer.",
+    });
+    const client = createMockSupabaseClient({
+      quiz_attempt_answers: [
+        {
+          data: {
+            id: "answer-1",
+            attempt_id: "attempt-1",
+            question_id: "q1",
+            text_answer: "four",
+          },
+          error: null,
+        }, // fetch the answer
+        { data: null, error: null }, // write the grade
+        { data: [{ points_awarded: 1 }], error: null }, // recompute score
+      ],
+      quiz_attempts: [
+        { data: { id: "attempt-1", quiz_id: "quiz-1" }, error: null },
+        { data: null, error: null }, // update score
+      ],
+      quizzes: { data: quizRow, error: null }, // requireOwnedQuiz
+      quiz_questions: {
+        data: { question_text: "What is 2+2?", model_answer: "4", points: 1 },
+        error: null,
+      },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await expect(
+      regradeShortAnswerWithAiAction("answer-1"),
+    ).resolves.toBeUndefined();
+
+    expect(gradeShortAnswerWithAI).toHaveBeenCalledWith({
+      questionText: "What is 2+2?",
+      modelAnswer: "4",
+      textAnswer: "four",
+      points: 1,
+    });
+  });
+
+  it("throws an ExpectedError when AI grading is unavailable", async () => {
+    vi.mocked(requireTeacher).mockResolvedValue(undefined);
+    vi.mocked(gradeShortAnswerWithAI).mockResolvedValue(null);
+    const client = createMockSupabaseClient({
+      quiz_attempt_answers: {
+        data: {
+          id: "answer-1",
+          attempt_id: "attempt-1",
+          question_id: "q1",
+          text_answer: "four",
+        },
+        error: null,
+      },
+      quiz_attempts: {
+        data: { id: "attempt-1", quiz_id: "quiz-1" },
+        error: null,
+      },
+      quizzes: { data: quizRow, error: null },
+      quiz_questions: {
+        data: { question_text: "What is 2+2?", model_answer: null, points: 1 },
+        error: null,
+      },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await expect(
+      regradeShortAnswerWithAiAction("answer-1"),
+    ).rejects.toThrow(ExpectedError);
   });
 });

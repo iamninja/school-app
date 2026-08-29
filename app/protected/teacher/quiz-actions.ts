@@ -8,6 +8,8 @@ import {
   deleteQuizImages,
   signQuizImageUrls,
 } from "@/lib/quiz-images";
+import { applyShortAnswerGrade } from "@/lib/quiz-grading";
+import { gradeShortAnswerWithAI } from "@/lib/ai-grading";
 import type {
   CreateQuizInput,
   QuizForEditing,
@@ -60,6 +62,7 @@ async function insertQuestions(
         order_index: index,
         points: question.points,
         image_path: question.imagePath,
+        model_answer: question.modelAnswer ?? null,
       })
       .select("id")
       .single();
@@ -347,7 +350,9 @@ export async function getQuizForEditingAction(
     await Promise.all([
       supabase
         .from("quiz_questions")
-        .select("id, question_text, question_type, points, order_index, image_path")
+        .select(
+          "id, question_text, question_type, points, order_index, image_path, model_answer",
+        )
         .eq("quiz_id", quizId)
         .order("order_index", { ascending: true }),
       supabase
@@ -396,6 +401,7 @@ export async function getQuizForEditingAction(
       imageUrl: question.image_path
         ? (imageUrlByPath.get(question.image_path) ?? null)
         : null,
+      modelAnswer: question.model_answer,
     }),
   );
 
@@ -779,7 +785,7 @@ export async function getStudentQuizAttemptAction(
   const { data: answers, error: answersError } = await supabase
     .from("quiz_attempt_answers")
     .select(
-      "id, question_id, selected_option_id, text_answer, is_correct, points_awarded, teacher_comment",
+      "id, question_id, selected_option_id, text_answer, is_correct, points_awarded, teacher_comment, graded_by, ai_reasoning",
     )
     .eq("attempt_id", attempt.id);
 
@@ -833,6 +839,10 @@ export async function getStudentQuizAttemptAction(
     is_correct: boolean | null;
     points_awarded: number | null;
     teacher_comment: string | null;
+    // Absent on quiz_attempt_best_answers rows - mapToReview is reused for
+    // those too, which never carry grading provenance.
+    graded_by?: "teacher" | "ai" | null;
+    ai_reasoning?: string | null;
   }): QuizAttemptAnswerReview {
     const question = questionById.get(row.question_id);
     const correctOption = correctOptionByQuestion.get(row.question_id);
@@ -858,6 +868,8 @@ export async function getStudentQuizAttemptAction(
       pointsAwarded: row.points_awarded,
       pointsPossible: question?.points ?? 0,
       teacherComment: row.teacher_comment,
+      gradedBy: row.graded_by ?? null,
+      aiReasoning: row.ai_reasoning ?? null,
     };
   }
 
@@ -1170,12 +1182,15 @@ export async function getClassPendingGradingAction(
     return [];
   }
 
+  // Ungraded, or AI-graded but not yet teacher-reviewed - the AI's grade
+  // already counts toward the score either way, this just decides what
+  // still needs the teacher's attention.
   const { data: answers, error: answersError } = await supabase
     .from("quiz_attempt_answers")
     .select("id, attempt_id, question_id, text_answer, teacher_comment")
     .in("attempt_id", attemptIds)
-    .is("is_correct", null)
-    .not("text_answer", "is", null);
+    .not("text_answer", "is", null)
+    .or("is_correct.is.null,graded_by.eq.ai");
 
   if (answersError) {
     throw answersError;
@@ -1241,51 +1256,10 @@ export async function getClassPendingGradingAction(
     );
 }
 
-async function recomputeAttemptScore(
-  supabase: SupabaseServerClient,
-  attemptId: string,
-) {
-  const { data: rows } = await supabase
-    .from("quiz_attempt_answers")
-    .select("points_awarded")
-    .eq("attempt_id", attemptId);
-
-  const total = (rows ?? []).reduce(
-    (sum, row) => sum + (row.points_awarded ?? 0),
-    0,
-  );
-
-  await supabase
-    .from("quiz_attempts")
-    .update({ score: total })
-    .eq("id", attemptId);
-}
-
-async function recomputeBestScore(
-  supabase: SupabaseServerClient,
-  attemptId: string,
-) {
-  const { data: rows } = await supabase
-    .from("quiz_attempt_best_answers")
-    .select("points_awarded")
-    .eq("attempt_id", attemptId);
-
-  const total = (rows ?? []).reduce(
-    (sum, row) => sum + (row.points_awarded ?? 0),
-    0,
-  );
-
-  await supabase
-    .from("quiz_attempt_bests")
-    .update({ score: total })
-    .eq("attempt_id", attemptId);
-}
-
 /**
- * Manually grades a short-answer response - the only question type that
- * isn't auto-graded at submission (is_correct/points_awarded stay null
- * until a teacher does this). Recomputes and writes back the attempt's
- * total score so it's reflected everywhere score is read.
+ * Manually grades a short-answer response, or overrides an existing
+ * grade (AI's or another manual one). Recomputes and writes back the
+ * attempt's total score so it's reflected everywhere score is read.
  */
 export async function gradeShortAnswerAction(
   answerId: string,
@@ -1337,23 +1311,15 @@ export async function gradeShortAnswerAction(
     throw new Error("Question not found");
   }
 
-  const pointsAwarded = isCorrect ? question.points : 0;
-  const trimmedComment = comment?.trim() || null;
-
-  const { error: updateError } = await supabase
-    .from("quiz_attempt_answers")
-    .update({
-      is_correct: isCorrect,
-      points_awarded: pointsAwarded,
-      ...(comment !== undefined ? { teacher_comment: trimmedComment } : {}),
-    })
-    .eq("id", answerId);
-
-  if (updateError) {
-    throw updateError;
-  }
-
-  await recomputeAttemptScore(supabase, attempt.id);
+  await applyShortAnswerGrade(supabase, {
+    table: "quiz_attempt_answers",
+    answerId: answer.id,
+    attemptId: attempt.id,
+    isCorrect,
+    pointsPossible: question.points,
+    gradedBy: "teacher",
+    comment,
+  });
 
   // The "best" attempt is a separate snapshot that only sometimes matches
   // this one (quiz_attempts is always the first/official submission,
@@ -1369,21 +1335,92 @@ export async function gradeShortAnswerAction(
     .maybeSingle();
 
   if (bestAnswer && bestAnswer.text_answer === answer.text_answer) {
-    const { error: bestUpdateError } = await supabase
-      .from("quiz_attempt_best_answers")
-      .update({
-        is_correct: isCorrect,
-        points_awarded: pointsAwarded,
-        ...(comment !== undefined ? { teacher_comment: trimmedComment } : {}),
-      })
-      .eq("id", bestAnswer.id);
-
-    if (bestUpdateError) {
-      throw bestUpdateError;
-    }
-
-    await recomputeBestScore(supabase, attempt.id);
+    await applyShortAnswerGrade(supabase, {
+      table: "quiz_attempt_best_answers",
+      answerId: bestAnswer.id,
+      attemptId: attempt.id,
+      isCorrect,
+      pointsPossible: question.points,
+      gradedBy: "teacher",
+      comment,
+    });
   }
+}
+
+/**
+ * Re-runs AI grading for one short-answer response on demand - e.g. after
+ * a teacher edits the question's model answer. Overwrites any existing
+ * grade (AI's or a teacher's own prior manual grade), same as the manual
+ * grading buttons already do.
+ */
+export async function regradeShortAnswerWithAiAction(
+  answerId: string,
+): Promise<void> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error("Not authenticated");
+  }
+
+  await requireTeacher(supabase, user.id);
+
+  const { data: answer, error: answerError } = await supabase
+    .from("quiz_attempt_answers")
+    .select("id, attempt_id, question_id, text_answer")
+    .eq("id", answerId)
+    .single();
+
+  if (answerError || !answer || answer.text_answer === null) {
+    throw new Error("Answer not found");
+  }
+
+  const { data: attempt, error: attemptError } = await supabase
+    .from("quiz_attempts")
+    .select("id, quiz_id")
+    .eq("id", answer.attempt_id)
+    .single();
+
+  if (attemptError || !attempt) {
+    throw new Error("Attempt not found");
+  }
+
+  await requireOwnedQuiz(supabase, attempt.quiz_id, user.id);
+
+  const { data: question, error: questionError } = await supabase
+    .from("quiz_questions")
+    .select("question_text, model_answer, points")
+    .eq("id", answer.question_id)
+    .single();
+
+  if (questionError || !question) {
+    throw new Error("Question not found");
+  }
+
+  const result = await gradeShortAnswerWithAI({
+    questionText: question.question_text,
+    modelAnswer: question.model_answer,
+    textAnswer: answer.text_answer,
+    points: question.points,
+  });
+
+  if (!result) {
+    throw new ExpectedError(
+      "AI grading is unavailable right now - grade this one manually instead.",
+    );
+  }
+
+  await applyShortAnswerGrade(supabase, {
+    table: "quiz_attempt_answers",
+    answerId: answer.id,
+    attemptId: attempt.id,
+    isCorrect: result.isCorrect,
+    pointsPossible: question.points,
+    gradedBy: "ai",
+    reasoning: result.reasoning,
+  });
 }
 
 /**

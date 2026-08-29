@@ -1,7 +1,10 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { after } from "next/server";
+import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { signQuizImageUrls } from "@/lib/quiz-images";
+import { gradeShortAnswerWithAI } from "@/lib/ai-grading";
+import { applyShortAnswerGrade } from "@/lib/quiz-grading";
 import type {
   QuizForTaking,
   QuizQuestionForTaking,
@@ -9,6 +12,72 @@ import type {
   QuizAttemptReview,
   QuizAttemptAnswerReview,
 } from "@/lib/types/database";
+
+// One AI grading call per short-answer response with text, resolved once
+// this submission knows which row id(s) that question's answer landed in
+// (both official + best on a first attempt, best-only on an improving
+// retry - see submitQuizAttemptAction).
+interface AiGradingTask {
+  attemptId: string;
+  questionText: string;
+  modelAnswer: string | null;
+  textAnswer: string;
+  points: number;
+  attemptAnswerId?: string;
+  bestAnswerId?: string;
+}
+
+/**
+ * Grades every pending short answer from this submission and writes the
+ * results with a service-role client - the student's own session has no
+ * UPDATE policy on quiz_attempt_answers (only teachers can grade there),
+ * and this runs via `after()` once the response has already been sent, so
+ * there's no student-facing latency either way.
+ */
+async function runAiGradingPass(tasks: AiGradingTask[]): Promise<void> {
+  if (tasks.length === 0) {
+    return;
+  }
+
+  const supabase = createServiceRoleClient();
+
+  await Promise.all(
+    tasks.map(async (task) => {
+      const result = await gradeShortAnswerWithAI({
+        questionText: task.questionText,
+        modelAnswer: task.modelAnswer,
+        textAnswer: task.textAnswer,
+        points: task.points,
+      });
+
+      if (!result) {
+        return;
+      }
+
+      if (task.attemptAnswerId) {
+        await applyShortAnswerGrade(supabase, {
+          table: "quiz_attempt_answers",
+          answerId: task.attemptAnswerId,
+          attemptId: task.attemptId,
+          isCorrect: result.isCorrect,
+          pointsPossible: task.points,
+          gradedBy: "ai",
+          reasoning: result.reasoning,
+        });
+      }
+      if (task.bestAnswerId) {
+        await applyShortAnswerGrade(supabase, {
+          table: "quiz_attempt_best_answers",
+          answerId: task.bestAnswerId,
+          attemptId: task.attemptId,
+          isCorrect: result.isCorrect,
+          pointsPossible: task.points,
+          gradedBy: "ai",
+        });
+      }
+    }),
+  );
+}
 
 async function getStudentId(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -36,6 +105,10 @@ function buildStoredAnswerReview(
     is_correct: boolean | null;
     points_awarded: number | null;
     teacher_comment: string | null;
+    // Absent on quiz_attempt_best_answers rows - this is reused for those
+    // too, which never carry grading provenance.
+    graded_by?: "teacher" | "ai" | null;
+    ai_reasoning?: string | null;
   },
   questionById: Map<
     string,
@@ -78,6 +151,8 @@ function buildStoredAnswerReview(
     pointsAwarded: row.points_awarded,
     pointsPossible: question?.points ?? 0,
     teacherComment: row.teacher_comment,
+    gradedBy: row.graded_by ?? null,
+    aiReasoning: row.ai_reasoning ?? null,
   };
 }
 
@@ -294,7 +369,7 @@ export async function submitQuizAttemptAction(
 
   const { data: questions, error: questionsError } = await supabase
     .from("quiz_questions")
-    .select("id, question_text, question_type, points, image_path")
+    .select("id, question_text, question_type, points, image_path, model_answer")
     .eq("quiz_id", quizId);
 
   if (questionsError) {
@@ -341,6 +416,15 @@ export async function submitQuizAttemptAction(
     points_awarded: number | null;
   }[] = [];
   const reviewAnswers: QuizAttemptAnswerReview[] = [];
+  // Populated per short-answer question below, resolved to row ids once
+  // this submission's inserts complete, then handed to runAiGradingPass.
+  const pendingAiGrading: {
+    questionId: string;
+    questionText: string;
+    modelAnswer: string | null;
+    textAnswer: string;
+    points: number;
+  }[] = [];
 
   for (const question of questions ?? []) {
     const submitted = answerByQuestion.get(question.id);
@@ -375,7 +459,19 @@ export async function submitQuizAttemptAction(
         pointsAwarded: null,
         pointsPossible: question.points,
         teacherComment: null,
+        gradedBy: null,
+        aiReasoning: null,
       });
+      const trimmedTextAnswer = submitted?.textAnswer?.trim();
+      if (trimmedTextAnswer) {
+        pendingAiGrading.push({
+          questionId: question.id,
+          questionText: question.question_text,
+          modelAnswer: question.model_answer,
+          textAnswer: trimmedTextAnswer,
+          points: question.points,
+        });
+      }
       continue;
     }
 
@@ -413,6 +509,8 @@ export async function submitQuizAttemptAction(
       pointsAwarded,
       pointsPossible: question.points,
       teacherComment: null,
+      gradedBy: null,
+      aiReasoning: null,
     });
   }
 
@@ -441,6 +539,19 @@ export async function submitQuizAttemptAction(
   let bestSubmittedAt: string;
   let bestAnswers: QuizAttemptAnswerReview[];
   let attemptsUsed: number;
+  // Populated by whichever branch below actually wrote short-answer rows,
+  // so the AI-grading pass after the if/else knows which id(s) to write
+  // its verdict to for each question.
+  let attemptAnswerIdByQuestion = new Map<string, string>();
+  let bestAnswerIdByQuestion = new Map<string, string>();
+  // A retry's short answers whose grading was resolved synchronously
+  // below (only happens when the retry-vs-best comparison is otherwise
+  // ambiguous) - excluded from the async after() pass at the end since
+  // they're already graded.
+  const resolvedGrades = new Map<
+    string,
+    { isCorrect: boolean; reasoning: string }
+  >();
 
   if (!existingAttempt) {
     // First attempt - this row becomes the permanent "official" record and
@@ -480,6 +591,7 @@ export async function submitQuizAttemptAction(
     const insertedAnswerIdByQuestion = new Map(
       (insertedAnswers ?? []).map((row) => [row.question_id, row.id]),
     );
+    attemptAnswerIdByQuestion = insertedAnswerIdByQuestion;
     for (const review of reviewAnswers) {
       review.answerId =
         insertedAnswerIdByQuestion.get(review.questionId) ?? "";
@@ -500,13 +612,19 @@ export async function submitQuizAttemptAction(
       throw bestError;
     }
 
-    const { error: bestAnswersError } = await supabase
-      .from("quiz_attempt_best_answers")
-      .insert(answerRows.map((row) => ({ attempt_id: attemptId, ...row })));
+    const { data: insertedBestAnswers, error: bestAnswersError } =
+      await supabase
+        .from("quiz_attempt_best_answers")
+        .insert(answerRows.map((row) => ({ attempt_id: attemptId, ...row })))
+        .select("id, question_id");
 
     if (bestAnswersError) {
       throw bestAnswersError;
     }
+
+    bestAnswerIdByQuestion = new Map(
+      (insertedBestAnswers ?? []).map((row) => [row.question_id, row.id]),
+    );
 
     bestScore = bestRow.score;
     bestSubmittedAt = bestRow.submitted_at;
@@ -536,14 +654,45 @@ export async function submitQuizAttemptAction(
       throw new Error("You have used all your attempts for this quiz");
     }
 
-    const improves = totalScore > currentBest.score;
+    // A retry's short answers aren't counted in totalScore yet, so whether
+    // it beats the current best can hinge entirely on them. Resolve them
+    // synchronously here - but only when the comparison is genuinely
+    // ambiguous (totalScore alone doesn't already decide it either way) -
+    // so a clean win/loss never pays for an AI call it doesn't need.
+    const optimisticScore =
+      totalScore + pendingAiGrading.reduce((sum, task) => sum + task.points, 0);
+    let resolvedScore = totalScore;
+    if (
+      pendingAiGrading.length > 0 &&
+      totalScore <= currentBest.score &&
+      optimisticScore > currentBest.score
+    ) {
+      const resolutions = await Promise.all(
+        pendingAiGrading.map(async (task) => ({
+          task,
+          result: await gradeShortAnswerWithAI({
+            questionText: task.questionText,
+            modelAnswer: task.modelAnswer,
+            textAnswer: task.textAnswer,
+            points: task.points,
+          }),
+        })),
+      );
+      for (const { task, result } of resolutions) {
+        if (!result) continue;
+        resolvedGrades.set(task.questionId, result);
+        resolvedScore += result.isCorrect ? task.points : 0;
+      }
+    }
+
+    const improves = resolvedScore > currentBest.score;
 
     const { data: updatedBest, error: updateBestError } = await supabase
       .from("quiz_attempt_bests")
       .update({
         attempts_used: currentBest.attempts_used + 1,
         ...(improves
-          ? { score: totalScore, submitted_at: new Date().toISOString() }
+          ? { score: resolvedScore, submitted_at: new Date().toISOString() }
           : {}),
       })
       .eq("attempt_id", attemptId)
@@ -564,10 +713,30 @@ export async function submitQuizAttemptAction(
         throw deleteBestAnswersError;
       }
 
+      // Any short answer resolved above goes in already graded - no need
+      // to wait for the async pass to grade it a second time.
+      const bestAnswerRowsToInsert = answerRows.map((row) => {
+        const resolved = resolvedGrades.get(row.question_id);
+        if (!resolved) return row;
+        const task = pendingAiGrading.find(
+          (t) => t.questionId === row.question_id,
+        );
+        return {
+          ...row,
+          is_correct: resolved.isCorrect,
+          points_awarded: resolved.isCorrect ? (task?.points ?? 0) : 0,
+        };
+      });
+
       const { data: insertedBestAnswers, error: insertBestAnswersError } =
         await supabase
           .from("quiz_attempt_best_answers")
-          .insert(answerRows.map((row) => ({ attempt_id: attemptId, ...row })))
+          .insert(
+            bestAnswerRowsToInsert.map((row) => ({
+              attempt_id: attemptId,
+              ...row,
+            })),
+          )
           .select("id, question_id");
 
       if (insertBestAnswersError) {
@@ -577,9 +746,17 @@ export async function submitQuizAttemptAction(
       const insertedBestAnswerIdByQuestion = new Map(
         (insertedBestAnswers ?? []).map((row) => [row.question_id, row.id]),
       );
+      bestAnswerIdByQuestion = insertedBestAnswerIdByQuestion;
       for (const review of reviewAnswers) {
         review.answerId =
           insertedBestAnswerIdByQuestion.get(review.questionId) ?? "";
+        const resolved = resolvedGrades.get(review.questionId);
+        if (resolved) {
+          review.isCorrect = resolved.isCorrect;
+          review.pointsAwarded = resolved.isCorrect
+            ? review.pointsPossible
+            : 0;
+        }
       }
 
       bestAnswers = reviewAnswers;
@@ -615,7 +792,7 @@ export async function submitQuizAttemptAction(
     const { data: officialAnswerRows } = await supabase
       .from("quiz_attempt_answers")
       .select(
-        "id, question_id, selected_option_id, text_answer, is_correct, points_awarded, teacher_comment",
+        "id, question_id, selected_option_id, text_answer, is_correct, points_awarded, teacher_comment, graded_by, ai_reasoning",
       )
       .eq("attempt_id", attemptId);
 
@@ -636,6 +813,27 @@ export async function submitQuizAttemptAction(
     .delete()
     .eq("quiz_id", quizId)
     .eq("student_id", studentId);
+
+  // Runs after this response is already on its way back to the student -
+  // AI grading never adds latency to a quiz submission. A retry that
+  // didn't improve wrote nothing above, so there's nothing to grade for it.
+  // Questions already resolved synchronously above (the ambiguous-retry
+  // case) are excluded - grading them again would just waste a call.
+  const aiGradingTasks: AiGradingTask[] = pendingAiGrading
+    .filter((task) => !resolvedGrades.has(task.questionId))
+    .map((task) => ({
+      attemptId,
+      questionText: task.questionText,
+      modelAnswer: task.modelAnswer,
+      textAnswer: task.textAnswer,
+      points: task.points,
+      attemptAnswerId: attemptAnswerIdByQuestion.get(task.questionId),
+      bestAnswerId: bestAnswerIdByQuestion.get(task.questionId),
+    }))
+    .filter((task) => task.attemptAnswerId || task.bestAnswerId);
+  if (aiGradingTasks.length > 0) {
+    after(() => runAiGradingPass(aiGradingTasks));
+  }
 
   return {
     attemptId,
@@ -698,7 +896,7 @@ export async function getQuizReviewAction(
   const { data: answers, error: answersError } = await supabase
     .from("quiz_attempt_answers")
     .select(
-      "id, question_id, selected_option_id, text_answer, is_correct, points_awarded, teacher_comment",
+      "id, question_id, selected_option_id, text_answer, is_correct, points_awarded, teacher_comment, graded_by, ai_reasoning",
     )
     .eq("attempt_id", attempt.id);
 

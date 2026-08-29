@@ -201,6 +201,14 @@ export interface QuizAttemptAnswerReview {
   pointsAwarded: number | null;
   pointsPossible: number;
   teacherComment: string | null;
+  // Only ever set on the official (first-attempt) answer - a best-attempt
+  // row from a retry never carries grading provenance. See the migration
+  // comment in supabase/migrations/20260829095505_quiz-ai-grading.sql.
+  // Optional (not just nullable) so existing fixtures/demo data that
+  // predate AI grading don't all need updating - absent is equivalent to
+  // null everywhere this is read.
+  gradedBy?: "teacher" | "ai" | null;
+  aiReasoning?: string | null;
 }
 
 // The current best-scoring attempt, once it has ever diverged from the
@@ -269,6 +277,9 @@ export interface QuizQuestionInput {
   // Signed URL for display only, populated by read actions - never written
   // back to the server (createQuizAction/updateQuizAction ignore it).
   imageUrl?: string | null;
+  // Optional grading reference for short_answer questions only - used by
+  // AI grading when present, ignored for other question types.
+  modelAnswer?: string | null;
 }
 
 export interface CreateQuizInput {

@@ -17,6 +17,7 @@ import {
   getQuizResultsAction,
   getStudentQuizAttemptAction,
   gradeShortAnswerAction,
+  regradeShortAnswerWithAiAction,
   setAnswerCommentAction,
 } from "@/app/protected/teacher/quiz-actions";
 import { Badge } from "@/components/ui/badge";
@@ -257,6 +258,29 @@ export function TeacherClassDetail({
     }
   };
 
+  // Shared by both a manual grade/override and an AI re-grade - refreshes
+  // whichever student's review is open plus the class-wide pending count
+  // and the results-table badge, since either action can change all three.
+  const refreshAfterGrading = async () => {
+    if (!viewingQuizId || !selectedStudentId) return;
+    const [review] = await Promise.all([
+      getStudentQuizAttemptAction(viewingQuizId, selectedStudentId),
+      loadPendingGrading(),
+    ]);
+    setStudentReview(review);
+    const pendingCount = review.answers.filter(
+      (row) => row.isCorrect === null,
+    ).length;
+    setQuizResults(
+      (prev) =>
+        prev?.map((row) =>
+          row.studentId === selectedStudentId
+            ? { ...row, score: review.score, pendingShortAnswerCount: pendingCount }
+            : row,
+        ) ?? null,
+    );
+  };
+
   const handleGradeAnswer = async (
     answer: QuizAttemptAnswerReview,
     isCorrect: boolean,
@@ -265,25 +289,25 @@ export function TeacherClassDetail({
     setGradingAnswerId(answer.answerId);
     try {
       await gradeShortAnswerAction(answer.answerId, isCorrect);
-      const [review] = await Promise.all([
-        getStudentQuizAttemptAction(viewingQuizId, selectedStudentId),
-        loadPendingGrading(),
-      ]);
-      setStudentReview(review);
-      const pendingCount = review.answers.filter(
-        (row) => row.isCorrect === null,
-      ).length;
-      setQuizResults(
-        (prev) =>
-          prev?.map((row) =>
-            row.studentId === selectedStudentId
-              ? { ...row, score: review.score, pendingShortAnswerCount: pendingCount }
-              : row,
-          ) ?? null,
-      );
+      await refreshAfterGrading();
     } catch (error: unknown) {
       toast.error(
         error instanceof Error ? error.message : "Failed to save grade",
+      );
+    } finally {
+      setGradingAnswerId(null);
+    }
+  };
+
+  const handleRegradeWithAi = async (answer: QuizAttemptAnswerReview) => {
+    if (!viewingQuizId || !selectedStudentId) return;
+    setGradingAnswerId(answer.answerId);
+    try {
+      await regradeShortAnswerWithAiAction(answer.answerId);
+      await refreshAfterGrading();
+    } catch (error: unknown) {
+      toast.error(
+        error instanceof Error ? error.message : "AI grading failed",
       );
     } finally {
       setGradingAnswerId(null);
@@ -702,6 +726,7 @@ export function TeacherClassDetail({
                               )
                             }
                             onGrade={handleGradeAnswer}
+                            onRegradeWithAi={handleRegradeWithAi}
                             gradingAnswerId={gradingAnswerId}
                           />
                         </div>

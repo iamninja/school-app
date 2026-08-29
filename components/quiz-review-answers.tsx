@@ -16,6 +16,8 @@ const LABELS = {
     incorrect: "Incorrect",
     markCorrect: "Mark correct",
     markIncorrect: "Mark incorrect",
+    aiGraded: "AI graded",
+    regradeWithAi: "Re-grade with AI",
   },
   el: {
     answer: "Απάντηση:",
@@ -27,6 +29,8 @@ const LABELS = {
     incorrect: "Λάθος",
     markCorrect: "Σήμανση ως σωστό",
     markIncorrect: "Σήμανση ως λάθος",
+    aiGraded: "Βαθμολογήθηκε από AI",
+    regradeWithAi: "Επαναβαθμολόγηση με AI",
   },
 };
 
@@ -43,6 +47,7 @@ export function QuizReviewAnswers({
   locale = "en",
   onSaveComment,
   onGrade,
+  onRegradeWithAi,
   gradingAnswerId,
 }: {
   answers: QuizAttemptAnswerReview[];
@@ -52,11 +57,15 @@ export function QuizReviewAnswers({
     comment: string | null,
   ) => Promise<void> | void;
   // Renders Mark correct/incorrect buttons for a short-answer response
-  // still awaiting review. The student/parent side never passes this.
+  // still awaiting review, or AI-graded but not yet teacher-confirmed. The
+  // student/parent side never passes this.
   onGrade?: (
     answer: QuizAttemptAnswerReview,
     isCorrect: boolean,
   ) => Promise<void> | void;
+  // Re-runs AI grading for one short-answer response on demand (e.g. after
+  // editing the question's model answer). Teacher-only, like onGrade.
+  onRegradeWithAi?: (answer: QuizAttemptAnswerReview) => Promise<void> | void;
   gradingAnswerId?: string | null;
 }) {
   const labels = LABELS[locale];
@@ -113,11 +122,69 @@ export function QuizReviewAnswers({
                       </Button>
                     </>
                   )}
+                  {onRegradeWithAi && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      disabled={gradingAnswerId === answer.answerId}
+                      onClick={() => onRegradeWithAi(answer)}
+                    >
+                      {labels.regradeWithAi}
+                    </Button>
+                  )}
                 </div>
               ) : (
-                <Badge variant={answer.isCorrect ? "default" : "destructive"}>
-                  {answer.isCorrect ? labels.correct : labels.incorrect}
-                </Badge>
+                <div className="space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant={answer.isCorrect ? "default" : "destructive"}>
+                      {answer.isCorrect ? labels.correct : labels.incorrect}
+                    </Badge>
+                    {answer.gradedBy === "ai" && (
+                      <>
+                        <Badge variant="secondary">{labels.aiGraded}</Badge>
+                        {onGrade && (
+                          <>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={gradingAnswerId === answer.answerId}
+                              onClick={() => onGrade(answer, true)}
+                            >
+                              {labels.markCorrect}
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={gradingAnswerId === answer.answerId}
+                              onClick={() => onGrade(answer, false)}
+                            >
+                              {labels.markIncorrect}
+                            </Button>
+                          </>
+                        )}
+                      </>
+                    )}
+                    {onRegradeWithAi && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        disabled={gradingAnswerId === answer.answerId}
+                        onClick={() => onRegradeWithAi(answer)}
+                      >
+                        {labels.regradeWithAi}
+                      </Button>
+                    )}
+                  </div>
+                  {answer.gradedBy === "ai" && answer.aiReasoning && (
+                    <p className="text-xs italic text-muted-foreground">
+                      <MathText text={answer.aiReasoning} />
+                    </p>
+                  )}
+                </div>
               )}
             </div>
           ) : (

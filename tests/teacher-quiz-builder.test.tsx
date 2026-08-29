@@ -381,6 +381,11 @@ describe("TeacherQuizBuilder", () => {
     ).toBeInTheDocument();
     expect(screen.queryByPlaceholderText(/option 1/i)).not.toBeInTheDocument();
 
+    await user.type(
+      screen.getByLabelText(/model answer/i),
+      "x = 2, since 2x = 4",
+    );
+
     await user.click(screen.getByRole("button", { name: /create quiz/i }));
 
     await waitFor(() => {
@@ -391,6 +396,50 @@ describe("TeacherQuizBuilder", () => {
               questionText: "Explain your reasoning",
               questionType: "short_answer",
               options: [],
+              modelAnswer: "x = 2, since 2x = 4",
+            }),
+          ],
+        }),
+      );
+    });
+  });
+
+  it("omits the model answer when left blank on a short answer question", async () => {
+    const user = userEvent.setup();
+    const createQuizAction = vi.mocked(quizActions.createQuizAction);
+    createQuizAction.mockResolvedValue({
+      id: "quiz-4",
+      assignedClasses: [],
+      title: "No Model Answer Quiz",
+      description: null,
+      timeLimitMinutes: null,
+      questionCount: 1,
+      hasAttempts: false,
+      createdAt: "2026-01-01T00:00:00Z",
+    });
+
+    render(<TeacherQuizBuilder classes={classes} initialQuizzes={[]} />);
+    await openCreateDialog(user);
+
+    await user.type(screen.getByLabelText(/title/i), "No Model Answer Quiz");
+    await user.type(
+      screen.getByPlaceholderText(/question text/i),
+      "Explain your reasoning",
+    );
+    await user.selectOptions(
+      screen.getByLabelText(/question type/i),
+      "short_answer",
+    );
+
+    await user.click(screen.getByRole("button", { name: /create quiz/i }));
+
+    await waitFor(() => {
+      expect(createQuizAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          questions: [
+            expect.objectContaining({
+              questionType: "short_answer",
+              modelAnswer: null,
             }),
           ],
         }),

@@ -1,5 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
-import { createClient } from "@/lib/supabase/server";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
+import { gradeShortAnswerWithAI } from "@/lib/ai-grading";
 import {
   getQuizForTakingAction,
   submitQuizAttemptAction,
@@ -8,6 +9,21 @@ import { createMockSupabaseClient } from "./support/mock-supabase";
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(),
+  createServiceRoleClient: vi.fn(),
+}));
+
+vi.mock("@/lib/ai-grading", () => ({
+  gradeShortAnswerWithAI: vi.fn(),
+}));
+
+// after() runs its callback once the response is already sent - captured
+// here instead of invoked immediately so tests can assert nothing AI-related
+// happens during submitQuizAttemptAction itself, then run it explicitly.
+const afterCallbacks: Array<() => unknown> = [];
+vi.mock("next/server", () => ({
+  after: vi.fn((cb: () => unknown) => {
+    afterCallbacks.push(cb);
+  }),
 }));
 
 function findChain(
@@ -313,6 +329,260 @@ describe("submitQuizAttemptAction - retake best-tracking", () => {
         { questionId: "q1", selectedOptionId: "opt-1" },
       ]),
     ).rejects.toThrow("You have used all your attempts for this quiz");
+  });
+});
+
+describe("submitQuizAttemptAction - AI grading on submit", () => {
+  const oneShortAnswerQuestion = [
+    {
+      id: "q1",
+      question_text: "What is 2+2?",
+      question_type: "short_answer",
+      points: 1,
+      image_path: null,
+      model_answer: "4",
+    },
+  ];
+
+  beforeEach(() => {
+    afterCallbacks.length = 0;
+    vi.mocked(gradeShortAnswerWithAI).mockReset();
+  });
+
+  it("schedules AI grading to run after the response, then grades both the official and best rows", async () => {
+    const client = createMockSupabaseClient(
+      {
+        students: { data: { id: "student-1" }, error: null },
+        quizzes: { data: { id: "quiz-1", title: "T" }, error: null },
+        quiz_questions: { data: oneShortAnswerQuestion, error: null },
+        quiz_question_options: { data: [], error: null },
+        quiz_attempts: [
+          { data: null, error: null }, // existingAttempt lookup - none, first attempt
+          {
+            data: { id: "attempt-1", submitted_at: "2026-01-01T00:00:00Z" },
+            error: null,
+          }, // insert
+        ],
+        quiz_attempt_answers: {
+          data: [{ id: "answer-1", question_id: "q1" }],
+          error: null,
+        }, // insert official answers
+        quiz_attempt_bests: {
+          data: {
+            score: 0,
+            submitted_at: "2026-01-01T00:00:00Z",
+            attempts_used: 1,
+          },
+          error: null,
+        },
+        quiz_attempt_best_answers: {
+          data: [{ id: "best-answer-1", question_id: "q1" }],
+          error: null,
+        }, // insert best answers
+        quiz_attempt_starts: { data: null, error: null }, // delete
+      },
+      { id: "user-1" },
+      { data: null, error: null }, // quiz_max_attempts_for_student
+    );
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    const serviceClient = createMockSupabaseClient({
+      quiz_attempt_answers: [
+        { data: null, error: null }, // write the grade
+        { data: [{ points_awarded: 1 }], error: null }, // recompute attempt score
+      ],
+      quiz_attempts: { data: null, error: null }, // update score
+      quiz_attempt_best_answers: [
+        { data: null, error: null }, // write the grade
+        { data: [{ points_awarded: 1 }], error: null }, // recompute best score
+      ],
+      quiz_attempt_bests: { data: null, error: null }, // update score
+    });
+    vi.mocked(createServiceRoleClient).mockReturnValue(serviceClient as never);
+    vi.mocked(gradeShortAnswerWithAI).mockResolvedValue({
+      isCorrect: true,
+      reasoning: "Matches the model answer.",
+    });
+
+    await submitQuizAttemptAction("quiz-1", [
+      { questionId: "q1", textAnswer: "four" },
+    ]);
+
+    // Not graded yet - only after() running its callback triggers it.
+    expect(gradeShortAnswerWithAI).not.toHaveBeenCalled();
+    expect(afterCallbacks).toHaveLength(1);
+
+    await afterCallbacks[0]();
+
+    expect(gradeShortAnswerWithAI).toHaveBeenCalledWith({
+      questionText: "What is 2+2?",
+      modelAnswer: "4",
+      textAnswer: "four",
+      points: 1,
+    });
+    expect(
+      serviceClient.from.mock.calls.filter(
+        ([table]) => table === "quiz_attempt_answers",
+      ),
+    ).toHaveLength(2);
+    expect(
+      serviceClient.from.mock.calls.filter(
+        ([table]) => table === "quiz_attempt_best_answers",
+      ),
+    ).toHaveLength(2);
+  });
+
+  it("leaves the answer ungraded when AI grading is unavailable, without failing the submission", async () => {
+    const client = createMockSupabaseClient(
+      {
+        students: { data: { id: "student-1" }, error: null },
+        quizzes: { data: { id: "quiz-1", title: "T" }, error: null },
+        quiz_questions: { data: oneShortAnswerQuestion, error: null },
+        quiz_question_options: { data: [], error: null },
+        quiz_attempts: [
+          { data: null, error: null },
+          {
+            data: { id: "attempt-1", submitted_at: "2026-01-01T00:00:00Z" },
+            error: null,
+          },
+        ],
+        quiz_attempt_answers: {
+          data: [{ id: "answer-1", question_id: "q1" }],
+          error: null,
+        },
+        quiz_attempt_bests: {
+          data: {
+            score: 0,
+            submitted_at: "2026-01-01T00:00:00Z",
+            attempts_used: 1,
+          },
+          error: null,
+        },
+        quiz_attempt_best_answers: {
+          data: [{ id: "best-answer-1", question_id: "q1" }],
+          error: null,
+        },
+        quiz_attempt_starts: { data: null, error: null },
+      },
+      { id: "user-1" },
+      { data: null, error: null },
+    );
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    const serviceClient = createMockSupabaseClient({});
+    vi.mocked(createServiceRoleClient).mockReturnValue(serviceClient as never);
+    vi.mocked(gradeShortAnswerWithAI).mockResolvedValue(null);
+
+    const review = await submitQuizAttemptAction("quiz-1", [
+      { questionId: "q1", textAnswer: "four" },
+    ]);
+
+    expect(review.answers[0].isCorrect).toBeNull();
+    expect(afterCallbacks).toHaveLength(1);
+
+    await expect(afterCallbacks[0]()).resolves.toBeUndefined();
+
+    // Nothing was written - no table was ever touched on the service client.
+    expect(serviceClient.from).not.toHaveBeenCalled();
+  });
+
+  it("resolves an ambiguous retry's short answer synchronously so a real improvement isn't discarded", async () => {
+    // totalScore is 0 at submission time (the short answer isn't counted
+    // yet) but the current best is also 0, so grading it correct is the
+    // only way this retry could improve - the ambiguous case that needs
+    // resolving before the improves decision, not after via after().
+    const client = createMockSupabaseClient(
+      {
+        students: { data: { id: "student-1" }, error: null },
+        quizzes: { data: { id: "quiz-1", title: "T" }, error: null },
+        quiz_questions: { data: oneShortAnswerQuestion, error: null },
+        quiz_question_options: { data: [], error: null },
+        quiz_attempts: {
+          data: { id: "attempt-1", submitted_at: "2026-01-01T00:00:00Z", score: 0 },
+          error: null,
+        },
+        quiz_attempt_bests: [
+          { data: { score: 0, attempts_used: 1 }, error: null }, // currentBest
+          {
+            data: { score: 1, submitted_at: "2026-01-03T00:00:00Z", attempts_used: 2 },
+            error: null,
+          }, // updatedBest
+        ],
+        quiz_attempt_best_answers: [
+          { data: null, error: null }, // delete
+          { data: [{ id: "best-answer-1", question_id: "q1" }], error: null }, // insert
+        ],
+        quiz_attempt_answers: { data: [], error: null }, // officialAnswers refetch
+        quiz_attempt_starts: { data: null, error: null },
+      },
+      { id: "user-1" },
+      { data: null, error: null },
+    );
+    vi.mocked(createClient).mockResolvedValue(client as never);
+    vi.mocked(gradeShortAnswerWithAI).mockResolvedValue({
+      isCorrect: true,
+      reasoning: "Σωστό.",
+    });
+
+    const review = await submitQuizAttemptAction("quiz-1", [
+      { questionId: "q1", textAnswer: "four" },
+    ]);
+
+    // Graded inline, not deferred - nothing left for after() to do.
+    expect(gradeShortAnswerWithAI).toHaveBeenCalledTimes(1);
+    expect(afterCallbacks).toHaveLength(0);
+    expect(review.best?.score).toBe(1);
+    expect(review.best?.answers[0].isCorrect).toBe(true);
+    expect(review.best?.answers[0].pointsAwarded).toBe(1);
+  });
+
+  it("skips resolving a retry's short answer when even a correct grade couldn't beat the current best", async () => {
+    const client = createMockSupabaseClient(
+      {
+        students: { data: { id: "student-1" }, error: null },
+        quizzes: { data: { id: "quiz-1", title: "T" }, error: null },
+        quiz_questions: { data: oneShortAnswerQuestion, error: null },
+        quiz_question_options: { data: [], error: null },
+        quiz_attempts: {
+          data: { id: "attempt-1", submitted_at: "2026-01-01T00:00:00Z", score: 5 },
+          error: null,
+        },
+        quiz_attempt_bests: [
+          { data: { score: 5, attempts_used: 1 }, error: null }, // currentBest
+          {
+            data: { score: 5, submitted_at: "2026-01-01T00:00:00Z", attempts_used: 2 },
+            error: null,
+          }, // updatedBest (unchanged)
+        ],
+        quiz_attempt_best_answers: {
+          data: [
+            {
+              question_id: "q1",
+              selected_option_id: null,
+              text_answer: "prior wrong text",
+              is_correct: false,
+              points_awarded: 0,
+            },
+          ],
+          error: null,
+        }, // storedBestAnswers - untouched
+        quiz_attempt_answers: { data: [], error: null },
+        quiz_attempt_starts: { data: null, error: null },
+      },
+      { id: "user-1" },
+      { data: null, error: null },
+    );
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    const review = await submitQuizAttemptAction("quiz-1", [
+      { questionId: "q1", textAnswer: "four" },
+    ]);
+
+    // The 1-point question could never beat a score of 5, so there's
+    // nothing ambiguous to resolve - no AI call spent on a lost cause.
+    expect(gradeShortAnswerWithAI).not.toHaveBeenCalled();
+    expect(review.best?.score).toBe(5);
+    expect(afterCallbacks).toHaveLength(0);
   });
 });
 

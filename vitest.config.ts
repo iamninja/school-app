@@ -25,6 +25,17 @@ export default defineConfig({
     // separately via `npm run test:unit` (see vitest.unit.config.ts).
     exclude: [
       ...defaultExclude,
+      // .claude/worktrees/** are separate git worktree checkouts (their own
+      // full file tree, potentially on a different branch/commit) that live
+      // under this repo's directory - not excluded by defaultExclude. Their
+      // own test files still get resolved through this file's own "@" alias
+      // (there's one vitest process, one config), so a change to a shared
+      // module here can spuriously break a worktree's unrelated, possibly
+      // stale test copy. Found via the AI-grading change breaking
+      // .claude/worktrees/quiz-template-checker's copy of
+      // teacher-quiz-actions.test.ts, which has its own un-updated
+      // tests/support/mock-supabase.ts.
+      ".claude/worktrees/**",
       "tests/rls/**",
       "tests/teacher-actions.test.ts",
       "tests/teacher-quiz-actions.test.ts",

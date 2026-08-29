@@ -31,6 +31,7 @@ const CHAIN_METHODS = [
   "not",
   "match",
   "in",
+  "or",
   "gte",
   "lte",
   "order",
