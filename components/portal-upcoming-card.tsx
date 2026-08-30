@@ -1,7 +1,7 @@
 "use client";
 
 import { format } from "date-fns";
-import { el } from "date-fns/locale";
+import { el, enUS } from "date-fns/locale";
 import { CalendarClockIcon } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -17,11 +17,37 @@ import {
   type ProjectionSlot,
 } from "@/lib/calendar-projection";
 import { CALENDAR_EVENT_TYPE_LABELS_EL } from "@/lib/greek-labels";
+import { CALENDAR_EVENT_TYPE_LABELS_EN } from "@/lib/portal-labels-en";
 
 const EXPANDED_DAYS = 60;
 const EXPANDED_LIMIT = 30;
 
-function OccurrenceRow({ occurrence }: { occurrence: Occurrence }) {
+const LABELS = {
+  el: {
+    fallbackTitle: "Μάθημα",
+    dateFnsLocale: el,
+    upcoming: "Επόμενα μαθήματα",
+    more: "Περισσότερα",
+    empty: "Δεν υπάρχουν προγραμματισμένα μαθήματα.",
+    eventTypes: CALENDAR_EVENT_TYPE_LABELS_EL,
+  },
+  en: {
+    fallbackTitle: "Lesson",
+    dateFnsLocale: enUS,
+    upcoming: "Upcoming lessons",
+    more: "See more",
+    empty: "No lessons scheduled.",
+    eventTypes: CALENDAR_EVENT_TYPE_LABELS_EN,
+  },
+};
+
+function OccurrenceRow({
+  occurrence,
+  labels,
+}: {
+  occurrence: Occurrence;
+  labels: (typeof LABELS)["en"];
+}) {
   return (
     <div className="flex items-center justify-between gap-3 rounded-lg border border-border/70 bg-background/60 px-3 py-2">
       <div
@@ -32,11 +58,11 @@ function OccurrenceRow({ occurrence }: { occurrence: Occurrence }) {
         )}
       >
         <p className="truncate text-sm font-medium">
-          {occurrence.className ?? occurrence.studentName ?? "Μάθημα"}
+          {occurrence.className ?? occurrence.studentName ?? labels.fallbackTitle}
         </p>
         <p className="text-xs text-muted-foreground">
           {format(fromIsoDate(occurrence.date), "EEEE d MMMM", {
-            locale: el,
+            locale: labels.dateFnsLocale,
           })}
           {occurrence.startTime ? ` · ${occurrence.startTime}` : ""}
         </p>
@@ -46,9 +72,8 @@ function OccurrenceRow({ occurrence }: { occurrence: Occurrence }) {
           variant={occurrence.kind === "cancelled" ? "destructive" : "outline"}
         >
           {occurrence.kind === "cancelled"
-            ? CALENDAR_EVENT_TYPE_LABELS_EL.cancellation
-            : (CALENDAR_EVENT_TYPE_LABELS_EL[occurrence.kind] ??
-              occurrence.kind)}
+            ? labels.eventTypes.cancellation
+            : (labels.eventTypes[occurrence.kind] ?? occurrence.kind)}
         </Badge>
       ) : null}
     </div>
@@ -68,6 +93,7 @@ export function PortalUpcomingCard({
   calendarEvents,
   days = 14,
   limit = 5,
+  locale = "el",
 }: {
   classes: Array<{
     id: string;
@@ -89,7 +115,9 @@ export function PortalUpcomingCard({
   }>;
   days?: number;
   limit?: number;
+  locale?: "en" | "el";
 }) {
+  const labels = LABELS[locale];
   const projectionClasses: ProjectionClass[] = classes;
   const projectionSlots: ProjectionSlot[] = schedules.map((slot) => ({
     classId: slot.class_id,
@@ -149,28 +177,23 @@ export function PortalUpcomingCard({
       <CardHeader className="flex flex-row items-center justify-between gap-4">
         <CardTitle className="flex items-center gap-2 text-base">
           <CalendarClockIcon className="size-4 text-brand" aria-hidden="true" />
-          Επόμενα μαθήματα
+          {labels.upcoming}
         </CardTitle>
         {hasMore ? (
-          <PortalHistoryDialog
-            triggerLabel="Περισσότερα"
-            title="Επόμενα μαθήματα"
-          >
+          <PortalHistoryDialog triggerLabel={labels.more} title={labels.upcoming}>
             {expandedOccurrences.map((occurrence, idx) => (
-              <OccurrenceRow key={idx} occurrence={occurrence} />
+              <OccurrenceRow key={idx} occurrence={occurrence} labels={labels} />
             ))}
           </PortalHistoryDialog>
         ) : null}
       </CardHeader>
       <CardContent>
         {occurrences.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            Δεν υπάρχουν προγραμματισμένα μαθήματα.
-          </p>
+          <p className="text-sm text-muted-foreground">{labels.empty}</p>
         ) : (
           <div className="space-y-2">
             {occurrences.map((occurrence, idx) => (
-              <OccurrenceRow key={idx} occurrence={occurrence} />
+              <OccurrenceRow key={idx} occurrence={occurrence} labels={labels} />
             ))}
           </div>
         )}

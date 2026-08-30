@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { format } from "date-fns";
-import { el } from "date-fns/locale";
+import { el, enUS } from "date-fns/locale";
 import { toast } from "sonner";
 
 import {
@@ -40,6 +40,63 @@ type ViewState =
 
 const RECENT_PREVIEW_COUNT = 5;
 
+const LABELS = {
+  el: {
+    dateFnsLocale: el,
+    loadQuizError: "Αποτυχία φόρτωσης τεστ",
+    loadReviewError: "Αποτυχία φόρτωσης ανασκόπησης",
+    answerAllQuestions: (remaining: number) =>
+      `Παρακαλώ απαντήστε σε όλες τις ερωτήσεις (απομένουν ${remaining})`,
+    autoSubmitted: "Ο χρόνος τελείωσε — το τεστ υποβλήθηκε αυτόματα",
+    submitted: "Το τεστ υποβλήθηκε",
+    submitError: "Αποτυχία υποβολής τεστ",
+    yourAnswer: "Η απάντησή σας",
+    cancel: "Ακύρωση",
+    submitting: "Γίνεται υποβολή...",
+    submitQuiz: "Υποβολή τεστ",
+    review: "Ανασκόπηση",
+    score: "Βαθμός:",
+    bestAttemptScore: "Καλύτερη προσπάθεια:",
+    attemptsUsed: (count: number) => `${count} προσπάθειες`,
+    firstAttempt: "Πρώτη προσπάθεια",
+    bestAttempt: "Καλύτερη προσπάθεια",
+    backToQuizzes: "Πίσω στα τεστ",
+    retakeQuiz: "Επανάληψη τεστ",
+    retake: "Επανάληψη",
+    startQuiz: "Έναρξη τεστ",
+    quizzesTitle: "Τεστ",
+    history: "Ιστορικό",
+    noQuizzesYet: "Δεν έχουν ανατεθεί τεστ ακόμα.",
+  },
+  en: {
+    dateFnsLocale: enUS,
+    loadQuizError: "Failed to load the quiz",
+    loadReviewError: "Failed to load the review",
+    answerAllQuestions: (remaining: number) =>
+      `Please answer every question (${remaining} left)`,
+    autoSubmitted: "Time's up — the quiz was submitted automatically",
+    submitted: "Quiz submitted",
+    submitError: "Failed to submit the quiz",
+    yourAnswer: "Your answer",
+    cancel: "Cancel",
+    submitting: "Submitting...",
+    submitQuiz: "Submit quiz",
+    review: "Review",
+    score: "Score:",
+    bestAttemptScore: "Best attempt:",
+    attemptsUsed: (count: number) => `${count} attempts`,
+    firstAttempt: "First attempt",
+    bestAttempt: "Best attempt",
+    backToQuizzes: "Back to quizzes",
+    retakeQuiz: "Retake quiz",
+    retake: "Retake",
+    startQuiz: "Start quiz",
+    quizzesTitle: "Quizzes",
+    history: "History",
+    noQuizzesYet: "No quizzes assigned yet.",
+  },
+};
+
 function formatRemainingTime(totalSeconds: number): string {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
@@ -49,13 +106,16 @@ function formatRemainingTime(totalSeconds: number): string {
 export function StudentQuizPanel({
   quizzes: initialQuizzes,
   demoReviews,
+  locale = "el",
 }: {
   quizzes: QuizSummary[];
   // Canned per-quiz review data for the public /demo page, which has no
   // backend to call getQuizReviewAction against. Real callers never pass
   // this, so handleViewReview falls through to the real action as usual.
   demoReviews?: Record<string, QuizAttemptReview>;
+  locale?: "en" | "el";
 }) {
+  const labels = LABELS[locale];
   const [quizzes, setQuizzes] = React.useState(initialQuizzes);
   const [view, setView] = React.useState<ViewState>({ mode: "list" });
   const [isLoading, setIsLoading] = React.useState(false);
@@ -75,7 +135,7 @@ export function StudentQuizPanel({
       setView({ mode: "taking", quiz });
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Αποτυχία φόρτωσης τεστ",
+        error instanceof Error ? error.message : labels.loadQuizError,
       );
     } finally {
       setIsLoading(false);
@@ -94,9 +154,7 @@ export function StudentQuizPanel({
       setView({ mode: "review", review });
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Αποτυχία φόρτωσης ανασκόπησης",
+        error instanceof Error ? error.message : labels.loadReviewError,
       );
     } finally {
       setIsLoading(false);
@@ -129,9 +187,7 @@ export function StudentQuizPanel({
       });
 
       if (unanswered.length > 0) {
-        toast.error(
-          `Παρακαλώ απαντήστε σε όλες τις ερωτήσεις (απομένουν ${unanswered.length})`,
-        );
+        toast.error(labels.answerAllQuestions(unanswered.length));
         return;
       }
     }
@@ -160,14 +216,10 @@ export function StudentQuizPanel({
         ),
       );
       setView({ mode: "review", review });
-      toast.success(
-        auto
-          ? "Ο χρόνος τελείωσε — το τεστ υποβλήθηκε αυτόματα"
-          : "Το τεστ υποβλήθηκε",
-      );
+      toast.success(auto ? labels.autoSubmitted : labels.submitted);
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Αποτυχία υποβολής τεστ",
+        error instanceof Error ? error.message : labels.submitError,
       );
     } finally {
       setIsSubmitting(false);
@@ -250,7 +302,7 @@ export function StudentQuizPanel({
                       textAnswer: event.target.value,
                     })
                   }
-                  placeholder="Η απάντησή σας"
+                  placeholder={labels.yourAnswer}
                 />
               ) : (
                 <RadioGroup
@@ -284,14 +336,14 @@ export function StudentQuizPanel({
               variant="outline"
               onClick={() => setView({ mode: "list" })}
             >
-              Ακύρωση
+              {labels.cancel}
             </Button>
             <Button
               onClick={() => handleSubmitQuiz()}
               disabled={isSubmitting}
               className="flex-1"
             >
-              {isSubmitting ? "Γίνεται υποβολή..." : "Υποβολή τεστ"}
+              {isSubmitting ? labels.submitting : labels.submitQuiz}
             </Button>
           </div>
         </CardContent>
@@ -304,57 +356,61 @@ export function StudentQuizPanel({
       <Card>
         <CardHeader>
           <CardTitle>
-            <MathText text={view.review.quizTitle} /> — Ανασκόπηση
+            <MathText text={view.review.quizTitle} /> — {labels.review}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="outline" className="text-base font-bold">
-              Βαθμός: {view.review.score} / {view.review.maxScore}
+              {labels.score} {view.review.score} / {view.review.maxScore}
             </Badge>
             {view.review.best && (
               <Badge className="text-base font-bold">
-                Καλύτερη προσπάθεια: {view.review.best.score} / {view.review.maxScore}
+                {labels.bestAttemptScore} {view.review.best.score} /{" "}
+                {view.review.maxScore}
               </Badge>
             )}
           </div>
           {view.review.attemptsUsed > 1 && (
             <p className="text-sm text-muted-foreground">
-              {view.review.attemptsUsed} προσπάθειες
+              {labels.attemptsUsed(view.review.attemptsUsed)}
             </p>
           )}
           {view.review.best ? (
             <Tabs defaultValue="first">
               <TabsList>
-                <TabsTrigger value="first">Πρώτη προσπάθεια</TabsTrigger>
-                <TabsTrigger value="best">Καλύτερη προσπάθεια</TabsTrigger>
+                <TabsTrigger value="first">{labels.firstAttempt}</TabsTrigger>
+                <TabsTrigger value="best">{labels.bestAttempt}</TabsTrigger>
               </TabsList>
               <TabsContent value="first">
-                <QuizReviewAnswers answers={view.review.answers} locale="el" />
+                <QuizReviewAnswers
+                  answers={view.review.answers}
+                  locale={locale}
+                />
               </TabsContent>
               <TabsContent value="best">
                 <QuizReviewAnswers
                   answers={view.review.best.answers}
-                  locale="el"
+                  locale={locale}
                 />
               </TabsContent>
             </Tabs>
           ) : (
-            <QuizReviewAnswers answers={view.review.answers} locale="el" />
+            <QuizReviewAnswers answers={view.review.answers} locale={locale} />
           )}
           <div className="flex gap-2">
             <Button
               variant="outline"
               onClick={() => setView({ mode: "list" })}
             >
-              Πίσω στα τεστ
+              {labels.backToQuizzes}
             </Button>
             {view.review.canRetake && (
               <Button
                 disabled={isLoading}
                 onClick={() => handleTakeQuiz(view.review.quizId)}
               >
-                Επανάληψη τεστ
+                {labels.retakeQuiz}
               </Button>
             )}
           </div>
@@ -376,7 +432,7 @@ export function StudentQuizPanel({
           {quiz.className ||
             (quiz.submittedAt
               ? format(new Date(quiz.submittedAt), "d MMMM yyyy", {
-                  locale: el,
+                  locale: labels.dateFnsLocale,
                 })
               : "")}
         </p>
@@ -388,10 +444,12 @@ export function StudentQuizPanel({
       ) : quiz.completed ? (
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="outline">
-            Βαθμός: {quiz.score} / {quiz.maxScore}
+            {labels.score} {quiz.score} / {quiz.maxScore}
           </Badge>
           {quiz.attemptsUsed > 1 && (
-            <Badge>Καλύτερη προσπάθεια: {quiz.bestScore} / {quiz.maxScore}</Badge>
+            <Badge>
+              {labels.bestAttemptScore} {quiz.bestScore} / {quiz.maxScore}
+            </Badge>
           )}
           <Button
             variant="outline"
@@ -399,7 +457,7 @@ export function StudentQuizPanel({
             disabled={isLoading}
             onClick={() => handleViewReview(quiz.id)}
           >
-            Ανασκόπηση
+            {labels.review}
           </Button>
           {quiz.canRetake && (
             <Button
@@ -407,7 +465,7 @@ export function StudentQuizPanel({
               disabled={isLoading}
               onClick={() => handleTakeQuiz(quiz.id)}
             >
-              Επανάληψη
+              {labels.retake}
             </Button>
           )}
         </div>
@@ -417,7 +475,7 @@ export function StudentQuizPanel({
           disabled={isLoading}
           onClick={() => handleTakeQuiz(quiz.id)}
         >
-          Έναρξη τεστ
+          {labels.startQuiz}
         </Button>
       )}
     </div>
@@ -426,9 +484,12 @@ export function StudentQuizPanel({
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-4">
-        <CardTitle>Τεστ</CardTitle>
+        <CardTitle>{labels.quizzesTitle}</CardTitle>
         {quizzes.length > RECENT_PREVIEW_COUNT ? (
-          <PortalHistoryDialog triggerLabel="Ιστορικό" title="Τεστ">
+          <PortalHistoryDialog
+            triggerLabel={labels.history}
+            title={labels.quizzesTitle}
+          >
             {quizzes.map(renderQuizRow)}
           </PortalHistoryDialog>
         ) : null}
@@ -436,7 +497,7 @@ export function StudentQuizPanel({
       <CardContent>
         {quizzes.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            Δεν έχουν ανατεθεί τεστ ακόμα.
+            {labels.noQuizzesYet}
           </p>
         ) : (
           <div className="space-y-2">
