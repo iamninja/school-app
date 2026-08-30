@@ -1,8 +1,10 @@
 import { addDays, format } from "date-fns";
-import { enUS } from "date-fns/locale";
+import { el, enUS } from "date-fns/locale";
 import type {
+  BusinessProfile,
   ParentDashboardData,
   QuizAttemptReview,
+  Receipt,
   StudentDashboardData,
 } from "@/lib/types/database";
 
@@ -23,6 +25,11 @@ const isoDateTime = (dayOffset: number, hour: number, minute: number) => {
 };
 const monthName = (dayOffset: number) =>
   format(addDays(today, dayOffset), "MMMM", { locale: enUS });
+// The receipt itself is a Greek legal document (see the receipts comment
+// below) - its line items use the Greek month name, not the English one
+// used for the informal balance-transaction descriptions elsewhere.
+const greekMonthName = (dayOffset: number) =>
+  format(addDays(today, dayOffset), "MMMM", { locale: el });
 
 const ALEX: StudentDashboardData = {
   student: {
@@ -678,7 +685,7 @@ export const DEMO_EN_PARENT_DASHBOARD: ParentDashboardData = {
         amount: -115,
         description: "Cash payment",
         createdAt: isoDateTime(-3, 10, 15),
-        receiptId: null,
+        receiptId: "demo-en-receipt-recent",
       },
       {
         id: "demo-en-txn-charge-2",
@@ -694,13 +701,100 @@ export const DEMO_EN_PARENT_DASHBOARD: ParentDashboardData = {
         amount: -140,
         description: "Card payment",
         createdAt: isoDateTime(-33, 11, 0),
-        receiptId: null,
+        receiptId: "demo-en-receipt-month2",
       },
     ],
   },
-  // No receipts in the English demo - avoids needing to translate the
-  // Greek-tax-specific ReceiptDocument (ΑΦΜ/ΔΟΥ/myDATA) for a preview page
-  // that isn't about that.
-  receipts: [],
-  business: null,
+  // The receipt itself stays in Greek - it's the real legal tax document
+  // format the business issues to every client regardless of the client's
+  // own language (see the file-level comment on ReceiptDocument), so this
+  // mirrors lib/demo-data.ts's receipts almost verbatim, just addressed to
+  // this demo's own family.
+  receipts: [
+    {
+      id: "demo-en-receipt-recent",
+      series: "Α",
+      receipt_number: 47,
+      issue_date: isoDate(-3),
+      recipient_name: "Lisa Johnson",
+      recipient_afm: null,
+      recipient_address: null,
+      family_id: "demo-en-family-johnson",
+      total_amount: 115,
+      vat_category: "exempt_article_27",
+      payment_method: 3,
+      notes: null,
+      mydata_status: "submitted",
+      mydata_mark: "400012399901234",
+      mydata_uid: "demo-en-uid-47",
+      mydata_error: null,
+      mydata_submitted_at: isoDateTime(-3, 10, 20),
+      mydata_environment: "production",
+      mydata_last_verified_at: isoDateTime(-3, 10, 25),
+      mydata_last_verified_ok: true,
+      emailed_at: null,
+      created_at: isoDateTime(-3, 10, 15),
+      lineItems: [
+        {
+          id: "demo-en-li-recent-1",
+          student_id: "demo-en-student-alex",
+          description: `Δίδακτρα ${greekMonthName(-3)} - Alex`,
+          amount: 115,
+          order_index: 0,
+        },
+      ],
+    },
+    {
+      id: "demo-en-receipt-month2",
+      series: "Α",
+      receipt_number: 46,
+      issue_date: isoDate(-33),
+      recipient_name: "Lisa Johnson",
+      recipient_afm: null,
+      recipient_address: null,
+      family_id: "demo-en-family-johnson",
+      total_amount: 140,
+      vat_category: "exempt_article_27",
+      payment_method: 7,
+      notes: null,
+      mydata_status: "submitted",
+      mydata_mark: "400012399900888",
+      mydata_uid: "demo-en-uid-46",
+      mydata_error: null,
+      mydata_submitted_at: isoDateTime(-33, 11, 5),
+      mydata_environment: "production",
+      mydata_last_verified_at: isoDateTime(-33, 11, 10),
+      mydata_last_verified_ok: true,
+      emailed_at: null,
+      created_at: isoDateTime(-33, 11, 0),
+      lineItems: [
+        {
+          id: "demo-en-li-month2-1",
+          student_id: "demo-en-student-alex",
+          description: `Δίδακτρα ${greekMonthName(-33)} - Alex`,
+          amount: 90,
+          order_index: 0,
+        },
+        {
+          id: "demo-en-li-month2-2",
+          student_id: "demo-en-student-sophie",
+          description: `Δίδακτρα ${greekMonthName(-33)} - Sophie`,
+          amount: 50,
+          order_index: 1,
+        },
+      ],
+    },
+  ] satisfies Receipt[],
+  business: {
+    id: 1,
+    business_name: "Modus — Φροντιστήριο Μαθηματικών",
+    afm: "123456789",
+    doy: "Καρδίτσας",
+    activity_code: "85592000",
+    address: "Καρδίτσα",
+    city: "Καρδίτσα",
+    postal_code: "43100",
+    phone: "6971234567",
+    updated_at: isoDateTime(-90, 9, 0),
+  } satisfies BusinessProfile,
 };

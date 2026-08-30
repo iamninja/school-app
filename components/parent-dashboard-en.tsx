@@ -8,8 +8,11 @@ import {
   ClipboardCheck,
   ClockIcon,
   EuroIcon,
+  FileTextIcon,
   PenLine,
+  PrinterIcon,
   UsersRound,
+  XIcon,
 } from "lucide-react";
 
 import {
@@ -19,12 +22,19 @@ import {
   StatTile,
 } from "@/components/portal-shell";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MathText } from "@/components/math-text";
 import { PortalHistoryDialog } from "@/components/portal-history-dialog";
 import { PortalUpcomingCard } from "@/components/portal-upcoming-card";
-import type { ParentDashboardChild, ParentDashboardData, QuizSummary } from "@/lib/types/database";
+import { ReceiptDocument } from "@/components/receipt-document";
+import type {
+  ParentDashboardChild,
+  ParentDashboardData,
+  QuizSummary,
+  Receipt,
+} from "@/lib/types/database";
 import { formatEuro } from "@/lib/format-currency";
 import {
   ATTENDANCE_STATUS_LABELS_EN,
@@ -39,10 +49,10 @@ import {
  * a separate component for the same reason as student-dashboard-en.tsx:
  * pure layout/copy, no logic worth sharing via a locale prop.
  *
- * Deliberately drops the "view receipt" click-through (ReceiptDocument is
- * Greek-tax-specific - ΑΦΜ/ΔΟΥ/myDATA - and out of scope for an English
- * preview) - the English demo data has no receipts, so that whole branch
- * of the real component is simply omitted here rather than translated.
+ * The receipt itself (ReceiptDocument) stays unchanged/Greek - it's a real
+ * legal tax document format issued to every client regardless of their own
+ * language (see ReceiptDocument's file-level comment) - only the chrome
+ * around it (buttons, dialog titles) is in English here.
  */
 type ParentDashboardEnProps = {
   parent: {
@@ -60,6 +70,8 @@ type ParentDashboardEnProps = {
   }>;
   kids: ParentDashboardChild[];
   balance: ParentDashboardData["balance"];
+  receipts: ParentDashboardData["receipts"];
+  business: ParentDashboardData["business"];
   demoMode?: boolean;
 };
 
@@ -102,8 +114,12 @@ function QuizRow({ quiz }: { quiz: QuizSummary }) {
 
 function TransactionRow({
   txn,
+  receipt,
+  onViewReceipt,
 }: {
   txn: ParentDashboardData["balance"]["recentTransactions"][number];
+  receipt: Receipt | undefined;
+  onViewReceipt: (receipt: Receipt) => void;
 }) {
   return (
     <div className="flex items-center justify-between gap-3 text-sm">
@@ -115,15 +131,29 @@ function TransactionRow({
           {BALANCE_TRANSACTION_TYPE_LABELS_EN[txn.type] ?? txn.type}
         </p>
       </div>
-      <span
-        className={
-          txn.amount > 0
-            ? "text-destructive"
-            : "text-emerald-600 dark:text-emerald-400"
-        }
-      >
-        {formatEuro(txn.amount)}
-      </span>
+      <div className="flex items-center gap-2">
+        {receipt ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-7"
+            aria-label={`Receipt ${receipt.series}-${receipt.receipt_number}`}
+            onClick={() => onViewReceipt(receipt)}
+          >
+            <FileTextIcon className="size-4" aria-hidden="true" />
+          </Button>
+        ) : null}
+        <span
+          className={
+            txn.amount > 0
+              ? "text-destructive"
+              : "text-emerald-600 dark:text-emerald-400"
+          }
+        >
+          {formatEuro(txn.amount)}
+        </span>
+      </div>
     </div>
   );
 }
@@ -413,6 +443,12 @@ export function ParentDashboardEn(props: ParentDashboardEnProps) {
   );
   const parentFirstName = props.parent.name?.trim().split(/\s+/)[0] ?? null;
 
+  const [isHistoryOpen, setIsHistoryOpen] = React.useState(false);
+  const [viewingReceipt, setViewingReceipt] = React.useState<Receipt | null>(
+    null,
+  );
+  const receiptsById = new Map(props.receipts.map((r) => [r.id, r]));
+
   return (
     <PortalShell roleLabel="Parent portal" demoMode={props.demoMode} locale="en">
       <div className="flex w-full flex-col gap-10">
@@ -435,11 +471,71 @@ export function ParentDashboardEn(props: ParentDashboardEnProps) {
         <div className="space-y-3">
           <SectionLabel>Account</SectionLabel>
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between gap-4">
               <CardTitle className="flex items-center gap-2 text-base">
                 <EuroIcon className="size-4 text-brand" aria-hidden="true" />
                 Tuition balance
               </CardTitle>
+              {props.balance.recentTransactions.length > RECENT_PREVIEW_COUNT ||
+              props.receipts.length > 0 ? (
+                <PortalHistoryDialog
+                  triggerLabel="Payment history"
+                  title={
+                    viewingReceipt
+                      ? `Receipt ${viewingReceipt.series}-${viewingReceipt.receipt_number}`
+                      : "Payment history"
+                  }
+                  open={isHistoryOpen}
+                  onOpenChange={(open) => {
+                    setIsHistoryOpen(open);
+                    if (!open) {
+                      setViewingReceipt(null);
+                    }
+                  }}
+                >
+                  {viewingReceipt ? (
+                    <div className="space-y-4">
+                      <div className="flex flex-wrap items-center gap-2 print:hidden">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setViewingReceipt(null)}
+                        >
+                          <XIcon className="mr-1 h-3.5 w-3.5" /> Back to
+                          history
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => window.print()}
+                        >
+                          <PrinterIcon className="mr-1 h-3.5 w-3.5" /> Print /
+                          Save as PDF
+                        </Button>
+                      </div>
+                      <ReceiptDocument
+                        receipt={viewingReceipt}
+                        business={props.business}
+                        isDemo={props.demoMode}
+                      />
+                    </div>
+                  ) : (
+                    props.balance.recentTransactions.map((txn) => (
+                      <TransactionRow
+                        key={txn.id}
+                        txn={txn}
+                        receipt={
+                          txn.receiptId
+                            ? receiptsById.get(txn.receiptId)
+                            : undefined
+                        }
+                        onViewReceipt={setViewingReceipt}
+                      />
+                    ))
+                  )}
+                </PortalHistoryDialog>
+              ) : null}
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
@@ -469,7 +565,19 @@ export function ParentDashboardEn(props: ParentDashboardEnProps) {
                   {props.balance.recentTransactions
                     .slice(0, RECENT_PREVIEW_COUNT)
                     .map((txn) => (
-                      <TransactionRow key={txn.id} txn={txn} />
+                      <TransactionRow
+                        key={txn.id}
+                        txn={txn}
+                        receipt={
+                          txn.receiptId
+                            ? receiptsById.get(txn.receiptId)
+                            : undefined
+                        }
+                        onViewReceipt={(receipt) => {
+                          setViewingReceipt(receipt);
+                          setIsHistoryOpen(true);
+                        }}
+                      />
                     ))}
                 </div>
               )}
