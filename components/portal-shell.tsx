@@ -10,21 +10,46 @@ import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
+const PORTAL_SHELL_LABELS = {
+  el: {
+    homeAriaLabel: "Modus — Αρχική",
+    demoBanner:
+      "Δοκιμαστική προβολή με δείγμα δεδομένων — δεν αντιστοιχεί σε πραγματικό μαθητή ή γονέα.",
+    signOut: "Αποσύνδεση",
+    exitDemo: "Έξοδος από τη δοκιμαστική προβολή",
+    footer:
+      "Φροντιστήριο Μαθηματικών Modus · Βάγιος Βλάχος · Ηρώων Πολυτεχνείου 3, 1ος όροφος, Καρδίτσα",
+  },
+  en: {
+    homeAriaLabel: "Modus — Home",
+    demoBanner:
+      "Sample-data preview — this doesn't correspond to a real student or parent.",
+    signOut: "Sign out",
+    exitDemo: "Exit preview",
+    footer: "Modus Math Tutoring · Karditsa, Greece",
+  },
+};
+
 /**
  * Shared chrome for the parent and student portal views: branded top bar,
- * content column, and a signage footer. Greek-only surface.
+ * content column, and a signage footer. Real families only ever see the
+ * Greek copy (locale defaults to "el") - the English strings exist for the
+ * public /demo-en preview page.
  */
 export function PortalShell({
   roleLabel,
   children,
   demoMode = false,
+  locale = "el",
 }: {
   roleLabel: string;
   children: React.ReactNode;
   /** No real session exists in demo mode - swaps sign-out for a plain link back to "/" instead of calling Supabase. */
   demoMode?: boolean;
+  locale?: "en" | "el";
 }) {
   const router = useRouter();
+  const labels = PORTAL_SHELL_LABELS[locale];
 
   const handleSignOut = async () => {
     if (demoMode) {
@@ -40,12 +65,12 @@ export function PortalShell({
     <div className="flex min-h-screen flex-col bg-background">
       {demoMode && (
         <div className="border-b border-brand/20 bg-brand/10 px-5 py-2 text-center text-xs font-medium text-foreground sm:text-sm">
-          Δοκιμαστική προβολή με δείγμα δεδομένων — δεν αντιστοιχεί σε πραγματικό μαθητή ή γονέα.
+          {labels.demoBanner}
         </div>
       )}
       <header className="sticky top-0 z-40 border-b border-border/70 bg-background/85 backdrop-blur">
         <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-5">
-          <Link href="/" aria-label="Modus — Αρχική">
+          <Link href="/" aria-label={labels.homeAriaLabel}>
             <ModusLogo size={30} variant="compact" priority />
           </Link>
           <div className="flex items-center gap-3">
@@ -55,7 +80,7 @@ export function PortalShell({
             <ThemeSwitcher />
             <Button variant="outline" size="sm" onClick={handleSignOut}>
               <LogOut className="size-3.5" aria-hidden="true" />
-              {demoMode ? "Έξοδος από τη δοκιμαστική προβολή" : "Αποσύνδεση"}
+              {demoMode ? labels.exitDemo : labels.signOut}
             </Button>
           </div>
         </div>
@@ -67,10 +92,7 @@ export function PortalShell({
 
       <footer className="border-t border-border/70">
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-5 py-6 text-xs text-muted-foreground">
-          <p>
-            Φροντιστήριο Μαθηματικών Modus · Βάγιος Βλάχος · Ηρώων
-            Πολυτεχνείου 3, 1ος όροφος, Καρδίτσα
-          </p>
+          <p>{labels.footer}</p>
           <BrandDots dotClassName="size-1" />
         </div>
       </footer>
