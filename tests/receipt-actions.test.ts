@@ -264,11 +264,16 @@ describe("submitReceiptToMyDataAction", () => {
     vi.mocked(requireTeacher).mockResolvedValue(undefined);
   });
 
-  it("refuses to re-send a receipt that already has a MARK", async () => {
+  it("refuses to re-send a receipt that already has a production MARK", async () => {
     vi.mocked(createClient).mockResolvedValue(
       createMockSupabaseClient({
         receipts: {
-          data: { ...receiptRow, mydata_status: "submitted", mydata_mark: "400001" },
+          data: {
+            ...receiptRow,
+            mydata_status: "submitted",
+            mydata_mark: "400001",
+            mydata_environment: "production",
+          },
           error: null,
         },
         receipt_line_items: { data: [], error: null },
@@ -281,6 +286,50 @@ describe("submitReceiptToMyDataAction", () => {
 
     const mydata = await import("@/lib/mydata/client");
     expect(mydata.sendInvoiceXml).not.toHaveBeenCalled();
+  });
+
+  it("allows re-sending a receipt whose existing MARK is only a sandbox test, not a real filing", async () => {
+    const mydata = await import("@/lib/mydata/client");
+    vi.mocked(mydata.getActiveMyDataEnvironment).mockResolvedValue("production");
+    vi.mocked(mydata.sendInvoiceXml).mockResolvedValue({
+      ok: true,
+      mark: "500009999999999",
+      uid: "prod-uid",
+      qrUrl: null,
+    });
+
+    const client = createMockSupabaseClient({
+      receipts: [
+        {
+          data: {
+            ...receiptRow,
+            mydata_status: "submitted",
+            mydata_mark: "400001",
+            mydata_environment: "sandbox",
+          },
+          error: null,
+        }, // fetch - only ever sandbox-marked
+        {
+          data: {
+            ...receiptRow,
+            mydata_status: "submitted",
+            mydata_mark: "500009999999999",
+            mydata_environment: "production",
+          },
+          error: null,
+        }, // update + select
+      ],
+      receipt_line_items: { data: [], error: null },
+      business_profile: { data: businessProfile, error: null },
+      mydata_submission_log: { data: null, error: null },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    const result = await submitReceiptToMyDataAction("receipt-1");
+
+    expect(mydata.sendInvoiceXml).toHaveBeenCalled();
+    expect(result.mydata_mark).toBe("500009999999999");
+    expect(result.mydata_environment).toBe("production");
   });
 
   it("requires the business ΑΦΜ before attempting to send", async () => {

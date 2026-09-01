@@ -180,9 +180,18 @@ export async function submitReceiptToMyDataAction(
     receiptRow as unknown as Omit<Receipt, "lineItems">,
   ]);
 
-  if (receipt.mydata_status === "submitted" && receipt.mydata_mark) {
+  // A sandbox MARK has no legal standing with AADE - it's not a real
+  // filing, just a test-system echo. Only a production MARK represents an
+  // actual invoice on file, so only that should ever permanently block
+  // re-sending the same receipt (sandbox-then-production is the expected
+  // workflow, not an edge case).
+  if (
+    receipt.mydata_status === "submitted" &&
+    receipt.mydata_mark &&
+    receipt.mydata_environment === "production"
+  ) {
     throw new ExpectedError(
-      `This receipt was already sent to myDATA (MARK ${receipt.mydata_mark}). Re-sending would file it twice.`,
+      `This receipt was already sent to myDATA production (MARK ${receipt.mydata_mark}). Re-sending would file it twice.`,
     );
   }
 
