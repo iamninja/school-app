@@ -347,7 +347,14 @@ export function TeacherReceipts({
                     ) : (
                       <Badge variant="outline">Not sent to myDATA</Badge>
                     )}
-                    {receipt.mydata_status !== "submitted" && (
+                    {/* A sandbox MARK has no legal standing with AADE, so a
+                        receipt that's only ever been sandbox-submitted still
+                        needs a real path to production - only a production
+                        MARK should hide this button. */}
+                    {!(
+                      receipt.mydata_status === "submitted" &&
+                      receipt.mydata_environment === "production"
+                    ) && (
                       <Button
                         type="button"
                         variant="outline"
@@ -360,7 +367,9 @@ export function TeacherReceipts({
                           ? "Sending..."
                           : receipt.mydata_status === "failed"
                             ? "Retry myDATA"
-                            : "Send to myDATA"}
+                            : receipt.mydata_status === "submitted"
+                              ? "Send to production"
+                              : "Send to myDATA"}
                       </Button>
                     )}
                     {receipt.mydata_status === "submitted" && (

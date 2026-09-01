@@ -519,6 +519,78 @@ describe("TeacherReceipts", () => {
     ).toBeInTheDocument();
   });
 
+  it("offers 'Send to production' for a receipt only ever sandbox-submitted, and lets it be resent", async () => {
+    const user = userEvent.setup();
+    const sandboxSubmitted = {
+      ...existingReceipt,
+      mydata_status: "submitted" as const,
+      mydata_mark: "400001968145986",
+      mydata_environment: "sandbox" as const,
+    };
+    const productionSubmitted = {
+      ...sandboxSubmitted,
+      mydata_mark: "500009999999999",
+      mydata_environment: "production" as const,
+    };
+    vi.mocked(receiptActions.submitReceiptToMyDataAction).mockResolvedValue(
+      productionSubmitted,
+    );
+
+    render(
+      <TeacherReceipts
+        initialReceipts={[sandboxSubmitted]}
+        families={families}
+        business={business}
+      />,
+    );
+
+    const sendButton = screen.getByRole("button", {
+      name: /send to production/i,
+    });
+    expect(sendButton).toBeInTheDocument();
+    // Verify is still offered alongside it - the sandbox MARK is still
+    // worth re-checking even though it can't be filed for real.
+    expect(
+      screen.getByRole("button", { name: /verify with aade/i }),
+    ).toBeInTheDocument();
+
+    await user.click(sendButton);
+
+    await waitFor(() => {
+      expect(receiptActions.submitReceiptToMyDataAction).toHaveBeenCalledWith(
+        "receipt-1",
+      );
+      expect(toast.success).toHaveBeenCalledWith(
+        expect.stringContaining("500009999999999"),
+      );
+    });
+    expect(screen.getByText(/myDATA sent$/)).toBeInTheDocument();
+  });
+
+  it("does not offer to (re-)send a receipt already filed with production", () => {
+    const productionSubmitted = {
+      ...existingReceipt,
+      mydata_status: "submitted" as const,
+      mydata_mark: "500009999999999",
+      mydata_environment: "production" as const,
+    };
+
+    render(
+      <TeacherReceipts
+        initialReceipts={[productionSubmitted]}
+        families={families}
+        business={business}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: /send to (mydata|production)/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /verify with aade/i }),
+    ).toBeInTheDocument();
+  });
+
   it("verifies a submitted receipt and shows it confirmed", async () => {
     const user = userEvent.setup();
     const submitted = {
