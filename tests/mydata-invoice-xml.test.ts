@@ -37,6 +37,7 @@ const receipt: Receipt = {
   mydata_environment: null,
   mydata_last_verified_at: null,
   mydata_last_verified_ok: null,
+  mydata_warning: null,
   emailed_at: null,
   created_at: "2026-08-20T00:00:00Z",
   counts_toward_balance: true,
@@ -207,7 +208,52 @@ describe("parseMyDataResponse", () => {
       mark: "400001234567890",
       uid: "ABC123",
       qrUrl: "https://example.gr/qr",
+      raw: expect.any(String),
+      warning: null,
     });
+  });
+
+  it("surfaces an error/message segment even when a MARK is present and statusCode says Success", () => {
+    // 2026-09-01: a real production receipt got back a MARK and UID (what
+    // this app treats as a clean acceptance) yet the document never
+    // surfaced in AADE's own RequestTransmittedDocs or portal search.
+    // Whatever the actual cause turns out to be, a MARK alongside an
+    // errors/code segment must not be silently swallowed - the teacher
+    // needs to see it, not just have the receipt marked "sent".
+    const result = parseMyDataResponse(`
+      <ResponseDoc>
+        <response>
+          <index>1</index>
+          <invoiceMark>400001234567890</invoiceMark>
+          <statusCode>Success</statusCode>
+          <errors>
+            <error>
+              <code>123</code>
+              <message>Something AADE flagged despite accepting the invoice</message>
+            </error>
+          </errors>
+        </response>
+      </ResponseDoc>
+    `);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.mark).toBe("400001234567890");
+      expect(result.warning).toMatch(
+        /Something AADE flagged despite accepting the invoice/,
+      );
+    }
+  });
+
+  it("has no warning when the response carries no error/code segment", () => {
+    const result = parseMyDataResponse(`
+      <ResponseDoc><response><invoiceMark>1</invoiceMark><statusCode>Success</statusCode></response></ResponseDoc>
+    `);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.warning).toBeNull();
+    }
   });
 
   it("treats a non-Success status as a failure even though AADE returned HTTP 200", () => {

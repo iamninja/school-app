@@ -39,12 +39,24 @@ export interface MyDataSuccess {
   mark: string;
   uid: string | null;
   qrUrl: string | null;
+  /** Raw response body, for the audit trail - see mydata_submission_log. */
+  raw: string;
+  /**
+   * A non-empty <code>/<message> segment found alongside a MARK, even
+   * though the top-level status read as accepted - AADE returning a MARK
+   * is not proof the whole response was clean (2026-09-01: a receipt got
+   * a real MARK/UID that never surfaced in RequestTransmittedDocs or the
+   * myDATA portal). Null when the response carried no such segment.
+   */
+  warning: string | null;
 }
 
 export interface MyDataFailure {
   ok: false;
   /** Safe to persist and show - never contains credentials. */
   error: string;
+  /** Raw response body, empty when the request never got a response at all. */
+  raw: string;
 }
 
 export type MyDataResult = MyDataSuccess | MyDataFailure;
@@ -107,6 +119,7 @@ export function parseMyDataResponse(xml: string): MyDataResult {
       error: details.length > 0
         ? `myDATA rejected the receipt: ${details.join("; ")}`
         : `myDATA rejected the receipt (status ${statusCode})`,
+      raw: xml,
     };
   }
 
@@ -117,14 +130,27 @@ export function parseMyDataResponse(xml: string): MyDataResult {
     return {
       ok: false,
       error: "myDATA accepted the request but returned no MARK",
+      raw: xml,
     };
   }
+
+  // A MARK being present is not proof the rest of the response was clean -
+  // check for an embedded error/warning segment regardless of statusCode,
+  // and surface it rather than silently discard it.
+  const codes = extractAllTags(xml, "code");
+  const messages = extractAllTags(xml, "message");
+  const details = messages.length > 0 ? messages : codes;
 
   return {
     ok: true,
     mark,
     uid: extractTag(xml, "invoiceUid"),
     qrUrl: extractTag(xml, "qrUrl"),
+    raw: xml,
+    warning:
+      details.length > 0
+        ? `myDATA returned a MARK but also flagged: ${details.join("; ")}`
+        : null,
   };
 }
 
@@ -180,6 +206,7 @@ export async function sendInvoiceXml(xml: string): Promise<MyDataResult> {
       error: `Could not reach myDATA (${environment}): ${
         error instanceof Error ? error.message : "network error"
       }`,
+      raw: "",
     };
   }
 
@@ -189,6 +216,7 @@ export async function sendInvoiceXml(xml: string): Promise<MyDataResult> {
     return {
       ok: false,
       error: `myDATA rejected the credentials (HTTP ${response.status}) - check the ${environment} user ID and subscription key.`,
+      raw: body,
     };
   }
 
@@ -196,6 +224,7 @@ export async function sendInvoiceXml(xml: string): Promise<MyDataResult> {
     return {
       ok: false,
       error: `myDATA returned HTTP ${response.status}: ${body.slice(0, 500)}`,
+      raw: body,
     };
   }
 
@@ -398,6 +427,7 @@ export async function verifyReceiptMark(
       error: `Could not reach myDATA (${environment}): ${
         error instanceof Error ? error.message : "network error"
       }`,
+      raw: "",
     };
   }
 
@@ -407,12 +437,14 @@ export async function verifyReceiptMark(
     return {
       ok: false,
       error: `myDATA rejected the credentials (HTTP ${response.status}) for the ${environment} environment.`,
+      raw: body,
     };
   }
   if (!response.ok) {
     return {
       ok: false,
       error: `myDATA returned HTTP ${response.status}: ${body.slice(0, 500)}`,
+      raw: body,
     };
   }
 
@@ -423,6 +455,10 @@ export async function verifyReceiptMark(
     mark,
     uid: extractTag(body, "uid"),
     qrUrl: extractTag(body, "qrCodeUrl"),
+    raw: body,
+    // RequestTransmittedDocs' RequestedDoc shape has no error/code segment
+    // analogous to SendInvoices' ResponseDoc - nothing to flag here.
+    warning: null,
     verification: {
       found,
       invoiceType: found ? extractTag(body, "invoiceType") : null,

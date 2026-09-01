@@ -634,6 +634,9 @@ export interface Receipt {
   mydata_environment: "sandbox" | "production" | null;
   mydata_last_verified_at: string | null;
   mydata_last_verified_ok: boolean | null;
+  // A code/message segment AADE returned alongside an accepted MARK - the
+  // response can look like a clean success and still carry one.
+  mydata_warning: string | null;
   emailed_at: string | null;
   created_at: string;
   // False for an enrollment/material fee or pre-existing debt - the receipt

@@ -347,6 +347,11 @@ export function TeacherReceipts({
                     ) : (
                       <Badge variant="outline">Not sent to myDATA</Badge>
                     )}
+                    {receipt.mydata_warning && (
+                      <Badge variant="destructive" title={receipt.mydata_warning}>
+                        myDATA warning
+                      </Badge>
+                    )}
                     {/* A sandbox MARK has no legal standing with AADE, so a
                         receipt that's only ever been sandbox-submitted still
                         needs a real path to production - only a production

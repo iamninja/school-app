@@ -59,6 +59,7 @@ const existingReceipt = {
   mydata_environment: null,
   mydata_last_verified_at: null,
   mydata_last_verified_ok: null,
+  mydata_warning: null,
   emailed_at: null,
   created_at: "2026-08-20T00:00:00Z",
   counts_toward_balance: true,
@@ -517,6 +518,44 @@ describe("TeacherReceipts", () => {
     expect(
       screen.getByRole("button", { name: /retry mydata/i }),
     ).toBeInTheDocument();
+  });
+
+  it("shows a warning badge when myDATA flagged something despite accepting the receipt", () => {
+    const withWarning = {
+      ...existingReceipt,
+      mydata_status: "submitted" as const,
+      mydata_mark: "400015092872744",
+      mydata_environment: "production" as const,
+      mydata_warning:
+        "myDATA returned a MARK but also flagged: something odd",
+    };
+
+    render(
+      <TeacherReceipts
+        initialReceipts={[withWarning]}
+        families={families}
+        business={business}
+      />,
+    );
+
+    const warningBadge = screen.getByText("myDATA warning");
+    expect(warningBadge).toBeInTheDocument();
+    expect(warningBadge).toHaveAttribute(
+      "title",
+      "myDATA returned a MARK but also flagged: something odd",
+    );
+  });
+
+  it("shows no warning badge when a receipt has never had one", () => {
+    render(
+      <TeacherReceipts
+        initialReceipts={[existingReceipt]}
+        families={families}
+        business={business}
+      />,
+    );
+
+    expect(screen.queryByText("myDATA warning")).not.toBeInTheDocument();
   });
 
   it("offers 'Send to production' for a receipt only ever sandbox-submitted, and lets it be resent", async () => {

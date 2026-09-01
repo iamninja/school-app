@@ -296,6 +296,8 @@ describe("submitReceiptToMyDataAction", () => {
       mark: "500009999999999",
       uid: "prod-uid",
       qrUrl: null,
+      raw: "<ResponseDoc/>",
+      warning: null,
     });
 
     const client = createMockSupabaseClient({
@@ -357,6 +359,8 @@ describe("submitReceiptToMyDataAction", () => {
       mark: "400001968145986",
       uid: "some-uid",
       qrUrl: null,
+      raw: "<ResponseDoc/>",
+      warning: null,
     });
 
     const client = createMockSupabaseClient({
@@ -390,8 +394,104 @@ describe("submitReceiptToMyDataAction", () => {
         environment: "sandbox",
         success: true,
         mark: "400001968145986",
+        raw_response: "<ResponseDoc/>",
       }),
     );
+  });
+
+  it("persists a warning onto the receipt even though the submission itself succeeded", async () => {
+    const mydata = await import("@/lib/mydata/client");
+    vi.mocked(mydata.getActiveMyDataEnvironment).mockResolvedValue("production");
+    vi.mocked(mydata.sendInvoiceXml).mockResolvedValue({
+      ok: true,
+      mark: "400015092872744",
+      uid: "some-uid",
+      qrUrl: null,
+      raw: "<ResponseDoc/>",
+      warning: "myDATA returned a MARK but also flagged: something odd",
+    });
+
+    const client = createMockSupabaseClient({
+      receipts: [
+        { data: receiptRow, error: null },
+        {
+          data: {
+            ...receiptRow,
+            mydata_status: "submitted",
+            mydata_mark: "400015092872744",
+            mydata_environment: "production",
+            mydata_warning: "myDATA returned a MARK but also flagged: something odd",
+          },
+          error: null,
+        },
+      ],
+      receipt_line_items: { data: [], error: null },
+      business_profile: { data: businessProfile, error: null },
+      mydata_submission_log: { data: null, error: null },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await submitReceiptToMyDataAction("receipt-1");
+
+    const receiptsCallIndexes = client.from.mock.calls
+      .map((call, i) => (call[0] === "receipts" ? i : -1))
+      .filter((i) => i !== -1);
+    const updateChain = client.from.mock.results[receiptsCallIndexes[1]].value;
+    expect(updateChain.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mydata_warning: "myDATA returned a MARK but also flagged: something odd",
+      }),
+    );
+    const logChain = client.from.mock.results[
+      client.from.mock.calls.findIndex(([t]) => t === "mydata_submission_log")
+    ].value;
+    expect(logChain.insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: true,
+        error: "myDATA returned a MARK but also flagged: something odd",
+      }),
+    );
+  });
+
+  it("truncates an oversized raw response before logging it, rather than storing it unbounded", async () => {
+    const mydata = await import("@/lib/mydata/client");
+    const hugeRaw = "<ResponseDoc>" + "x".repeat(20000) + "</ResponseDoc>";
+    vi.mocked(mydata.getActiveMyDataEnvironment).mockResolvedValue("sandbox");
+    vi.mocked(mydata.sendInvoiceXml).mockResolvedValue({
+      ok: true,
+      mark: "400001968145986",
+      uid: "some-uid",
+      qrUrl: null,
+      raw: hugeRaw,
+      warning: null,
+    });
+
+    const client = createMockSupabaseClient({
+      receipts: [
+        { data: receiptRow, error: null },
+        {
+          data: {
+            ...receiptRow,
+            mydata_status: "submitted",
+            mydata_mark: "400001968145986",
+            mydata_environment: "sandbox",
+          },
+          error: null,
+        },
+      ],
+      receipt_line_items: { data: [], error: null },
+      business_profile: { data: businessProfile, error: null },
+      mydata_submission_log: { data: null, error: null },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await submitReceiptToMyDataAction("receipt-1");
+
+    const logChain = client.from.mock.results[
+      client.from.mock.calls.findIndex(([t]) => t === "mydata_submission_log")
+    ].value;
+    const loggedRaw = vi.mocked(logChain.insert).mock.calls[0][0].raw_response;
+    expect(loggedRaw.length).toBe(10000);
   });
 
   it("on failure, saves the error and status without throwing an unhandled crash", async () => {
@@ -400,6 +500,7 @@ describe("submitReceiptToMyDataAction", () => {
     vi.mocked(mydata.sendInvoiceXml).mockResolvedValue({
       ok: false,
       error: "myDATA rejected the receipt: Payment Methods is mandatory",
+      raw: "<ResponseDoc/>",
     });
 
     const client = createMockSupabaseClient({
@@ -457,6 +558,8 @@ describe("verifyReceiptWithMyDataAction", () => {
       mark: "400001968145986",
       uid: null,
       qrUrl: null,
+      raw: "<RequestedDoc/>",
+      warning: null,
       verification: { found: true, invoiceType: "11.2", grossValue: "50.00" },
     });
 
@@ -502,6 +605,8 @@ describe("verifyReceiptWithMyDataAction", () => {
       mark: "400001968145986",
       uid: null,
       qrUrl: null,
+      raw: "<RequestedDoc/>",
+      warning: null,
       verification: { found: false, invoiceType: null, grossValue: null },
     });
 
@@ -549,6 +654,7 @@ describe("verifyReceiptWithMyDataAction", () => {
     vi.mocked(mydata.verifyReceiptMark).mockResolvedValue({
       ok: false,
       error: "Could not reach myDATA (sandbox): network error",
+      raw: "",
     });
 
     const client = createMockSupabaseClient({

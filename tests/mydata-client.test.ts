@@ -122,3 +122,70 @@ describe("lib/mydata/client - endpoint URLs", () => {
     );
   });
 });
+
+/**
+ * A "phantom success" (2026-09-01: a real MARK/UID came back from AADE, yet
+ * the document never showed up in RequestTransmittedDocs or the myDATA
+ * portal) is unauditable after the fact unless the raw response body is
+ * kept somewhere - the parsed mark/uid alone can't answer "was there
+ * something else in that response we didn't check for". These lock in
+ * that every call site actually returns the body it received, for every
+ * outcome, so the caller can persist it.
+ */
+describe("lib/mydata/client - raw response is always returned", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getDecryptedCredential).mockResolvedValue("user-id");
+    vi.mocked(getDecryptedCredentialForEnvironment).mockResolvedValue(
+      "user-id",
+    );
+    vi.mocked(createServiceRoleClient).mockReturnValue(
+      createMockSupabaseClient({
+        integration_settings: {
+          data: { active_environment: "sandbox", enabled: true },
+          error: null,
+        },
+      }) as never,
+    );
+  });
+
+  it("sendInvoiceXml returns the exact response body on success", async () => {
+    const raw =
+      "<ResponseDoc><statusCode>Success</statusCode><invoiceMark>1</invoiceMark></ResponseDoc>";
+    global.fetch = vi.fn(async () => new Response(raw, { status: 200 }));
+
+    const result = await sendInvoiceXml("<InvoicesDoc/>");
+
+    expect(result.raw).toBe(raw);
+  });
+
+  it("sendInvoiceXml returns the exact response body on an HTTP error", async () => {
+    const raw = '{ "statusCode": 404, "message": "Resource not found" }';
+    global.fetch = vi.fn(async () => new Response(raw, { status: 404 }));
+
+    const result = await sendInvoiceXml("<InvoicesDoc/>");
+
+    expect(result.ok).toBe(false);
+    expect(result.raw).toBe(raw);
+  });
+
+  it("sendInvoiceXml returns an empty raw body on a network-level failure", async () => {
+    global.fetch = vi.fn(async () => {
+      throw new Error("network down");
+    });
+
+    const result = await sendInvoiceXml("<InvoicesDoc/>");
+
+    expect(result.ok).toBe(false);
+    expect(result.raw).toBe("");
+  });
+
+  it("verifyReceiptMark returns the exact response body it received", async () => {
+    const raw = "<RequestedDoc><invoice><mark>1</mark></invoice></RequestedDoc>";
+    global.fetch = vi.fn(async () => new Response(raw, { status: 200 }));
+
+    const result = await verifyReceiptMark("1", "sandbox");
+
+    expect(result.raw).toBe(raw);
+  });
+});

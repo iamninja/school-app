@@ -65,6 +65,7 @@ const DEMO_RECEIPT: Receipt = {
   mydata_environment: null,
   mydata_last_verified_at: null,
   mydata_last_verified_ok: null,
+  mydata_warning: null,
   emailed_at: null,
   created_at: new Date().toISOString(),
   counts_toward_balance: true,

@@ -31,6 +31,7 @@ function makeReceipt(overrides: Partial<Receipt> = {}): Receipt {
     mydata_environment: null,
     mydata_last_verified_at: null,
     mydata_last_verified_ok: null,
+    mydata_warning: null,
     emailed_at: null,
     created_at: "2026-08-20T10:00:00Z",
     counts_toward_balance: true,

@@ -224,7 +224,8 @@ export async function submitReceiptToMyDataAction(
     environment,
     success: result.ok,
     mark: result.ok ? result.mark : null,
-    error: result.ok ? null : result.error,
+    error: result.ok ? result.warning : result.error,
+    raw_response: result.raw.slice(0, 10000),
   });
 
   const { data: updated, error: updateError } = await supabase
@@ -236,12 +237,14 @@ export async function submitReceiptToMyDataAction(
             mydata_mark: result.mark,
             mydata_uid: result.uid,
             mydata_error: null,
+            mydata_warning: result.warning,
             mydata_submitted_at: new Date().toISOString(),
             mydata_environment: environment,
           }
         : {
             mydata_status: "failed",
             mydata_error: result.error,
+            mydata_warning: null,
             mydata_environment: environment,
           },
     )
@@ -317,6 +320,7 @@ export async function verifyReceiptWithMyDataAction(
       : !result.verification?.found
         ? "MARK not found in AADE's transmitted documents"
         : null,
+    raw_response: result.raw.slice(0, 10000),
   });
 
   if (!result.ok) {
