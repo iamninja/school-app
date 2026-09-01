@@ -13,12 +13,24 @@ import { createServiceRoleClient } from "@/lib/supabase/server";
  * /myDATAProvider/ prefix - that's the separate Provider channel, and
  * sending there would fail. Endpoints are from AADE's own test-URL sheet
  * (docs/mydata-integration.md), not from web search, which had this wrong.
+ *
+ * Production sits under a /myDATA path prefix (confirmed against the
+ * official §4.2.1 doc screenshot, 2026-09-01, after a receipt got a real
+ * HTTP 404 in production without it); sandbox has no such prefix. Every
+ * ERP call must go through baseUrl() below rather than ENDPOINTS directly,
+ * or it'll silently 404 in production the same way.
  */
 
 const ENDPOINTS = {
   sandbox: "https://mydataapidev.aade.gr",
   production: "https://mydatapi.aade.gr",
 } as const;
+
+function baseUrl(environment: "sandbox" | "production"): string {
+  return environment === "production"
+    ? `${ENDPOINTS.production}/myDATA`
+    : ENDPOINTS.sandbox;
+}
 
 const PROVIDER = "aade_mydata";
 
@@ -151,7 +163,7 @@ export async function sendInvoiceXml(xml: string): Promise<MyDataResult> {
 
   let response: Response;
   try {
-    response = await fetch(`${ENDPOINTS[environment]}/SendInvoices`, {
+    response = await fetch(`${baseUrl(environment)}/SendInvoices`, {
       method: "POST",
       headers: {
         "aade-user-id": userId,
@@ -291,19 +303,9 @@ export async function requestDocs(params: {
   if (dateFrom) query.set("dateFrom", dateFrom);
   if (dateTo) query.set("dateTo", dateTo);
 
-  // Confirmed against the official spec: production's RequestDocs sits
-  // under a /myDATA path prefix that SendInvoices/RequestTransmittedDocs
-  // don't use; sandbox has no such prefix (both the spec's own sandbox
-  // test-URL note and test_urls_0.pdf agree on that, inconsistently with
-  // the production URL directly above it in the same section).
-  const base =
-    environment === "production"
-      ? `${ENDPOINTS.production}/myDATA`
-      : ENDPOINTS.sandbox;
-
   let response: Response;
   try {
-    response = await fetch(`${base}/RequestDocs?${query.toString()}`, {
+    response = await fetch(`${baseUrl(environment)}/RequestDocs?${query.toString()}`, {
       method: "GET",
       headers: {
         "aade-user-id": userId,
@@ -379,7 +381,7 @@ export async function verifyReceiptMark(
   ]);
 
   const from = (BigInt(mark) - BigInt(1)).toString();
-  const url = `${ENDPOINTS[environment]}/RequestTransmittedDocs?mark=${from}&maxMark=${mark}`;
+  const url = `${baseUrl(environment)}/RequestTransmittedDocs?mark=${from}&maxMark=${mark}`;
 
   let response: Response;
   try {

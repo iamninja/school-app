@@ -14,12 +14,20 @@ We self-issue, so we are an **ERP** user, not a Provider.
 | Environment | SendInvoices |
 | --- | --- |
 | Sandbox (dev) | `https://mydataapidev.aade.gr/SendInvoices` |
-| Production | `https://mydatapi.aade.gr/SendInvoices` |
+| Production | `https://mydatapi.aade.gr/myDATA/SendInvoices` |
 
 > **Correction to earlier research.** Web sources gave
 > `.../myDATAProvider/SendInvoices`. That is the *Provider* channel and is
-> the wrong path for us — it would have failed. The ERP paths have no
-> path prefix at all.
+> the wrong path for us — it would have failed.
+>
+> **Second correction (2026-09-01).** An earlier version of this doc said
+> the ERP paths have no prefix at all in either environment. That was
+> wrong for production and caused a real receipt to get an HTTP 404 from
+> AADE. Per the official §4.2.1 doc (screenshot confirmed by the user):
+> production ERP endpoints sit under a `/myDATA` path prefix; only the
+> sandbox/dev host (`mydataapidev.aade.gr`) has no prefix. `lib/mydata/client.ts`'s
+> `baseUrl()` is the single place that encodes this — every endpoint must
+> go through it.
 
 Other ERP endpoints (same host): `CancelInvoice`,
 `SendIncomeClassification`, `SendExpensesClassification`, `RequestDocs`,
