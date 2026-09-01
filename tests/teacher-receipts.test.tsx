@@ -61,6 +61,7 @@ const existingReceipt = {
   mydata_last_verified_ok: null,
   emailed_at: null,
   created_at: "2026-08-20T00:00:00Z",
+  counts_toward_balance: true,
   lineItems: [
     {
       id: "line-1",
@@ -150,6 +151,124 @@ describe("TeacherReceipts", () => {
     expect(
       screen.getByRole("button", { name: /print \/ save as pdf/i }),
     ).toBeInTheDocument();
+  });
+
+  it("does not show the balance checkbox when no family is selected", async () => {
+    render(
+      <TeacherReceipts
+        initialReceipts={[]}
+        families={families}
+        business={business}
+      />,
+    );
+
+    await userEvent.setup().click(
+      screen.getByRole("button", { name: /new receipt/i }),
+    );
+    await screen.findByRole("dialog");
+
+    expect(
+      screen.queryByText(/counts toward this family's balance/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it("defaults the balance checkbox to checked once a family is selected, and passes it through as true", async () => {
+    const user = userEvent.setup();
+    vi.mocked(receiptActions.createReceiptAction).mockResolvedValue(
+      existingReceipt,
+    );
+
+    render(
+      <TeacherReceipts
+        initialReceipts={[]}
+        families={families}
+        business={business}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /new receipt/i }));
+    await screen.findByRole("dialog");
+
+    await user.selectOptions(
+      screen.getByLabelText(/prefill from a family/i),
+      "family-1",
+    );
+
+    const checkbox = screen.getByRole("checkbox", {
+      name: /counts toward this family's balance/i,
+    });
+    expect(checkbox).toBeChecked();
+
+    await user.type(
+      screen.getByLabelText(/line 1 description/i),
+      "Δίδακτρα Σεπτεμβρίου",
+    );
+    await user.type(screen.getByLabelText(/line 1 amount/i), "150");
+    await user.click(screen.getByRole("button", { name: /issue receipt/i }));
+
+    await waitFor(() => {
+      expect(receiptActions.createReceiptAction).toHaveBeenCalledWith(
+        expect.objectContaining({ countsTowardBalance: true }),
+      );
+    });
+  });
+
+  it("passes countsTowardBalance: false when the checkbox is unchecked", async () => {
+    const user = userEvent.setup();
+    vi.mocked(receiptActions.createReceiptAction).mockResolvedValue(
+      existingReceipt,
+    );
+
+    render(
+      <TeacherReceipts
+        initialReceipts={[]}
+        families={families}
+        business={business}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /new receipt/i }));
+    await screen.findByRole("dialog");
+
+    await user.selectOptions(
+      screen.getByLabelText(/prefill from a family/i),
+      "family-1",
+    );
+    await user.click(
+      screen.getByRole("checkbox", {
+        name: /counts toward this family's balance/i,
+      }),
+    );
+
+    await user.type(
+      screen.getByLabelText(/line 1 description/i),
+      "Εγγραφή",
+    );
+    await user.type(screen.getByLabelText(/line 1 amount/i), "50");
+    await user.click(screen.getByRole("button", { name: /issue receipt/i }));
+
+    await waitFor(() => {
+      expect(receiptActions.createReceiptAction).toHaveBeenCalledWith(
+        expect.objectContaining({ countsTowardBalance: false }),
+      );
+    });
+  });
+
+  it("shows a badge for a receipt not counted toward balance, and none for a normal one", () => {
+    render(
+      <TeacherReceipts
+        initialReceipts={[
+          existingReceipt,
+          { ...existingReceipt, id: "receipt-2", counts_toward_balance: false },
+        ]}
+        families={families}
+        business={business}
+      />,
+    );
+
+    expect(
+      screen.getAllByText("Not counted toward balance"),
+    ).toHaveLength(1);
   });
 
   it("sends every line when more than one is added", async () => {

@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TeacherCalendar } from "@/components/teacher-calendar";
-import * as calendarActions from "@/app/protected/teacher/calendar-actions";
 import * as teacherActions from "@/app/protected/teacher/actions";
 import { toIsoDate, weekdayLabelFromDate } from "@/lib/calendar-projection";
 import type { CalendarEvent } from "@/lib/types/database";

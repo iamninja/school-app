@@ -759,6 +759,7 @@ export const DEMO_PARENT_DASHBOARD: ParentDashboardData = {
       mydata_last_verified_ok: true,
       emailed_at: null,
       created_at: isoDateTime(-3, 10, 15),
+      counts_toward_balance: true,
       lineItems: [
         {
           id: "demo-li-recent-1",
@@ -792,6 +793,7 @@ export const DEMO_PARENT_DASHBOARD: ParentDashboardData = {
       mydata_last_verified_ok: true,
       emailed_at: null,
       created_at: isoDateTime(-33, 11, 0),
+      counts_toward_balance: true,
       lineItems: [
         {
           id: "demo-li-month2-1",

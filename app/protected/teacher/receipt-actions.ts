@@ -123,6 +123,7 @@ export async function createReceiptAction(
       total_amount: totalAmount,
       payment_method: input.paymentMethod ?? 3,
       notes: input.notes?.trim() || null,
+      counts_toward_balance: input.countsTowardBalance ?? true,
     })
     .select(RECEIPT_COLUMNS)
     .single();

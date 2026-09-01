@@ -6,7 +6,38 @@ import { ParentDashboard } from "@/components/parent-dashboard";
 import type {
   ParentDashboardChild,
   ParentDashboardData,
+  Receipt,
 } from "@/lib/types/database";
+
+function makeReceipt(overrides: Partial<Receipt> = {}): Receipt {
+  return {
+    id: "receipt-1",
+    series: "Α",
+    receipt_number: 1,
+    issue_date: "2026-08-20",
+    recipient_name: "Jane Doe",
+    recipient_afm: null,
+    recipient_address: null,
+    family_id: "family-1",
+    total_amount: 80,
+    vat_category: "exempt_article_27",
+    payment_method: 3,
+    notes: null,
+    mydata_status: "not_submitted",
+    mydata_mark: null,
+    mydata_uid: null,
+    mydata_error: null,
+    mydata_submitted_at: null,
+    mydata_environment: null,
+    mydata_last_verified_at: null,
+    mydata_last_verified_ok: null,
+    emailed_at: null,
+    created_at: "2026-08-20T10:00:00Z",
+    counts_toward_balance: true,
+    lineItems: [],
+    ...overrides,
+  };
+}
 
 const signOut = vi.fn();
 const push = vi.fn();
@@ -516,5 +547,55 @@ describe("ParentDashboard", () => {
       screen.queryByRole("heading", { level: 2, name: "John Smith" }),
     ).not.toBeInTheDocument();
     expect(screen.queryByText("John's Quiz")).not.toBeInTheDocument();
+  });
+
+  it("blends a not-counted receipt into the payment history without affecting the balance", () => {
+    render(
+      <ParentDashboard
+        {...baseProps}
+        balance={{ ...baseProps.balance, amount: 0, recentTransactions: [] }}
+        receipts={[
+          makeReceipt({
+            id: "receipt-enrollment",
+            counts_toward_balance: false,
+            total_amount: 80,
+          }),
+        ]}
+      />,
+    );
+
+    // Balance is unaffected - still "Εξοφλημένο" (paid in full), not showing
+    // any debt from the not-counted receipt.
+    expect(screen.getByText(/εξοφλημένο/i)).toBeInTheDocument();
+    expect(screen.getByText("Απόδειξη Α1")).toBeInTheDocument();
+    expect(screen.getByText(/δεν επηρεάζει το υπόλοιπο/i)).toBeInTheDocument();
+  });
+
+  it("still shows a normal (counted) receipt's linked transaction as before", () => {
+    render(
+      <ParentDashboard
+        {...baseProps}
+        balance={{
+          ...baseProps.balance,
+          amount: -80,
+          recentTransactions: [
+            {
+              id: "txn-1",
+              type: "receipt",
+              amount: -80,
+              description: "Απόδειξη Α1",
+              createdAt: "2026-08-20T10:00:00Z",
+              receiptId: "receipt-normal",
+            },
+          ],
+        }}
+        receipts={[makeReceipt({ id: "receipt-normal", total_amount: 80 })]}
+      />,
+    );
+
+    expect(screen.getByText("Απόδειξη Α1")).toBeInTheDocument();
+    expect(
+      screen.queryByText(/δεν επηρεάζει το υπόλοιπο/i),
+    ).not.toBeInTheDocument();
   });
 });

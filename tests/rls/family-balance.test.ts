@@ -484,5 +484,81 @@ describe("RLS: family_balance_transactions", () => {
         .eq("receipt_id", receipt!.id);
       expect(ledgerRows ?? []).toHaveLength(0);
     });
+
+    it("posts no ledger row for a receipt marked counts_toward_balance: false", async () => {
+      const before = await familyBalance(fixtures.familyA.id);
+
+      const { data: number } = await teacherA.rpc("next_receipt_number", {
+        p_series: "ΤΕΣΤΔ",
+      });
+      const { data: receipt } = await teacherA
+        .from("receipts")
+        .insert({
+          series: "ΤΕΣΤΔ",
+          receipt_number: number,
+          recipient_name: "Enrollment fee",
+          family_id: fixtures.familyA.id,
+          total_amount: 80,
+          counts_toward_balance: false,
+        })
+        .select("id")
+        .single();
+      if (receipt) createdReceiptIds.push(receipt.id);
+
+      expect(await familyBalance(fixtures.familyA.id)).toBe(before);
+
+      const { data: ledgerRows } = await admin
+        .from("family_balance_transactions")
+        .select("id")
+        .eq("receipt_id", receipt!.id);
+      expect(ledgerRows ?? []).toHaveLength(0);
+    });
+
+    it("adds/removes the ledger credit when counts_toward_balance is flipped on an existing receipt", async () => {
+      const before = await familyBalance(fixtures.familyA.id);
+
+      const { data: number } = await teacherA.rpc("next_receipt_number", {
+        p_series: "ΤΕΣΤΕ",
+      });
+      const { data: receipt } = await teacherA
+        .from("receipts")
+        .insert({
+          series: "ΤΕΣΤΕ",
+          receipt_number: number,
+          recipient_name: "Flip test",
+          family_id: fixtures.familyA.id,
+          total_amount: 60,
+          counts_toward_balance: false,
+        })
+        .select("id")
+        .single();
+      if (receipt) createdReceiptIds.push(receipt.id);
+      expect(await familyBalance(fixtures.familyA.id)).toBe(before);
+
+      await admin
+        .from("receipts")
+        .update({ counts_toward_balance: true })
+        .eq("id", receipt!.id);
+      expect(await familyBalance(fixtures.familyA.id)).toBe(before - 60);
+
+      const { data: ledgerRows } = await admin
+        .from("family_balance_transactions")
+        .select("id")
+        .eq("receipt_id", receipt!.id);
+      expect(ledgerRows).toHaveLength(1);
+      createdTransactionIds.push(ledgerRows![0].id);
+
+      await admin
+        .from("receipts")
+        .update({ counts_toward_balance: false })
+        .eq("id", receipt!.id);
+      expect(await familyBalance(fixtures.familyA.id)).toBe(before);
+
+      const { data: afterFlipBack } = await admin
+        .from("family_balance_transactions")
+        .select("id")
+        .eq("receipt_id", receipt!.id);
+      expect(afterFlipBack ?? []).toHaveLength(0);
+    });
   });
 });

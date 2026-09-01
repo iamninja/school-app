@@ -9,7 +9,7 @@ import type { Receipt, ReceiptLineItem } from "@/lib/types/database";
  * can't silently drift into returning different shapes of the same table.
  */
 export const RECEIPT_COLUMNS =
-  "id, series, receipt_number, issue_date, recipient_name, recipient_afm, recipient_address, family_id, total_amount, vat_category, payment_method, notes, mydata_status, mydata_mark, mydata_uid, mydata_error, mydata_submitted_at, mydata_environment, mydata_last_verified_at, mydata_last_verified_ok, emailed_at, created_at";
+  "id, series, receipt_number, issue_date, recipient_name, recipient_afm, recipient_address, family_id, total_amount, vat_category, payment_method, notes, mydata_status, mydata_mark, mydata_uid, mydata_error, mydata_submitted_at, mydata_environment, mydata_last_verified_at, mydata_last_verified_ok, emailed_at, created_at, counts_toward_balance";
 
 export async function attachLineItems(
   supabase: SupabaseClient,

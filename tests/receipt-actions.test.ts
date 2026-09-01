@@ -117,6 +117,35 @@ describe("createReceiptAction", () => {
     );
   });
 
+  it("defaults counts_toward_balance to true when omitted", async () => {
+    const client = clientWith();
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await createReceiptAction({
+      recipientName: "Γιώργος Παπαδόπουλος",
+      lineItems: [{ description: "Δίδακτρα Σεπτεμβρίου", amount: 150 }],
+    });
+
+    expect(findChain(client, "receipts").insert).toHaveBeenCalledWith(
+      expect.objectContaining({ counts_toward_balance: true }),
+    );
+  });
+
+  it("passes counts_toward_balance: false through to the insert", async () => {
+    const client = clientWith();
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await createReceiptAction({
+      recipientName: "Γιώργος Παπαδόπουλος",
+      countsTowardBalance: false,
+      lineItems: [{ description: "Εγγραφή", amount: 50 }],
+    });
+
+    expect(findChain(client, "receipts").insert).toHaveBeenCalledWith(
+      expect.objectContaining({ counts_toward_balance: false }),
+    );
+  });
+
   it("writes one line-item row per line, in order", async () => {
     const client = clientWith();
     vi.mocked(createClient).mockResolvedValue(client as never);

@@ -636,6 +636,11 @@ export interface Receipt {
   mydata_last_verified_ok: boolean | null;
   emailed_at: string | null;
   created_at: string;
+  // False for an enrollment/material fee or pre-existing debt - the receipt
+  // still exists and still shows in the family's history, it just doesn't
+  // post a credit to their running tuition balance (see
+  // post_receipt_balance_row()).
+  counts_toward_balance: boolean;
   lineItems: ReceiptLineItem[];
 }
 
@@ -653,6 +658,7 @@ export interface CreateReceiptInput {
   recipientAddress?: string;
   familyId?: string | null;
   notes?: string;
+  countsTowardBalance?: boolean;
   lineItems: ReceiptLineItemInput[];
 }
 

@@ -20,6 +20,7 @@ import {
 } from "@/app/protected/teacher/receipt-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Card,
   CardContent,
@@ -86,6 +87,7 @@ export function TeacherReceipts({
   );
   const [notes, setNotes] = React.useState("");
   const [paymentMethod, setPaymentMethod] = React.useState<number>(3);
+  const [countsTowardBalance, setCountsTowardBalance] = React.useState(true);
   const [lines, setLines] = React.useState<LineDraft[]>([blankLine()]);
 
   const businessReady = Boolean(business?.business_name && business?.afm);
@@ -103,6 +105,7 @@ export function TeacherReceipts({
     setIssueDate(new Date().toISOString().slice(0, 10));
     setNotes("");
     setPaymentMethod(3);
+    setCountsTowardBalance(true);
     setLines([blankLine()]);
   };
 
@@ -143,6 +146,7 @@ export function TeacherReceipts({
         familyId: familyId || null,
         notes,
         paymentMethod,
+        countsTowardBalance,
         lineItems: lines.map((line) => ({
           description: line.description,
           amount: Number.parseFloat(line.amount),
@@ -317,6 +321,9 @@ export function TeacherReceipts({
                     </p>
                   </button>
                   <div className="flex items-center gap-2">
+                    {!receipt.counts_toward_balance && (
+                      <Badge variant="outline">Not counted toward balance</Badge>
+                    )}
                     {receipt.mydata_status === "submitted" ? (
                       <Badge
                         title={`MARK ${receipt.mydata_mark ?? ""}`}
@@ -434,6 +441,31 @@ export function TeacherReceipts({
                     </option>
                   ))}
                 </select>
+              </div>
+            )}
+
+            {familyId && (
+              <div className="flex items-start gap-2 rounded-md border p-3">
+                <Checkbox
+                  id="receipt-counts-toward-balance"
+                  checked={countsTowardBalance}
+                  onCheckedChange={(checked) =>
+                    setCountsTowardBalance(checked === true)
+                  }
+                />
+                <div className="space-y-1">
+                  <Label
+                    htmlFor="receipt-counts-toward-balance"
+                    className="font-normal"
+                  >
+                    Counts toward this family&apos;s balance
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Uncheck for enrollment fees, material fees, or money owed
+                    before using Modus — the receipt still appears in their
+                    history, it just won&apos;t reduce what they owe.
+                  </p>
+                </div>
               </div>
             )}
 

@@ -151,6 +151,108 @@ function TransactionRow({
   );
 }
 
+// A receipt with counts_toward_balance = false (or, incidentally, a
+// zero-amount receipt) has no matching family_balance_transactions row -
+// post_receipt_balance_row() never inserts one - so it wouldn't appear
+// anywhere in this history built purely from transactions. Blended in
+// alongside real transactions rather than shown in a separate list.
+type HistoryEntry =
+  | {
+      kind: "transaction";
+      date: string;
+      txn: ParentDashboardData["balance"]["recentTransactions"][number];
+    }
+  | { kind: "receipt"; date: string; receipt: Receipt };
+
+function buildHistoryEntries(
+  transactions: ParentDashboardData["balance"]["recentTransactions"],
+  receipts: Receipt[],
+): HistoryEntry[] {
+  const linkedReceiptIds = new Set(
+    transactions
+      .map((txn) => txn.receiptId)
+      .filter((id): id is string => Boolean(id)),
+  );
+  const entries: HistoryEntry[] = [
+    ...transactions.map((txn) => ({
+      kind: "transaction" as const,
+      date: txn.createdAt,
+      txn,
+    })),
+    ...receipts
+      .filter((receipt) => !linkedReceiptIds.has(receipt.id))
+      .map((receipt) => ({
+        kind: "receipt" as const,
+        date: receipt.created_at,
+        receipt,
+      })),
+  ];
+  entries.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  return entries;
+}
+
+function ReceiptHistoryRow({
+  receipt,
+  onViewReceipt,
+}: {
+  receipt: Receipt;
+  onViewReceipt: (receipt: Receipt) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 text-sm">
+      <div className="min-w-0">
+        <p className="font-medium">
+          Απόδειξη {receipt.series}
+          {receipt.receipt_number}
+        </p>
+        <p className="text-xs text-muted-foreground">
+          {format(new Date(receipt.created_at), "d MMM yyyy", { locale: el })}
+          {" · "}
+          Δεν επηρεάζει το υπόλοιπο
+        </p>
+      </div>
+      <div className="flex items-center gap-2">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-7"
+          aria-label={`Απόδειξη ${receipt.series}-${receipt.receipt_number}`}
+          onClick={() => onViewReceipt(receipt)}
+        >
+          <FileTextIcon className="size-4" aria-hidden="true" />
+        </Button>
+        <span>{formatEuro(receipt.total_amount)}</span>
+      </div>
+    </div>
+  );
+}
+
+function HistoryEntryRow({
+  entry,
+  receiptsById,
+  onViewReceipt,
+}: {
+  entry: HistoryEntry;
+  receiptsById: Map<string, Receipt>;
+  onViewReceipt: (receipt: Receipt) => void;
+}) {
+  if (entry.kind === "receipt") {
+    return (
+      <ReceiptHistoryRow receipt={entry.receipt} onViewReceipt={onViewReceipt} />
+    );
+  }
+  return (
+    <TransactionRow
+      txn={entry.txn}
+      receipt={
+        entry.txn.receiptId ? receiptsById.get(entry.txn.receiptId) : undefined
+      }
+      onViewReceipt={onViewReceipt}
+    />
+  );
+}
+
 function AttendanceRow({
   record,
   classes,
@@ -460,6 +562,10 @@ export function ParentDashboard(props: ParentDashboardProps) {
     null,
   );
   const receiptsById = new Map(props.receipts.map((r) => [r.id, r]));
+  const historyEntries = buildHistoryEntries(
+    props.balance.recentTransactions,
+    props.receipts,
+  );
 
   return (
     <PortalShell roleLabel="Πύλη γονέα" demoMode={props.demoMode}>
@@ -488,7 +594,7 @@ export function ParentDashboard(props: ParentDashboardProps) {
                 <EuroIcon className="size-4 text-brand" aria-hidden="true" />
                 Υπόλοιπο διδάκτρων
               </CardTitle>
-              {props.balance.recentTransactions.length > RECENT_PREVIEW_COUNT ||
+              {historyEntries.length > RECENT_PREVIEW_COUNT ||
               props.receipts.length > 0 ? (
                 <PortalHistoryDialog
                   triggerLabel="Ιστορικό πληρωμών"
@@ -533,15 +639,15 @@ export function ParentDashboard(props: ParentDashboardProps) {
                       />
                     </div>
                   ) : (
-                    props.balance.recentTransactions.map((txn) => (
-                      <TransactionRow
-                        key={txn.id}
-                        txn={txn}
-                        receipt={
-                          txn.receiptId
-                            ? receiptsById.get(txn.receiptId)
-                            : undefined
+                    historyEntries.map((entry) => (
+                      <HistoryEntryRow
+                        key={
+                          entry.kind === "transaction"
+                            ? entry.txn.id
+                            : `receipt-${entry.receipt.id}`
                         }
+                        entry={entry}
+                        receiptsById={receiptsById}
                         onViewReceipt={setViewingReceipt}
                       />
                     ))
@@ -572,19 +678,19 @@ export function ParentDashboard(props: ParentDashboardProps) {
                     ` · ${formatEuro(props.balance.monthlyAmount)}/μήνα`}
                 </p>
               </div>
-              {props.balance.recentTransactions.length > 0 && (
+              {historyEntries.length > 0 && (
                 <div className="space-y-2 border-t border-border/70 pt-3">
-                  {props.balance.recentTransactions
+                  {historyEntries
                     .slice(0, RECENT_PREVIEW_COUNT)
-                    .map((txn) => (
-                      <TransactionRow
-                        key={txn.id}
-                        txn={txn}
-                        receipt={
-                          txn.receiptId
-                            ? receiptsById.get(txn.receiptId)
-                            : undefined
+                    .map((entry) => (
+                      <HistoryEntryRow
+                        key={
+                          entry.kind === "transaction"
+                            ? entry.txn.id
+                            : `receipt-${entry.receipt.id}`
                         }
+                        entry={entry}
+                        receiptsById={receiptsById}
                         onViewReceipt={(receipt) => {
                           setViewingReceipt(receipt);
                           setIsHistoryOpen(true);

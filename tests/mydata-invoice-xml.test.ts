@@ -39,6 +39,7 @@ const receipt: Receipt = {
   mydata_last_verified_ok: null,
   emailed_at: null,
   created_at: "2026-08-20T00:00:00Z",
+  counts_toward_balance: true,
   lineItems: [
     {
       id: "l1",
