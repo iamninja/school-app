@@ -25,6 +25,7 @@ import {
   DAY_LABELS_EL,
   formatClassDateRangeEl,
 } from "@/lib/greek-labels";
+import { lessonTimeLabel } from "@/lib/schedule-grid";
 
 type StudentDashboardProps = {
   student: {
@@ -53,6 +54,7 @@ type StudentDashboardProps = {
     class_id: string;
     day: string;
     time: string;
+    is_two_hour?: boolean;
   }>;
   attendance: Array<{
     class_id: string | null;
@@ -129,13 +131,21 @@ export function StudentDashboard(props: StudentDashboardProps) {
     present: props.attendance.filter((a) => a.status === "present").length,
     late: props.attendance.filter((a) => a.status === "late").length,
     absent: props.attendance.filter((a) => a.status === "absent").length,
+    split: props.attendance.filter((a) => a.status === "split").length,
   };
   const totalRecords =
-    attendanceStats.present + attendanceStats.late + attendanceStats.absent;
+    attendanceStats.present +
+    attendanceStats.late +
+    attendanceStats.absent +
+    attendanceStats.split;
+  // "split" (1+1) counts as half a present toward the rate.
   const attendanceRate =
     totalRecords > 0
       ? Math.round(
-          ((attendanceStats.present + attendanceStats.late) / totalRecords) *
+          ((attendanceStats.present +
+            attendanceStats.late +
+            attendanceStats.split * 0.5) /
+            totalRecords) *
             100,
         )
       : 0;
@@ -159,7 +169,7 @@ export function StudentDashboard(props: StudentDashboardProps) {
         </div>
 
         {/* Attendance stats */}
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
           <StatTile
             label="Ποσοστό παρουσιών"
             value={totalRecords > 0 ? `${attendanceRate}%` : "—"}
@@ -179,6 +189,11 @@ export function StudentDashboard(props: StudentDashboardProps) {
             label={ATTENDANCE_STATUS_LABELS_EL.absent}
             value={attendanceStats.absent}
             tone="negative"
+          />
+          <StatTile
+            label={ATTENDANCE_STATUS_LABELS_EL.split}
+            value={attendanceStats.split}
+            tone="brand"
           />
         </div>
 
@@ -246,7 +261,11 @@ export function StudentDashboard(props: StudentDashboardProps) {
                                     />
                                     {DAY_LABELS_EL[schedule.day] ??
                                       schedule.day}{" "}
-                                    στις {schedule.time}
+                                    στις{" "}
+                                    {lessonTimeLabel(
+                                      schedule.time,
+                                      schedule.is_two_hour ?? false,
+                                    )}
                                   </span>
                                 ),
                               )}

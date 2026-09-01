@@ -11,6 +11,7 @@ import {
   weekdayLabelFromDate,
 } from "@/lib/calendar-projection";
 import type { CalendarEvent } from "@/lib/types/database";
+import type { AttendanceRecord } from "@/lib/attendance-records";
 
 vi.mock("@/app/protected/teacher/calendar-actions", () => ({
   createCalendarEventAction: vi.fn(),
@@ -28,15 +29,24 @@ const todayWeekday = weekdayLabelFromDate(new Date());
 
 const classA = { id: "class-1", name: "Algebra II", archivedAt: null };
 const classB = { id: "class-2", name: "Geometry", archivedAt: null };
-const studentA = { id: "student-1", firstName: "Ada", lastName: "Lovelace" };
+const studentA = {
+  id: "student-1",
+  firstName: "Ada",
+  lastName: "Lovelace",
+  gradeLevel: "10",
+  email: "ada@example.com",
+  assignedClassIds: [classA.id],
+};
 
 function renderCalendar(overrides: {
   events?: CalendarEvent[];
   slots?: Array<{ classId: string; day: string; time: string }>;
   classes?: Array<{ id: string; name: string; archivedAt: string | null }>;
+  attendanceRecords?: AttendanceRecord[];
 } = {}) {
   const events = overrides.events ?? [];
   const onEventsChange = vi.fn();
+  const onAttendanceRecordsChange = vi.fn();
   render(
     <TeacherCalendar
       events={events}
@@ -44,9 +54,11 @@ function renderCalendar(overrides: {
       classes={overrides.classes ?? [classA]}
       students={[studentA]}
       slots={overrides.slots ?? []}
+      attendanceRecords={overrides.attendanceRecords ?? []}
+      onAttendanceRecordsChange={onAttendanceRecordsChange}
     />,
   );
-  return { onEventsChange };
+  return { onEventsChange, onAttendanceRecordsChange };
 }
 
 describe("TeacherCalendar", () => {
@@ -56,7 +68,11 @@ describe("TeacherCalendar", () => {
 
   it("shows a nothing-scheduled message for a day with no occurrences", () => {
     renderCalendar();
-    expect(screen.getByText("Nothing scheduled.")).toBeInTheDocument();
+    // Both the day-detail panel and the new Attendance section below the
+    // week block show this same empty state when nothing's scheduled.
+    expect(
+      screen.getAllByText("Nothing scheduled.").length,
+    ).toBeGreaterThan(0);
   });
 
   it("marks today's cell in the month view", () => {

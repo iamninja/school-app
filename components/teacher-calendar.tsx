@@ -47,6 +47,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AttendanceRosterTable } from "@/components/attendance-roster-table";
 import { cn } from "@/lib/utils";
 import {
   eachIsoDateInRange,
@@ -61,7 +63,11 @@ import {
   type ProjectionEvent,
   type ProjectionSlot,
 } from "@/lib/calendar-projection";
-import { recurringLessonWindow } from "@/lib/schedule-grid";
+import { lessonTimeLabel, recurringLessonWindow } from "@/lib/schedule-grid";
+import {
+  upsertAttendanceRecord,
+  type AttendanceRecord,
+} from "@/lib/attendance-records";
 import type {
   CalendarEvent,
   CalendarEventInput,
@@ -73,6 +79,9 @@ type StudentOption = {
   firstName: string;
   lastName: string;
   withdrawnAt?: string | null;
+  gradeLevel: string;
+  email: string;
+  assignedClassIds: string[];
 };
 
 // Cancellation is deliberately not one of the addable types here - it's
@@ -164,7 +173,7 @@ function effectiveWindow(
   }
   if (occurrence.kind === "recurring") {
     const weekday = weekdayLabelFromDate(fromIsoDate(occurrence.date));
-    return recurringLessonWindow(weekday, occurrence.startTime);
+    return recurringLessonWindow(weekday, occurrence.startTime, occurrence.isTwoHour);
   }
   const [hours, minutes] = occurrence.startTime.split(":").map(Number);
   const endTotal = hours * 60 + minutes + DEFAULT_LESSON_MINUTES;
@@ -287,7 +296,13 @@ function WeeklyOverview({
                         )}
                       >
                         <p className="font-medium">
-                          {occurrence.startTime ?? "All day"}
+                          {occurrence.startTime
+                            ? lessonTimeLabel(
+                                occurrence.startTime,
+                                occurrence.isTwoHour,
+                                occurrence.endTime,
+                              )
+                            : "All day"}
                         </p>
                         <p className="truncate">
                           {occurrence.className ??
@@ -401,12 +416,18 @@ export function TeacherCalendar({
   classes,
   students,
   slots,
+  attendanceRecords,
+  onAttendanceRecordsChange,
 }: {
   events: CalendarEvent[];
   onEventsChange: React.Dispatch<React.SetStateAction<CalendarEvent[]>>;
   classes: ProjectionClass[];
   students: StudentOption[];
   slots: ProjectionSlot[];
+  attendanceRecords: AttendanceRecord[];
+  onAttendanceRecordsChange: React.Dispatch<
+    React.SetStateAction<AttendanceRecord[]>
+  >;
 }) {
   const [month, setMonth] = React.useState(() => new Date());
   const [selectedDate, setSelectedDate] = React.useState(() =>
@@ -472,6 +493,47 @@ export function TeacherCalendar({
       }),
     [selectedDate, slots, classes, projectionEvents],
   );
+
+  // Lessons that day eligible for attendance - only occurrences with a real
+  // class roster behind them (ad_hoc_lesson/trial_lesson/block have no
+  // classId; a cancelled lesson didn't happen). Deduped by classId - a class
+  // meeting twice the same day shares one attendance_records row per
+  // student/date anyway, so a second tab would just edit the same record.
+  const attendanceLessons = React.useMemo(() => {
+    const byClassId = new Map<string, Occurrence>();
+    for (const occurrence of selectedOccurrences) {
+      if (
+        (occurrence.kind !== "recurring" &&
+          occurrence.kind !== "extra_session") ||
+        !occurrence.classId
+      ) {
+        continue;
+      }
+      if (!byClassId.has(occurrence.classId)) {
+        byClassId.set(occurrence.classId, occurrence);
+      }
+    }
+    return [...byClassId.values()];
+  }, [selectedOccurrences]);
+
+  const [activeAttendanceClassId, setActiveAttendanceClassId] =
+    React.useState<string | null>(null);
+
+  const attendanceStudentOptions = React.useMemo(
+    () => students.filter((student) => !student.withdrawnAt),
+    [students],
+  );
+
+  // Falls back to the day's first lesson whenever the previously-active tab
+  // isn't one of today's lessons - e.g. right after switching to a new
+  // selected date, or a lesson getting cancelled out from under it.
+  const activeAttendanceTab =
+    activeAttendanceClassId &&
+    attendanceLessons.some(
+      (occurrence) => occurrence.classId === activeAttendanceClassId,
+    )
+      ? activeAttendanceClassId
+      : (attendanceLessons[0]?.classId ?? null);
 
   const todayIso = toIsoDate(new Date());
 
@@ -940,6 +1002,75 @@ export function TeacherCalendar({
       classes={classes}
       events={projectionEvents}
     />
+
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">
+          Attendance — {format(fromIsoDate(selectedDate), "EEEE, d MMMM yyyy")}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {attendanceLessons.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nothing scheduled.</p>
+        ) : (
+          <Tabs
+            value={activeAttendanceTab ?? undefined}
+            onValueChange={setActiveAttendanceClassId}
+          >
+            <TabsList>
+              {attendanceLessons.map((occurrence) => (
+                <TabsTrigger
+                  key={occurrence.classId}
+                  value={occurrence.classId!}
+                >
+                  {occurrence.className}
+                  {occurrence.startTime
+                    ? ` · ${lessonTimeLabel(occurrence.startTime, occurrence.isTwoHour, occurrence.endTime)}`
+                    : ""}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+            {attendanceLessons.map((occurrence) => {
+              const classId = occurrence.classId!;
+              const roster = attendanceStudentOptions.filter((student) =>
+                student.assignedClassIds.includes(classId),
+              );
+              return (
+                <TabsContent key={classId} value={classId} className="mt-3">
+                  <AttendanceRosterTable
+                    roster={roster}
+                    classId={classId}
+                    className={occurrence.className ?? ""}
+                    dateKey={selectedDate}
+                    isTwoHour={occurrence.isTwoHour}
+                    getStatus={(studentId) =>
+                      attendanceRecords.find(
+                        (record) =>
+                          record.classId === classId &&
+                          record.attendanceDate === selectedDate &&
+                          record.studentId === studentId,
+                      )?.status ?? ""
+                    }
+                    onOptimisticChange={(studentId, status) =>
+                      onAttendanceRecordsChange((prev) =>
+                        upsertAttendanceRecord(prev, {
+                          classId,
+                          className: occurrence.className ?? "",
+                          studentId,
+                          attendanceDate: selectedDate,
+                          status,
+                        }),
+                      )
+                    }
+                    onCommitted={() => {}}
+                  />
+                </TabsContent>
+              );
+            })}
+          </Tabs>
+        )}
+      </CardContent>
+    </Card>
 
       <Dialog
         open={dialog !== null}

@@ -55,6 +55,7 @@ export interface ProjectionSlot {
   classId: string;
   day: string;
   time: string;
+  isTwoHour?: boolean;
 }
 
 export interface ProjectionClass {
@@ -108,6 +109,16 @@ export interface Occurrence {
   eventId: string | null;
   /** The template slot time this came from, when it came from one. */
   slotTime: string | null;
+  /** True for a two-hour lesson (from a two-hour template slot, or an event whose start/end span at least 120 minutes). */
+  isTwoHour: boolean;
+}
+
+function eventSpansTwoHours(startTime: string | null, endTime: string | null): boolean {
+  if (!startTime || !endTime) return false;
+  const [startHours, startMinutes] = startTime.split(":").map(Number);
+  const [endHours, endMinutes] = endTime.split(":").map(Number);
+  const minutes = endHours * 60 + endMinutes - (startHours * 60 + startMinutes);
+  return minutes >= 120;
 }
 
 export interface ProjectionInput {
@@ -183,6 +194,10 @@ export function projectOccurrences(input: ProjectionInput): Occurrence[] {
         date,
         kind: matchedEventId ? "cancelled" : "recurring",
         startTime: slot.time,
+        // Left null, same as before two-hour slots existed - the real
+        // teaching window (break-adjusted, 1 or 2 rows) is a display/overlap
+        // concern computed on demand via recurringLessonWindow(), not baked
+        // in here. See teacher-calendar.tsx's effectiveWindow().
         endTime: null,
         classId: slot.classId,
         className: cls.name,
@@ -193,6 +208,7 @@ export function projectOccurrences(input: ProjectionInput): Occurrence[] {
         notes: null,
         eventId: matchedEventId,
         slotTime: slot.time,
+        isTwoHour: slot.isTwoHour ?? false,
       });
     }
   }
@@ -220,6 +236,7 @@ export function projectOccurrences(input: ProjectionInput): Occurrence[] {
           notes: event.notes,
           eventId: event.id,
           slotTime: null,
+          isTwoHour: eventSpansTwoHours(event.start_time, event.end_time),
         });
       }
       continue;
@@ -245,6 +262,7 @@ export function projectOccurrences(input: ProjectionInput): Occurrence[] {
         notes: event.notes,
         eventId: event.id,
         slotTime: null,
+        isTwoHour: eventSpansTwoHours(event.start_time, event.end_time),
       });
       continue;
     }
@@ -264,6 +282,7 @@ export function projectOccurrences(input: ProjectionInput): Occurrence[] {
         notes: event.notes,
         eventId: event.id,
         slotTime: null,
+        isTwoHour: eventSpansTwoHours(event.start_time, event.end_time),
       });
       continue;
     }
@@ -283,6 +302,7 @@ export function projectOccurrences(input: ProjectionInput): Occurrence[] {
         notes: event.notes,
         eventId: event.id,
         slotTime: null,
+        isTwoHour: eventSpansTwoHours(event.start_time, event.end_time),
       });
       continue;
     }
@@ -301,6 +321,7 @@ export function projectOccurrences(input: ProjectionInput): Occurrence[] {
         contactName: null,
         title: event.title,
         notes: event.notes,
+        isTwoHour: eventSpansTwoHours(event.start_time, event.end_time),
         eventId: event.id,
         slotTime: null,
       });

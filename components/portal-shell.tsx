@@ -142,7 +142,7 @@ export function StatTile({
 }
 
 /**
- * Attendance status chip - present / late / absent, dark-mode safe.
+ * Attendance status chip - present / late / absent / split (1+1), dark-mode safe.
  */
 export function AttendanceChip({
   status,
@@ -161,6 +161,8 @@ export function AttendanceChip({
           "border-amber-600/25 bg-amber-500/10 text-amber-700 dark:text-amber-400",
         status === "absent" &&
           "border-red-600/25 bg-red-500/10 text-red-700 dark:text-red-400",
+        status === "split" &&
+          "border-violet-600/25 bg-violet-500/10 text-violet-700 dark:text-violet-400",
       )}
     >
       {label}

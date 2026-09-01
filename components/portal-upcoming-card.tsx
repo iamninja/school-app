@@ -18,6 +18,7 @@ import {
 } from "@/lib/calendar-projection";
 import { CALENDAR_EVENT_TYPE_LABELS_EL } from "@/lib/greek-labels";
 import { CALENDAR_EVENT_TYPE_LABELS_EN } from "@/lib/portal-labels-en";
+import { lessonTimeLabel } from "@/lib/schedule-grid";
 
 const EXPANDED_DAYS = 60;
 const EXPANDED_LIMIT = 30;
@@ -64,18 +65,22 @@ function OccurrenceRow({
           {format(fromIsoDate(occurrence.date), "EEEE d MMMM", {
             locale: labels.dateFnsLocale,
           })}
-          {occurrence.startTime ? ` · ${occurrence.startTime}` : ""}
+          {occurrence.startTime
+            ? ` · ${lessonTimeLabel(occurrence.startTime, occurrence.isTwoHour, occurrence.endTime)}`
+            : ""}
         </p>
       </div>
-      {occurrence.kind !== "recurring" ? (
-        <Badge
-          variant={occurrence.kind === "cancelled" ? "destructive" : "outline"}
-        >
-          {occurrence.kind === "cancelled"
-            ? labels.eventTypes.cancellation
-            : (labels.eventTypes[occurrence.kind] ?? occurrence.kind)}
-        </Badge>
-      ) : null}
+      <div className="flex shrink-0 items-center gap-1.5">
+        {occurrence.kind !== "recurring" ? (
+          <Badge
+            variant={occurrence.kind === "cancelled" ? "destructive" : "outline"}
+          >
+            {occurrence.kind === "cancelled"
+              ? labels.eventTypes.cancellation
+              : (labels.eventTypes[occurrence.kind] ?? occurrence.kind)}
+          </Badge>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -102,7 +107,12 @@ export function PortalUpcomingCard({
     startDate?: string | null;
     finishDate?: string | null;
   }>;
-  schedules: Array<{ class_id: string; day: string; time: string }>;
+  schedules: Array<{
+    class_id: string;
+    day: string;
+    time: string;
+    is_two_hour?: boolean;
+  }>;
   calendarEvents: Array<{
     id: string;
     event_type: "cancellation" | "extra_session" | "ad_hoc_lesson";
@@ -123,6 +133,7 @@ export function PortalUpcomingCard({
     classId: slot.class_id,
     day: slot.day,
     time: slot.time,
+    isTwoHour: slot.is_two_hour,
   }));
   const projectionEvents: ProjectionEvent[] = calendarEvents.map((event) => ({
     id: event.id,

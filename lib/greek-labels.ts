@@ -46,6 +46,7 @@ export const ATTENDANCE_STATUS_LABELS_EL: Record<string, string> = {
   present: "Παρών",
   late: "Άργησε",
   absent: "Απουσία",
+  split: "1+1",
 };
 
 // Replaces the retired tuition_status - see lib/billing/tuition-status.ts

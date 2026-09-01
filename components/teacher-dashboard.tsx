@@ -44,7 +44,6 @@ import {
   resetStudentAccountAction,
   restoreClassAction,
   restoreStudentAction,
-  setAttendanceAction,
   setScheduleSlotAction,
   unenrollStudentFromClassAction,
   updateClassAction,
@@ -92,13 +91,19 @@ import { TeacherReceipts } from "@/components/teacher-receipts";
 import { TeacherExpenses } from "@/components/teacher-expenses";
 import { TeacherBilling } from "@/components/teacher-billing";
 import { TeacherCalendar } from "@/components/teacher-calendar";
+import { AttendanceRosterTable } from "@/components/attendance-roster-table";
 import { ThemeSwitcher } from "@/components/theme-switcher";
 import {
   buildAttendanceDateSets,
   findNextEnabledDate,
   isDateEnabledForAttendance,
 } from "@/lib/attendance-dates";
-import { SCHEDULE_ROWS } from "@/lib/schedule-grid";
+import {
+  upsertAttendanceRecord,
+  type AttendanceRecord,
+} from "@/lib/attendance-records";
+import { weekdayLabelFromDate } from "@/lib/calendar-projection";
+import { lessonTimeLabel, SCHEDULE_ROWS } from "@/lib/schedule-grid";
 import { CLASS_GRADES, CLASS_GRADE_LABELS } from "@/lib/class-grades";
 import { formatEuro } from "@/lib/format-currency";
 import {
@@ -200,7 +205,8 @@ type ClassItem = {
   finishDate: string | null;
 };
 
-type ScheduleState = Record<string, string | null>;
+type ScheduleSlotValue = { classId: string; isTwoHour: boolean };
+type ScheduleState = Record<string, ScheduleSlotValue | null>;
 
 type StudentItem = {
   id: string;
@@ -231,13 +237,6 @@ type FamilyItem = {
   studentNames: string[];
 };
 
-type AttendanceRecord = {
-  studentId: string;
-  classId: string | null;
-  className: string;
-  attendanceDate: string;
-  status: "present" | "late" | "absent";
-};
 
 type TeacherDashboardProps = {
   initialClasses: Array<{
@@ -253,6 +252,7 @@ type TeacherDashboardProps = {
     day: string;
     time: string;
     classId: string;
+    isTwoHour?: boolean;
   }>;
   initialStudents: StudentItem[];
   initialFamilies?: FamilyItem[];
@@ -276,6 +276,27 @@ function createSlotId(day: string, time: string) {
 function parseSlotId(slotId: string) {
   const [day, time] = slotId.split("-");
   return { day, time };
+}
+
+// The slotId one grid row below (day, time) - null when time is the day's
+// last SCHEDULE_ROWS entry, since a 2-hour lesson can't extend past it.
+function nextSlotId(day: string, time: string): string | null {
+  const column: "time" | "satTime" = day === "Sat" ? "satTime" : "time";
+  const index = SCHEDULE_ROWS.findIndex((row) => row[column] === time);
+  const next = index === -1 ? undefined : SCHEDULE_ROWS[index + 1];
+  return next ? createSlotId(day, next[column]) : null;
+}
+
+// True only for a (day, time) that actually corresponds to a rendered grid
+// cell. A stray DB row with a malformed day ("Monday" instead of "Mon") or a
+// time that isn't one of SCHEDULE_ROWS's slots renders nowhere in the grid -
+// it must be excluded from `schedule` state entirely, or it would silently
+// eat into that class's remaining-hours count (Class dock) without ever
+// being visible anywhere to explain why.
+function isRenderedGridSlot(day: string, time: string): boolean {
+  if (!(DAYS as readonly string[]).includes(day)) return false;
+  const column: "time" | "satTime" = day === "Sat" ? "satTime" : "time";
+  return SCHEDULE_ROWS.some((row) => row[column] === time);
 }
 
 function DraggableClassChip({
@@ -326,12 +347,18 @@ function ScheduledClassCard({
   classItem,
   slotId,
   label,
+  isTwoHour,
+  canExtend,
   onClear,
+  onToggleTwoHour,
 }: {
   classItem: ClassItem;
   slotId: string;
   label: string;
+  isTwoHour: boolean;
+  canExtend: boolean;
   onClear: (slotId: string) => void;
+  onToggleTwoHour: (slotId: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({
@@ -339,6 +366,7 @@ function ScheduledClassCard({
       data: {
         sourceSlotId: slotId,
         classId: classItem.id,
+        isTwoHour,
       },
     });
 
@@ -349,7 +377,7 @@ function ScheduledClassCard({
       {...listeners}
       style={{ transform: CSS.Transform.toString(transform) }}
       className={
-        "group flex flex-col gap-1 rounded-md border bg-linear-to-br from-background to-muted/50 p-2 text-left shadow-xs transition " +
+        "group flex h-full flex-col gap-1 rounded-md border bg-linear-to-br from-background to-muted/50 p-2 text-left shadow-xs transition " +
         classItem.color +
         (isDragging ? " opacity-60" : "")
       }
@@ -371,8 +399,29 @@ function ScheduledClassCard({
       <div className="text-[11px] text-muted-foreground">
         {label} • {classItem.hoursPerWeek} hrs/week
       </div>
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground/80">
-        Drag to reschedule
+      <div className="mt-auto flex items-center justify-between gap-2">
+        <div className="text-[10px] uppercase tracking-wide text-muted-foreground/80">
+          Drag to reschedule
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 px-1.5 text-[10px]"
+          disabled={!isTwoHour && !canExtend}
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleTwoHour(slotId);
+          }}
+          title={
+            isTwoHour
+              ? "Collapse to a 1-hour class"
+              : canExtend
+                ? "Extend to a 2-hour class"
+                : "Can't extend — next slot isn't free"
+          }
+        >
+          {isTwoHour ? "Collapse to 1h" : "Extend to 2h"}
+        </Button>
       </div>
     </div>
   );
@@ -382,14 +431,24 @@ function ScheduleCell({
   slotId,
   classItem,
   label,
+  isTwoHour,
+  canExtend,
   onClear,
+  onToggleTwoHour,
   tinted = false,
+  style,
+  showBottomBorder = true,
 }: {
   slotId: string;
   classItem?: ClassItem;
   label: string;
+  isTwoHour: boolean;
+  canExtend: boolean;
   onClear: (slotId: string) => void;
+  onToggleTwoHour: (slotId: string) => void;
   tinted?: boolean;
+  style?: React.CSSProperties;
+  showBottomBorder?: boolean;
 }) {
   const { isOver, setNodeRef } = useDroppable({
     id: `slot:${slotId}`,
@@ -398,8 +457,10 @@ function ScheduleCell({
   return (
     <div
       ref={setNodeRef}
+      style={style}
       className={
         "min-h-[64px] border-l border-dashed border-border/70 p-2 transition " +
+        (showBottomBorder ? "border-b " : "") +
         (isOver ? "bg-brand/10" : tinted ? "bg-accent/30" : "bg-card")
       }
     >
@@ -408,7 +469,10 @@ function ScheduleCell({
           classItem={classItem}
           slotId={slotId}
           label={label}
+          isTwoHour={isTwoHour}
+          canExtend={canExtend}
           onClear={onClear}
+          onToggleTwoHour={onToggleTwoHour}
         />
       ) : (
         <div className="text-[11px] text-muted-foreground/60">
@@ -507,8 +571,12 @@ export function TeacherDashboard({
       });
     });
     initialSlots.forEach((slot) => {
+      if (!isRenderedGridSlot(slot.day, slot.time)) return;
       const slotId = createSlotId(slot.day, slot.time);
-      initial[slotId] = slot.classId;
+      initial[slotId] = {
+        classId: slot.classId,
+        isTwoHour: slot.isTwoHour ?? false,
+      };
     });
     return initial;
   });
@@ -572,7 +640,7 @@ export function TeacherDashboard({
   const [attendanceDate, setAttendanceDate] = React.useState(() => new Date());
   const [attendanceClassId, setAttendanceClassId] = React.useState<string>("");
   const [attendanceStatusByStudent, setAttendanceStatusByStudent] =
-    React.useState<Record<string, "present" | "late" | "absent" | "">>({});
+    React.useState<Record<string, "present" | "late" | "absent" | "split" | "">>({});
   const [attendanceDateError, setAttendanceDateError] = React.useState("");
   const [attendanceRecords, setAttendanceRecords] =
     React.useState<AttendanceRecord[]>(initialAttendance);
@@ -589,7 +657,8 @@ export function TeacherDashboard({
       if (!value) {
         return;
       }
-      counts.set(value, (counts.get(value) ?? 0) + 1);
+      const weight = value.isTwoHour ? 2 : 1;
+      counts.set(value.classId, (counts.get(value.classId) ?? 0) + weight);
     });
     return counts;
   }, [schedule]);
@@ -758,8 +827,8 @@ export function TeacherDashboard({
       );
       setSchedule((prev) => {
         const next = { ...prev };
-        for (const [slotId, scheduledClassId] of Object.entries(next)) {
-          if (scheduledClassId === classId) {
+        for (const [slotId, value] of Object.entries(next)) {
+          if (value?.classId === classId) {
             next[slotId] = null;
           }
         }
@@ -802,8 +871,8 @@ export function TeacherDashboard({
       setClasses((prev) => prev.filter((item) => item.id !== classId));
       setSchedule((prev) => {
         const next = { ...prev };
-        for (const [slotId, scheduledClassId] of Object.entries(next)) {
-          if (scheduledClassId === classId) {
+        for (const [slotId, value] of Object.entries(next)) {
+          if (value?.classId === classId) {
             next[slotId] = null;
           }
         }
@@ -890,6 +959,7 @@ export function TeacherDashboard({
     const activeData = active.data.current as {
       sourceSlotId?: string;
       classId?: string;
+      isTwoHour?: boolean;
     };
     const sourceSlotId = activeData?.sourceSlotId;
     const classId = activeId.startsWith("class:")
@@ -910,29 +980,101 @@ export function TeacherDashboard({
       return;
     }
 
+    // A fresh drag from the dock always lands as a 1-hour class - 2-hour is
+    // only ever set afterward via the "Extend to 2h" toggle. Moving an
+    // already-placed card carries its isTwoHour flag along with it.
+    const isTwoHour = sourceSlotId ? (activeData?.isTwoHour ?? false) : false;
     const { day, time } = parseSlotId(slotId);
-    if (sourceSlotId) {
-      const source = parseSlotId(sourceSlotId);
-      await Promise.all([
-        setScheduleSlotAction({
-          day: source.day,
-          time: source.time,
-          classId: null,
-        }),
-        setScheduleSlotAction({ day, time, classId: classItem.id }),
-      ]);
-    } else {
-      await setScheduleSlotAction({ day, time, classId: classItem.id });
+
+    if (isTwoHour) {
+      const targetNextSlotId = nextSlotId(day, time);
+      if (!targetNextSlotId) {
+        toast.error("Can't drop a 2-hour class on the day's last slot");
+        return;
+      }
+      if (schedule[targetNextSlotId]) {
+        toast.error("The next slot is already taken");
+        return;
+      }
     }
 
+    // Optimistic update first - the drag should feel instant. Awaiting the
+    // server round trip before moving the card in state meant it visually
+    // snapped back to its old slot for a beat, then jumped to the new one,
+    // once the request(s) finally resolved. Roll back on failure instead.
+    const previousSchedule = schedule;
     setSchedule((prev) => {
       const next = { ...prev };
       if (sourceSlotId) {
         next[sourceSlotId] = null;
       }
-      next[slotId] = classItem.id;
+      next[slotId] = { classId: classItem.id, isTwoHour };
       return next;
     });
+
+    try {
+      if (sourceSlotId) {
+        const source = parseSlotId(sourceSlotId);
+        await Promise.all([
+          setScheduleSlotAction({
+            day: source.day,
+            time: source.time,
+            classId: null,
+          }),
+          setScheduleSlotAction({ day, time, classId: classItem.id, isTwoHour }),
+        ]);
+      } else {
+        await setScheduleSlotAction({ day, time, classId: classItem.id });
+      }
+    } catch (error: unknown) {
+      setSchedule(previousSchedule);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to update the schedule",
+      );
+    }
+  };
+
+  const handleToggleTwoHour = async (slotId: string) => {
+    const current = schedule[slotId];
+    if (!current) {
+      return;
+    }
+    const { day, time } = parseSlotId(slotId);
+    const wantsTwoHour = !current.isTwoHour;
+
+    if (wantsTwoHour) {
+      const targetNextSlotId = nextSlotId(day, time);
+      if (!targetNextSlotId) {
+        toast.error("Can't extend the day's last slot to 2 hours");
+        return;
+      }
+      if (schedule[targetNextSlotId]) {
+        toast.error("The next slot is already taken");
+        return;
+      }
+      const remaining = remainingById.get(current.classId) ?? 0;
+      if (remaining < 1) {
+        toast.error("Not enough weekly hours left for this class");
+        return;
+      }
+    }
+
+    try {
+      await setScheduleSlotAction({
+        day,
+        time,
+        classId: current.classId,
+        isTwoHour: wantsTwoHour,
+      });
+      setSchedule((prev) => ({
+        ...prev,
+        [slotId]: { classId: current.classId, isTwoHour: wantsTwoHour },
+      }));
+    } catch (error: unknown) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to update the slot",
+      );
+    }
   };
 
   const handleStudentChange = (
@@ -1367,8 +1509,14 @@ export function TeacherDashboard({
   const scheduleSlotList = React.useMemo(
     () =>
       Object.entries(schedule)
-        .filter((entry): entry is [string, string] => entry[1] !== null)
-        .map(([slotId, classId]) => ({ ...parseSlotId(slotId), classId })),
+        .filter(
+          (entry): entry is [string, ScheduleSlotValue] => entry[1] !== null,
+        )
+        .map(([slotId, value]) => ({
+          ...parseSlotId(slotId),
+          classId: value.classId,
+          isTwoHour: value.isTwoHour,
+        })),
     [schedule],
   );
 
@@ -1395,28 +1543,25 @@ export function TeacherDashboard({
     return format(attendanceDate, "yyyy-MM-dd");
   }, [attendanceDate]);
 
+  // Gates the "1+1" attendance option - only offered when the selected
+  // class's template meets that weekday as a two-hour lesson. See
+  // AttendanceDateSets.twoHourWeekdays for the (accepted) same-weekday
+  // mixed-duration limitation.
+  const isTwoHourAttendanceDate = attendanceDateSets.twoHourWeekdays.has(
+    weekdayLabelFromDate(attendanceDate),
+  );
+
   const updateAttendanceRecords = React.useCallback(
-    (studentId: string, status: "present" | "late" | "absent" | "") => {
-      setAttendanceRecords((prev) => {
-        const next = prev.filter(
-          (record) =>
-            !(
-              record.studentId === studentId &&
-              record.classId === attendanceClassId &&
-              record.attendanceDate === attendanceDateKey
-            ),
-        );
-        if (status) {
-          next.unshift({
-            studentId,
-            classId: attendanceClassId,
-            className: attendanceClassName,
-            attendanceDate: attendanceDateKey,
-            status,
-          });
-        }
-        return next;
-      });
+    (studentId: string, status: "present" | "late" | "absent" | "split" | "") => {
+      setAttendanceRecords((prev) =>
+        upsertAttendanceRecord(prev, {
+          classId: attendanceClassId,
+          className: attendanceClassName,
+          studentId,
+          attendanceDate: attendanceDateKey,
+          status,
+        }),
+      );
     },
     [attendanceClassId, attendanceClassName, attendanceDateKey],
   );
@@ -1437,7 +1582,7 @@ export function TeacherDashboard({
         if (!isActive) {
           return;
         }
-        const next: Record<string, "present" | "late" | "absent" | ""> = {};
+        const next: Record<string, "present" | "late" | "absent" | "split" | ""> = {};
         rows.forEach((row) => {
           next[row.student_id] = row.status;
         });
@@ -1654,39 +1799,95 @@ export function TeacherDashboard({
                   </div>
                 </div>
 
-                {SCHEDULE_ROWS.map((row) => (
-                  <div
-                    key={row.time}
-                    className="grid grid-cols-[72px_repeat(6,minmax(0,1fr))_72px] border-b last:border-b-0"
-                  >
-                    <div className="px-3 py-4 text-xs font-medium text-muted-foreground">
-                      {row.time}
-                    </div>
-                    {DAYS.map((day) => {
-                      const cellTime = day === "Sat" ? row.satTime : row.time;
-                      const slotId = createSlotId(day, cellTime);
-                      const classId = schedule[slotId] ?? null;
-                      const classItem = classes.find(
-                        (item) => item.id === classId,
-                      );
-                      const label = `${day} ${cellTime}`;
+                <div className="grid grid-cols-[72px_repeat(6,minmax(0,1fr))_72px]">
+                  {SCHEDULE_ROWS.map((row, rowIndex) => {
+                    const gridRow = rowIndex + 1;
+                    const isLastRow = rowIndex === SCHEDULE_ROWS.length - 1;
+                    const borderBottom = isLastRow ? "" : "border-b ";
 
-                      return (
-                        <ScheduleCell
-                          key={slotId}
-                          slotId={slotId}
-                          classItem={classItem}
-                          label={label}
-                          onClear={handleClearSlot}
-                          tinted={day === "Sat"}
-                        />
-                      );
-                    })}
-                    <div className="border-l border-dashed border-border/70 bg-accent/30 px-3 py-4 text-xs font-medium text-muted-foreground">
-                      {row.satTime}
-                    </div>
-                  </div>
-                ))}
+                    return (
+                      <React.Fragment key={row.time}>
+                        <div
+                          style={{ gridColumn: 1, gridRow }}
+                          className={
+                            borderBottom +
+                            "px-3 py-4 text-xs font-medium text-muted-foreground"
+                          }
+                        >
+                          {row.time}
+                        </div>
+                        {DAYS.map((day, dayIndex) => {
+                          const cellTime = day === "Sat" ? row.satTime : row.time;
+                          const slotId = createSlotId(day, cellTime);
+
+                          const prevRow = SCHEDULE_ROWS[rowIndex - 1];
+                          const coveredByPrev = prevRow
+                            ? (schedule[
+                                createSlotId(
+                                  day,
+                                  day === "Sat" ? prevRow.satTime : prevRow.time,
+                                )
+                              ]?.isTwoHour ?? false)
+                            : false;
+
+                          if (coveredByPrev) {
+                            // No element here at all - the two-hour
+                            // ScheduleCell above already spans into this
+                            // grid row via `gridRow: "N / span 2"`. Rendering
+                            // even an empty filler div in this same cell
+                            // would paint over that card's bottom half,
+                            // since it comes later in the DOM.
+                            return null;
+                          }
+
+                          const value = schedule[slotId];
+                          const classItem = value
+                            ? classes.find((item) => item.id === value.classId)
+                            : undefined;
+                          const label = `${day} ${lessonTimeLabel(cellTime, value?.isTwoHour ?? false)}`;
+                          const targetNextSlotId = nextSlotId(day, cellTime);
+                          const canExtend =
+                            !!targetNextSlotId && !schedule[targetNextSlotId];
+                          // A spanning cell's bottom border belongs at its
+                          // true bottom edge (the end row), not the start row.
+                          const cellEndRowIsLast =
+                            rowIndex + (value?.isTwoHour ? 1 : 0) ===
+                            SCHEDULE_ROWS.length - 1;
+
+                          return (
+                            <ScheduleCell
+                              key={slotId}
+                              slotId={slotId}
+                              classItem={classItem}
+                              label={label}
+                              isTwoHour={value?.isTwoHour ?? false}
+                              canExtend={canExtend}
+                              onClear={handleClearSlot}
+                              onToggleTwoHour={handleToggleTwoHour}
+                              tinted={day === "Sat"}
+                              showBottomBorder={!cellEndRowIsLast}
+                              style={{
+                                gridColumn: dayIndex + 2,
+                                gridRow: value?.isTwoHour
+                                  ? `${gridRow} / span 2`
+                                  : gridRow,
+                              }}
+                            />
+                          );
+                        })}
+                        <div
+                          style={{ gridColumn: DAYS.length + 2, gridRow }}
+                          className={
+                            borderBottom +
+                            "border-l border-dashed border-border/70 bg-accent/30 px-3 py-4 text-xs font-medium text-muted-foreground"
+                          }
+                        >
+                          {row.satTime}
+                        </div>
+                      </React.Fragment>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           </DndContext>
@@ -1699,6 +1900,8 @@ export function TeacherDashboard({
             classes={classes}
             students={students}
             slots={scheduleSlotList}
+            attendanceRecords={attendanceRecords}
+            onAttendanceRecordsChange={setAttendanceRecords}
           />
         </TabsContent>
 
@@ -1712,8 +1915,14 @@ export function TeacherDashboard({
                 return null;
               }
               const scheduledSlots = Object.entries(schedule)
-                .filter(([, classId]) => classId === selectedClassId)
-                .map(([slotId]) => parseSlotId(slotId));
+                .filter(
+                  (entry): entry is [string, ScheduleSlotValue] =>
+                    entry[1]?.classId === selectedClassId,
+                )
+                .map(([slotId, value]) => ({
+                  ...parseSlotId(slotId),
+                  isTwoHour: value.isTwoHour,
+                }));
               const enrolledStudents = students.filter(
                 (student) =>
                   !student.withdrawnAt &&
@@ -3379,151 +3588,24 @@ export function TeacherDashboard({
                   <p className="px-4 py-8 text-center text-sm text-muted-foreground">
                     Select a class to view its assigned students.
                   </p>
-                ) : attendanceRoster.length === 0 ? (
-                  <p className="px-4 py-8 text-center text-sm text-muted-foreground">
-                    No students assigned to this class yet.
-                  </p>
                 ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Student</TableHead>
-                        <TableHead>Grade</TableHead>
-                        <TableHead className="text-right">Status</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                    {attendanceRoster.map((student) => {
-                      const status =
-                        attendanceStatusByStudent[student.id] ?? "";
-
-                      return (
-                        <TableRow key={student.id}>
-                          <TableCell>
-                            <div className="font-medium">
-                              {student.firstName} {student.lastName}
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              {student.email || "No email"}
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {student.gradeLevel || "N/A"}
-                          </TableCell>
-                          <TableCell>
-                          <div className="flex flex-wrap justify-end gap-2">
-                            <Button
-                              type="button"
-                              variant={
-                                status === "present" ? "default" : "outline"
-                              }
-                              size="sm"
-                              onClick={async () => {
-                                if (!attendanceClassId) {
-                                  return;
-                                }
-                                const nextStatus =
-                                  status === "present" ? "" : "present";
-                                setAttendanceStatusByStudent((prev) => ({
-                                  ...prev,
-                                  [student.id]: nextStatus,
-                                }));
-                                await setAttendanceAction({
-                                  classId: attendanceClassId,
-                                  className: attendanceClassName,
-                                  studentId: student.id,
-                                  attendanceDate: attendanceDateKey,
-                                  status: nextStatus,
-                                });
-                                updateAttendanceRecords(
-                                  student.id,
-                                  nextStatus as
-                                    | "present"
-                                    | "late"
-                                    | "absent"
-                                    | "",
-                                );
-                              }}
-                            >
-                              Present
-                            </Button>
-                            <Button
-                              type="button"
-                              variant={
-                                status === "late" ? "default" : "outline"
-                              }
-                              size="sm"
-                              onClick={async () => {
-                                if (!attendanceClassId) {
-                                  return;
-                                }
-                                const nextStatus =
-                                  status === "late" ? "" : "late";
-                                setAttendanceStatusByStudent((prev) => ({
-                                  ...prev,
-                                  [student.id]: nextStatus,
-                                }));
-                                await setAttendanceAction({
-                                  classId: attendanceClassId,
-                                  className: attendanceClassName,
-                                  studentId: student.id,
-                                  attendanceDate: attendanceDateKey,
-                                  status: nextStatus,
-                                });
-                                updateAttendanceRecords(
-                                  student.id,
-                                  nextStatus as
-                                    | "present"
-                                    | "late"
-                                    | "absent"
-                                    | "",
-                                );
-                              }}
-                            >
-                              Late
-                            </Button>
-                            <Button
-                              type="button"
-                              variant={
-                                status === "absent" ? "destructive" : "outline"
-                              }
-                              size="sm"
-                              onClick={async () => {
-                                if (!attendanceClassId) {
-                                  return;
-                                }
-                                const nextStatus =
-                                  status === "absent" ? "" : "absent";
-                                setAttendanceStatusByStudent((prev) => ({
-                                  ...prev,
-                                  [student.id]: nextStatus,
-                                }));
-                                await setAttendanceAction({
-                                  classId: attendanceClassId,
-                                  className: attendanceClassName,
-                                  studentId: student.id,
-                                  attendanceDate: attendanceDateKey,
-                                  status: nextStatus,
-                                });
-                                updateAttendanceRecords(
-                                  student.id,
-                                  nextStatus as
-                                    | "present"
-                                    | "late"
-                                    | "absent"
-                                    | "",
-                                );
-                              }}
-                            >
-                              Absent
-                            </Button>
-                          </div>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                    </TableBody>
-                  </Table>
+                  <AttendanceRosterTable
+                    roster={attendanceRoster}
+                    classId={attendanceClassId}
+                    className={attendanceClassName}
+                    dateKey={attendanceDateKey}
+                    isTwoHour={isTwoHourAttendanceDate}
+                    getStatus={(studentId) =>
+                      attendanceStatusByStudent[studentId] ?? ""
+                    }
+                    onOptimisticChange={(studentId, status) =>
+                      setAttendanceStatusByStudent((prev) => ({
+                        ...prev,
+                        [studentId]: status,
+                      }))
+                    }
+                    onCommitted={updateAttendanceRecords}
+                  />
                 )}
           </div>
         </TabsContent>

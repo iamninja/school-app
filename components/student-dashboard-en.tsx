@@ -25,6 +25,7 @@ import {
   DAY_LABELS_EN,
   formatClassDateRangeEn,
 } from "@/lib/portal-labels-en";
+import { lessonTimeLabel } from "@/lib/schedule-grid";
 
 /**
  * English counterpart to student-dashboard.tsx, for the public /demo-en
@@ -60,6 +61,7 @@ type StudentDashboardEnProps = {
     class_id: string;
     day: string;
     time: string;
+    is_two_hour?: boolean;
   }>;
   attendance: Array<{
     class_id: string | null;
@@ -133,13 +135,21 @@ export function StudentDashboardEn(props: StudentDashboardEnProps) {
     present: props.attendance.filter((a) => a.status === "present").length,
     late: props.attendance.filter((a) => a.status === "late").length,
     absent: props.attendance.filter((a) => a.status === "absent").length,
+    split: props.attendance.filter((a) => a.status === "split").length,
   };
   const totalRecords =
-    attendanceStats.present + attendanceStats.late + attendanceStats.absent;
+    attendanceStats.present +
+    attendanceStats.late +
+    attendanceStats.absent +
+    attendanceStats.split;
+  // "split" (1+1) counts as half a present toward the rate.
   const attendanceRate =
     totalRecords > 0
       ? Math.round(
-          ((attendanceStats.present + attendanceStats.late) / totalRecords) *
+          ((attendanceStats.present +
+            attendanceStats.late +
+            attendanceStats.split * 0.5) /
+            totalRecords) *
             100,
         )
       : 0;
@@ -162,7 +172,7 @@ export function StudentDashboardEn(props: StudentDashboardEnProps) {
         </div>
 
         {/* Attendance stats */}
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
           <StatTile
             label="Attendance rate"
             value={totalRecords > 0 ? `${attendanceRate}%` : "—"}
@@ -182,6 +192,11 @@ export function StudentDashboardEn(props: StudentDashboardEnProps) {
             label={ATTENDANCE_STATUS_LABELS_EN.absent}
             value={attendanceStats.absent}
             tone="negative"
+          />
+          <StatTile
+            label={ATTENDANCE_STATUS_LABELS_EN.split}
+            value={attendanceStats.split}
+            tone="brand"
           />
         </div>
 
@@ -247,7 +262,11 @@ export function StudentDashboardEn(props: StudentDashboardEnProps) {
                                     />
                                     {DAY_LABELS_EN[schedule.day] ??
                                       schedule.day}{" "}
-                                    at {schedule.time}
+                                    at{" "}
+                                    {lessonTimeLabel(
+                                      schedule.time,
+                                      schedule.is_two_hour ?? false,
+                                    )}
                                   </span>
                                 ),
                               )}

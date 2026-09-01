@@ -3,6 +3,16 @@
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { requireTeacher } from "@/lib/auth/require-teacher";
 import { ExpectedError } from "@/lib/expected-error";
+import { SCHEDULE_ROWS } from "@/lib/schedule-grid";
+
+// The (day, time) one grid row below - null when `time` is that day's last
+// SCHEDULE_ROWS entry, since a 2-hour lesson can't extend past it.
+function nextScheduleRowTime(day: string, time: string): string | null {
+  const column: "time" | "satTime" = day === "Sat" ? "satTime" : "time";
+  const index = SCHEDULE_ROWS.findIndex((row) => row[column] === time);
+  const next = index === -1 ? undefined : SCHEDULE_ROWS[index + 1];
+  return next ? next[column] : null;
+}
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -194,6 +204,7 @@ export async function setScheduleSlotAction(data: {
   day: string;
   time: string;
   classId: string | null;
+  isTwoHour?: boolean;
 }) {
   const supabase = await createClient();
   const {
@@ -220,7 +231,31 @@ export async function setScheduleSlotAction(data: {
       throw error;
     }
 
-    return { day: data.day, time: data.time, classId: null };
+    return { day: data.day, time: data.time, classId: null, isTwoHour: false };
+  }
+
+  const isTwoHour = data.isTwoHour ?? false;
+
+  if (isTwoHour) {
+    const nextTime = nextScheduleRowTime(data.day, data.time);
+    if (!nextTime) {
+      throw new ExpectedError(
+        "Can't extend this slot to 2 hours — it's the last slot of the day.",
+      );
+    }
+    const { data: nextSlot, error: nextSlotError } = await supabase
+      .from("class_schedule_slots")
+      .select("class_id")
+      .match({ teacher_id: user.id, day: data.day, time: nextTime })
+      .maybeSingle();
+    if (nextSlotError) {
+      throw nextSlotError;
+    }
+    if (nextSlot && nextSlot.class_id !== data.classId) {
+      throw new ExpectedError(
+        "Can't extend this slot to 2 hours — the next slot is already taken.",
+      );
+    }
   }
 
   const { data: row, error } = await supabase
@@ -231,17 +266,23 @@ export async function setScheduleSlotAction(data: {
         day: data.day,
         time: data.time,
         class_id: data.classId,
+        is_two_hour: isTwoHour,
       },
       { onConflict: "teacher_id,day,time" }
     )
-    .select("day, time, class_id")
+    .select("day, time, class_id, is_two_hour")
     .single();
 
   if (error) {
     throw error;
   }
 
-  return { day: row.day, time: row.time, classId: row.class_id };
+  return {
+    day: row.day,
+    time: row.time,
+    classId: row.class_id,
+    isTwoHour: row.is_two_hour,
+  };
 }
 
 type CreateStudentBase = {
@@ -864,7 +905,7 @@ export async function setAttendanceAction(data: {
   className: string;
   studentId: string;
   attendanceDate: string;
-  status: "present" | "late" | "absent" | "";
+  status: "present" | "late" | "absent" | "split" | "";
 }) {
   const supabase = await createClient();
   const {

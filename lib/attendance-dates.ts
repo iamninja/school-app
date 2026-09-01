@@ -10,6 +10,14 @@ import type { CalendarEvent } from "@/lib/types/database";
 export interface AttendanceDateSets {
   /** "Mon" | ... - the weekdays this class already meets on, per the template. */
   scheduleWeekdays: Set<string>;
+  /**
+   * "Mon" | ... - weekdays where at least one of this class's template slots
+   * is a two-hour lesson. Gates the Attendance tab's "1+1" status option - a
+   * class meeting more than once on the same weekday with mixed durations
+   * isn't disambiguated further, same date-only-key limitation as the rest
+   * of this module.
+   */
+  twoHourWeekdays: Set<string>;
   /** yyyy-MM-dd dates where an extra_session exists for this class. */
   extraSessionDates: Set<string>;
   /** yyyy-MM-dd dates where every template occurrence for this class is cancelled. */
@@ -20,7 +28,12 @@ export interface AttendanceDateSets {
 
 export function buildAttendanceDateSets(args: {
   classId: string;
-  slots: Array<{ classId: string; day: string; time: string }>;
+  slots: Array<{
+    classId: string;
+    day: string;
+    time: string;
+    isTwoHour?: boolean;
+  }>;
   events: Array<
     Pick<CalendarEvent, "event_type" | "class_id" | "event_date" | "start_time">
   >;
@@ -29,10 +42,12 @@ export function buildAttendanceDateSets(args: {
   const { classId } = args;
 
   const scheduleWeekdays = new Set<string>();
+  const twoHourWeekdays = new Set<string>();
   const templateTimesByWeekday = new Map<string, Set<string>>();
   for (const slot of args.slots) {
     if (slot.classId !== classId) continue;
     scheduleWeekdays.add(slot.day);
+    if (slot.isTwoHour) twoHourWeekdays.add(slot.day);
     const times = templateTimesByWeekday.get(slot.day) ?? new Set<string>();
     times.add(slot.time);
     templateTimesByWeekday.set(slot.day, times);
@@ -82,7 +97,13 @@ export function buildAttendanceDateSets(args: {
     datesWithAttendance.add(record.attendanceDate);
   }
 
-  return { scheduleWeekdays, extraSessionDates, cancelledDates, datesWithAttendance };
+  return {
+    scheduleWeekdays,
+    twoHourWeekdays,
+    extraSessionDates,
+    cancelledDates,
+    datesWithAttendance,
+  };
 }
 
 /**

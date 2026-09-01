@@ -37,6 +37,7 @@ import { QuizQuestionImage } from "@/components/quiz-question-image";
 import { QuizReviewAnswers } from "@/components/quiz-review-answers";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CLASS_GRADE_LABELS } from "@/lib/class-grades";
+import { lessonTimeLabel } from "@/lib/schedule-grid";
 import type {
   PendingGradingItem,
   QuizAttemptAnswerReview,
@@ -66,7 +67,7 @@ type StudentItem = {
 
 type TeacherClassDetailProps = {
   classItem: ClassItem;
-  scheduledSlots: { day: string; time: string }[];
+  scheduledSlots: { day: string; time: string; isTwoHour?: boolean }[];
   enrolledStudents: StudentItem[];
   allStudents: StudentItem[];
   assignedQuizzes: TeacherQuizListItem[];
@@ -503,7 +504,8 @@ export function TeacherClassDetail({
                 ) : (
                   sortedSlots.map((slot) => (
                     <Badge key={`${slot.day}-${slot.time}`} variant="outline">
-                      {slot.day} &middot; {slot.time}
+                      {slot.day} &middot;{" "}
+                      {lessonTimeLabel(slot.time, slot.isTwoHour ?? false)}
                     </Badge>
                   ))
                 )}

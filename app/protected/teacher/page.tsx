@@ -67,7 +67,7 @@ export default async function TeacherPage() {
       .order("created_at", { ascending: true }),
     supabase
       .from("class_schedule_slots")
-      .select("day, time, class_id")
+      .select("day, time, class_id, is_two_hour")
       .eq("teacher_id", user.id),
     supabase
       .from("students")
@@ -121,6 +121,7 @@ export default async function TeacherPage() {
     day: slot.day,
     time: slot.time,
     classId: slot.class_id,
+    isTwoHour: slot.is_two_hour,
   }));
 
   const initialStudents = (students ?? []).map((student) => {

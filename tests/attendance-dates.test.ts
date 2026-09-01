@@ -97,6 +97,22 @@ describe("buildAttendanceDateSets", () => {
     });
     expect(sets.cancelledDates.has("2026-09-07")).toBe(true);
   });
+
+  it("flags a weekday as two-hour only when one of that class's slots that day is", () => {
+    const sets = buildAttendanceDateSets({
+      classId: CLASS_A,
+      slots: [
+        { classId: CLASS_A, day: "Mon", time: "16:00", isTwoHour: true },
+        { classId: CLASS_A, day: "Wed", time: "16:00", isTwoHour: false },
+        { classId: CLASS_B, day: "Fri", time: "16:00", isTwoHour: true },
+      ],
+      events: [],
+      attendance: [],
+    });
+    expect(sets.twoHourWeekdays.has("Mon")).toBe(true);
+    expect(sets.twoHourWeekdays.has("Wed")).toBe(false);
+    expect(sets.twoHourWeekdays.has("Fri")).toBe(false);
+  });
 });
 
 describe("isDateEnabledForAttendance", () => {

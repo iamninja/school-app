@@ -13,6 +13,7 @@ import {
   restoreClassAction,
   restoreStudentAction,
   setAttendanceAction,
+  setScheduleSlotAction,
   unenrollStudentFromClassAction,
   updateClassAction,
   updateStudentAction,
@@ -280,6 +281,99 @@ describe("teacher actions - setAttendanceAction", () => {
       }),
     );
     expect(chain.delete).not.toHaveBeenCalled();
+  });
+
+  it("upserts a 'split' (1+1) status the same as any other status", async () => {
+    const client = createMockSupabaseClient({
+      attendance_records: { data: null, error: null },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    const result = await setAttendanceAction({
+      classId: "class-1",
+      className: "Algebra II",
+      studentId: "student-1",
+      attendanceDate: "2026-08-16",
+      status: "split",
+    });
+
+    expect(result).toEqual({ studentId: "student-1", status: "split" });
+    const chain = client.from.mock.results[0].value;
+    expect(chain.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "split" }),
+      expect.anything(),
+    );
+  });
+});
+
+describe("teacher actions - setScheduleSlotAction", () => {
+  beforeEach(() => {
+    vi.mocked(requireTeacher).mockResolvedValue(undefined);
+  });
+
+  it("rejects marking the day's last slot as two-hour", async () => {
+    const client = createMockSupabaseClient({});
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await expect(
+      setScheduleSlotAction({
+        day: "Fri",
+        time: "23:00",
+        classId: "class-1",
+        isTwoHour: true,
+      }),
+    ).rejects.toThrow(ExpectedError);
+  });
+
+  it("rejects a two-hour slot whose next row is already taken by another class", async () => {
+    const client = createMockSupabaseClient({
+      class_schedule_slots: {
+        data: { class_id: "other-class" },
+        error: null,
+      },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await expect(
+      setScheduleSlotAction({
+        day: "Wed",
+        time: "16:00",
+        classId: "class-1",
+        isTwoHour: true,
+      }),
+    ).rejects.toThrow(ExpectedError);
+  });
+
+  it("upserts is_two_hour when the next row is free", async () => {
+    const client = createMockSupabaseClient({
+      class_schedule_slots: [
+        { data: null, error: null }, // next-row availability check
+        {
+          data: { day: "Wed", time: "16:00", class_id: "class-1", is_two_hour: true },
+          error: null,
+        }, // the upsert itself
+      ],
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    const result = await setScheduleSlotAction({
+      day: "Wed",
+      time: "16:00",
+      classId: "class-1",
+      isTwoHour: true,
+    });
+
+    expect(result).toEqual({
+      day: "Wed",
+      time: "16:00",
+      classId: "class-1",
+      isTwoHour: true,
+    });
+    const upsertChain = client.from.mock.results[1].value;
+    expect(upsertChain.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ is_two_hour: true }),
+      expect.anything(),
+    );
   });
 });
 

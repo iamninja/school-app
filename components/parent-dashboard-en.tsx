@@ -42,6 +42,7 @@ import {
   DAY_LABELS_EN,
   formatClassDateRangeEn,
 } from "@/lib/portal-labels-en";
+import { lessonTimeLabel } from "@/lib/schedule-grid";
 
 /**
  * English counterpart to parent-dashboard.tsx, for the public /demo-en
@@ -222,13 +223,21 @@ function ChildSection({
     present: attendance.filter((a) => a.status === "present").length,
     late: attendance.filter((a) => a.status === "late").length,
     absent: attendance.filter((a) => a.status === "absent").length,
+    split: attendance.filter((a) => a.status === "split").length,
   };
   const totalRecords =
-    attendanceStats.present + attendanceStats.late + attendanceStats.absent;
+    attendanceStats.present +
+    attendanceStats.late +
+    attendanceStats.absent +
+    attendanceStats.split;
+  // "split" (1+1) counts as half a present toward the rate.
   const attendanceRate =
     totalRecords > 0
       ? Math.round(
-          ((attendanceStats.present + attendanceStats.late) / totalRecords) *
+          ((attendanceStats.present +
+            attendanceStats.late +
+            attendanceStats.split * 0.5) /
+            totalRecords) *
             100,
         )
       : 0;
@@ -263,7 +272,7 @@ function ChildSection({
       </div>
 
       {/* Attendance stats */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
         <StatTile
           label="Attendance rate"
           value={totalRecords > 0 ? `${attendanceRate}%` : "—"}
@@ -283,6 +292,11 @@ function ChildSection({
           label={ATTENDANCE_STATUS_LABELS_EN.absent}
           value={attendanceStats.absent}
           tone="negative"
+        />
+        <StatTile
+          label={ATTENDANCE_STATUS_LABELS_EN.split}
+          value={attendanceStats.split}
+          tone="brand"
         />
       </div>
 
@@ -342,7 +356,11 @@ function ChildSection({
                                   aria-hidden="true"
                                 />
                                 {DAY_LABELS_EN[schedule.day] ?? schedule.day}{" "}
-                                at {schedule.time}
+                                at{" "}
+                                {lessonTimeLabel(
+                                  schedule.time,
+                                  schedule.is_two_hour ?? false,
+                                )}
                               </span>
                             ),
                           )}

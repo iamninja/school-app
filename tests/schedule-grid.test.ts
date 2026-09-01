@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { recurringLessonWindow, SCHEDULE_ROWS } from "@/lib/schedule-grid";
+import {
+  lessonTimeLabel,
+  recurringLessonWindow,
+  SCHEDULE_ROWS,
+} from "@/lib/schedule-grid";
 
 describe("recurringLessonWindow", () => {
   it("runs the grid's first two weekday rows back to back with no break", () => {
@@ -48,6 +52,42 @@ describe("recurringLessonWindow", () => {
     expect(recurringLessonWindow("Mon", "15:00")).toEqual({
       start: "15:15",
       end: "16:00",
+    });
+  });
+
+  it("spans two rows for a two-hour lesson, ending at the row after next", () => {
+    expect(recurringLessonWindow("Wed", "16:00", true)).toEqual({
+      start: "16:15",
+      end: "18:00",
+    });
+  });
+
+  it("falls back to a flat two-hour shape for a two-hour lesson starting on the last row", () => {
+    expect(recurringLessonWindow("Fri", "23:00", true)).toEqual({
+      start: "23:15",
+      end: "01:00",
+    });
+  });
+
+  describe("lessonTimeLabel", () => {
+    it("shows just the start time for a 1-hour lesson", () => {
+      expect(lessonTimeLabel("16:00", false)).toBe("16:00");
+    });
+
+    it("shows a start-end range for a two-hour lesson", () => {
+      expect(lessonTimeLabel("16:00", true)).toBe("16:00–18:00");
+    });
+
+    it("wraps past midnight for a two-hour lesson starting late", () => {
+      expect(lessonTimeLabel("23:00", true)).toBe("23:00–01:00");
+    });
+
+    it("prefers a known real end time over the two-hour default", () => {
+      expect(lessonTimeLabel("16:00", true, "17:30")).toBe("16:00–17:30");
+    });
+
+    it("uses a real end time even for a non-two-hour lesson", () => {
+      expect(lessonTimeLabel("16:00", false, "16:45")).toBe("16:00–16:45");
     });
   });
 

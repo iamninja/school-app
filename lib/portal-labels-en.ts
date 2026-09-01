@@ -21,6 +21,7 @@ export const ATTENDANCE_STATUS_LABELS_EN: Record<string, string> = {
   present: "Present",
   late: "Late",
   absent: "Absent",
+  split: "1+1",
 };
 
 export const BALANCE_TRANSACTION_TYPE_LABELS_EN: Record<string, string> = {

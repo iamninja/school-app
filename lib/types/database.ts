@@ -73,6 +73,7 @@ export interface ClassScheduleSlot {
   class_id: string;
   day: string;
   time: string;
+  is_two_hour?: boolean;
   created_at?: string;
 }
 
@@ -432,6 +433,7 @@ export interface StudentDashboardData {
     class_id: string;
     day: string;
     time: string;
+    is_two_hour?: boolean;
   }>;
   attendance: Array<{
     class_id: string | null;
@@ -465,6 +467,7 @@ export interface ParentDashboardChild {
     class_id: string;
     day: string;
     time: string;
+    is_two_hour?: boolean;
   }>;
   attendance: Array<{
     class_id: string | null;

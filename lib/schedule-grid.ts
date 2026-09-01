@@ -49,6 +49,7 @@ function minutesToTime(totalMinutes: number): string {
 export function recurringLessonWindow(
   day: string,
   startTime: string,
+  isTwoHour = false,
 ): { start: string; end: string } {
   const column: "time" | "satTime" = day === "Sat" ? "satTime" : "time";
   const index = SCHEDULE_ROWS.findIndex((row) => row[column] === startTime);
@@ -57,13 +58,44 @@ export function recurringLessonWindow(
     // Not a recognized grid slot - fall back to the standard shape (15-min
     // break, 45 min of teaching) rather than assuming no break at all.
     const start = timeToMinutes(startTime) + 15;
-    return { start: minutesToTime(start), end: minutesToTime(start + LESSON_MINUTES) };
+    const duration = isTwoHour ? LESSON_MINUTES + 60 : LESSON_MINUTES;
+    return { start: minutesToTime(start), end: minutesToTime(start + duration) };
   }
 
+  // The lesson's start always follows the single-row break rule, measured
+  // against the very next row - unaffected by isTwoHour.
   const nextRow = SCHEDULE_ROWS[index + 1];
-  const endMinutes = nextRow
+  const nextRowMinutes = nextRow
     ? timeToMinutes(nextRow[column])
     : timeToMinutes(startTime) + 60;
-  const startMinutes = endMinutes - LESSON_MINUTES;
+  const startMinutes = nextRowMinutes - LESSON_MINUTES;
+
+  // A two-hour lesson spans this row and the next one, so its end is
+  // measured against the row *after* that (two rows ahead) instead - same
+  // fallback (a flat 60-minute shape per row) when there's no such row.
+  const endRow = SCHEDULE_ROWS[index + (isTwoHour ? 2 : 1)];
+  const endMinutes = endRow
+    ? timeToMinutes(endRow[column])
+    : timeToMinutes(startTime) + (isTwoHour ? 120 : 60);
   return { start: minutesToTime(startMinutes), end: minutesToTime(endMinutes) };
+}
+
+/**
+ * Display label for a lesson's time - just the start ("16:00") for a normal
+ * 1-hour lesson, a "start–end" range for a two-hour one or anything with a
+ * known real end time (an ad-hoc calendar event's stored end_time takes
+ * priority when present). No end time shown means a 1-hour lesson - this is
+ * the single display rule used everywhere a lesson time appears (Schedule
+ * tab, Calendar tab, class detail, parent/student dashboards).
+ */
+export function lessonTimeLabel(
+  startTime: string,
+  isTwoHour: boolean,
+  endTime?: string | null,
+): string {
+  if (endTime) return `${startTime}–${endTime}`;
+  if (isTwoHour) {
+    return `${startTime}–${minutesToTime(timeToMinutes(startTime) + 120)}`;
+  }
+  return startTime;
 }
