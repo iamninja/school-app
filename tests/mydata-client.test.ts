@@ -1,10 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 import { createServiceRoleClient } from "@/lib/supabase/server";
-import {
-  getDecryptedCredential,
-  getDecryptedCredentialForEnvironment,
-} from "@/lib/integrations/credentials";
+import { getDecryptedCredentialForEnvironment } from "@/lib/integrations/credentials";
 import {
   sendInvoiceXml,
   requestDocs,
@@ -17,7 +14,6 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 
 vi.mock("@/lib/integrations/credentials", () => ({
-  getDecryptedCredential: vi.fn(async () => "user-id"),
   getDecryptedCredentialForEnvironment: vi.fn(async () => "user-id"),
 }));
 
@@ -31,7 +27,6 @@ vi.mock("@/lib/integrations/credentials", () => ({
 describe("lib/mydata/client - endpoint URLs", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(getDecryptedCredential).mockResolvedValue("user-id");
     vi.mocked(getDecryptedCredentialForEnvironment).mockResolvedValue(
       "user-id",
     );
@@ -124,6 +119,64 @@ describe("lib/mydata/client - endpoint URLs", () => {
 });
 
 /**
+ * 2026-09-02: a receipt's URL was built for production, but the credentials
+ * actually sent were very likely sandbox's - because sendInvoiceXml used to
+ * call getDecryptedCredential (which does its OWN independent read of
+ * active_environment) instead of threading through the single environment
+ * value it had already resolved for the URL. If that DB setting changed
+ * between the two reads (e.g. someone flipping the Business tab's toggle
+ * mid-request), the URL and the credentials could silently disagree - no
+ * error, just a document filed under the wrong ledger. This locks in that
+ * sendInvoiceXml only ever does ONE environment resolution, and passes it
+ * explicitly to the credential lookup - which cannot race with itself.
+ */
+describe("lib/mydata/client - sendInvoiceXml resolves environment exactly once", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    global.fetch = vi.fn(async () =>
+      new Response("<ResponseDoc><statusCode>Success</statusCode></ResponseDoc>", {
+        status: 200,
+      }),
+    );
+  });
+
+  it("fetches credentials for the SAME environment used to build the URL", async () => {
+    // integration_settings is only ever queried once now (for the URL's
+    // environment) - getDecryptedCredentialForEnvironment takes that same
+    // value as an explicit parameter rather than re-querying the DB, so
+    // there is no longer a second read that could see a different value.
+    vi.mocked(createServiceRoleClient).mockReturnValue(
+      createMockSupabaseClient({
+        integration_settings: {
+          data: { active_environment: "production", enabled: true },
+          error: null,
+        },
+      }) as never,
+    );
+    vi.mocked(getDecryptedCredentialForEnvironment).mockResolvedValue(
+      "user-id",
+    );
+
+    await sendInvoiceXml("<InvoicesDoc/>");
+
+    expect(fetch).toHaveBeenCalledWith(
+      "https://mydatapi.aade.gr/myDATA/SendInvoices",
+      expect.anything(),
+    );
+    expect(getDecryptedCredentialForEnvironment).toHaveBeenCalledWith(
+      "aade_mydata",
+      "user_id",
+      "production",
+    );
+    expect(getDecryptedCredentialForEnvironment).toHaveBeenCalledWith(
+      "aade_mydata",
+      "subscription_key",
+      "production",
+    );
+  });
+});
+
+/**
  * A "phantom success" (2026-09-01: a real MARK/UID came back from AADE, yet
  * the document never showed up in RequestTransmittedDocs or the myDATA
  * portal) is unauditable after the fact unless the raw response body is
@@ -135,7 +188,6 @@ describe("lib/mydata/client - endpoint URLs", () => {
 describe("lib/mydata/client - raw response is always returned", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(getDecryptedCredential).mockResolvedValue("user-id");
     vi.mocked(getDecryptedCredentialForEnvironment).mockResolvedValue(
       "user-id",
     );

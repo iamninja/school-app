@@ -1,9 +1,6 @@
 import "server-only";
 
-import {
-  getDecryptedCredential,
-  getDecryptedCredentialForEnvironment,
-} from "@/lib/integrations/credentials";
+import { getDecryptedCredentialForEnvironment } from "@/lib/integrations/credentials";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 
 /**
@@ -178,13 +175,27 @@ export async function getActiveMyDataEnvironment(): Promise<
  * POSTs one InvoicesDoc. Never logs or returns the credentials, and never
  * interpolates them into an error - lib/secrets.ts also registers
  * decrypted values with the Sentry scrubber as a backstop.
+ *
+ * `environment` is resolved ONCE and threaded into both the URL and the
+ * credential lookup via getDecryptedCredentialForEnvironment. Using the
+ * environment-inferring getDecryptedCredential here instead would do a
+ * SECOND, independent read of active_environment - if the Business tab's
+ * sandbox/production toggle changes between that read and the one above,
+ * the URL and the credentials actually sent can disagree (2026-09-02: a
+ * receipt built its URL for production but very likely shipped with
+ * sandbox credentials from exactly this race, filing it under sandbox
+ * with no error, invisible in the production ledger).
  */
 export async function sendInvoiceXml(xml: string): Promise<MyDataResult> {
   const environment = await getActiveMyDataEnvironment();
 
   const [userId, subscriptionKey] = await Promise.all([
-    getDecryptedCredential(PROVIDER, "user_id"),
-    getDecryptedCredential(PROVIDER, "subscription_key"),
+    getDecryptedCredentialForEnvironment(PROVIDER, "user_id", environment),
+    getDecryptedCredentialForEnvironment(
+      PROVIDER,
+      "subscription_key",
+      environment,
+    ),
   ]);
 
   let response: Response;
