@@ -9,6 +9,11 @@ import {
   type CredentialStatus,
   type IntegrationEnvironment,
 } from "@/lib/integrations/credentials";
+import {
+  verifyReceiptMark,
+  type MyDataResult,
+  type MyDataVerification,
+} from "@/lib/mydata/client";
 import type {
   BusinessProfile,
   BusinessProfileInput,
@@ -170,4 +175,20 @@ export async function deleteCredentialAction(
 
   await deleteCredential(provider, credentialKey, environment);
   return getCredentialStatus(provider, credentialKey, environment);
+}
+
+/**
+ * Read-only lookup of an arbitrary MARK against AADE's RequestTransmittedDocs
+ * - a diagnostic tool, not tied to any receipt row. Never writes to
+ * `receipts` or `mydata_submission_log`: for when a receipt's own stored
+ * MARK doesn't match what actually needs checking (e.g. a MARK from a
+ * duplicate/orphaned submission), so there's nothing to undo afterward.
+ */
+export async function checkMyDataMarkAction(
+  mark: string,
+  environment: IntegrationEnvironment,
+): Promise<MyDataResult & { verification?: MyDataVerification }> {
+  await requireTeacherSession();
+
+  return verifyReceiptMark(mark, environment);
 }

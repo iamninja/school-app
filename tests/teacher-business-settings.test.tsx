@@ -11,6 +11,7 @@ vi.mock("@/app/protected/teacher/business-settings-actions", () => ({
   updateIntegrationSettingsAction: vi.fn(),
   setCredentialAction: vi.fn(),
   deleteCredentialAction: vi.fn(),
+  checkMyDataMarkAction: vi.fn(),
 }));
 
 vi.mock("sonner", () => ({
@@ -93,5 +94,66 @@ describe("TeacherBusinessSettings demo receipt preview", () => {
     await user.click(screen.getByRole("button", { name: /back to business/i }));
 
     expect(screen.getByText("Business details")).toBeInTheDocument();
+  });
+});
+
+describe("TeacherBusinessSettings - check a myDATA MARK", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("shows the raw AADE response after checking a MARK", async () => {
+    const user = userEvent.setup();
+    vi.mocked(businessActions.checkMyDataMarkAction).mockResolvedValue({
+      ok: true,
+      mark: "400015102490640",
+      uid: "some-uid",
+      qrUrl: null,
+      raw: "<RequestedDoc>only a stub, not a real AADE response</RequestedDoc>",
+      warning: null,
+      verification: { found: false, invoiceType: null, grossValue: null },
+    });
+
+    render(
+      <TeacherBusinessSettings
+        initialProfile={profile}
+        initialIntegrations={[]}
+        initialCredentialStatuses={{}}
+      />,
+    );
+
+    await user.type(
+      screen.getByPlaceholderText("MARK"),
+      "400015102490640",
+    );
+    await user.click(screen.getByRole("button", { name: "Check" }));
+
+    expect(businessActions.checkMyDataMarkAction).toHaveBeenCalledWith(
+      "400015102490640",
+      "production",
+    );
+    expect(
+      await screen.findByText(/not found in aade/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "<RequestedDoc>only a stub, not a real AADE response</RequestedDoc>",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("refuses to check without a MARK entered", async () => {
+    const user = userEvent.setup();
+    render(
+      <TeacherBusinessSettings
+        initialProfile={profile}
+        initialIntegrations={[]}
+        initialCredentialStatuses={{}}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Check" }));
+
+    expect(businessActions.checkMyDataMarkAction).not.toHaveBeenCalled();
   });
 });

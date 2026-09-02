@@ -12,11 +12,16 @@ import {
 } from "lucide-react";
 
 import {
+  checkMyDataMarkAction,
   deleteCredentialAction,
   setCredentialAction,
   updateBusinessProfileAction,
   updateIntegrationSettingsAction,
 } from "@/app/protected/teacher/business-settings-actions";
+import type {
+  MyDataResult,
+  MyDataVerification,
+} from "@/lib/mydata/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -159,6 +164,15 @@ export function TeacherBusinessSettings({
   const [credentialValue, setCredentialValue] = React.useState("");
   const [isSavingCredential, setIsSavingCredential] = React.useState(false);
 
+  const [markToCheck, setMarkToCheck] = React.useState("");
+  const [markCheckEnvironment, setMarkCheckEnvironment] = React.useState<
+    "sandbox" | "production"
+  >("production");
+  const [isCheckingMark, setIsCheckingMark] = React.useState(false);
+  const [markCheckResult, setMarkCheckResult] = React.useState<
+    (MyDataResult & { verification?: MyDataVerification }) | null
+  >(null);
+
   const handleSaveProfile = async (event: React.FormEvent) => {
     event.preventDefault();
     setIsSavingProfile(true);
@@ -252,6 +266,28 @@ export function TeacherBusinessSettings({
       toast.error(
         error instanceof Error ? error.message : "Failed to remove credential",
       );
+    }
+  };
+
+  const handleCheckMark = async () => {
+    if (!markToCheck.trim()) {
+      toast.error("Enter a MARK first");
+      return;
+    }
+    setIsCheckingMark(true);
+    setMarkCheckResult(null);
+    try {
+      const result = await checkMyDataMarkAction(
+        markToCheck.trim(),
+        markCheckEnvironment,
+      );
+      setMarkCheckResult(result);
+    } catch (error: unknown) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to check MARK",
+      );
+    } finally {
+      setIsCheckingMark(false);
     }
   };
 
@@ -478,6 +514,62 @@ export function TeacherBusinessSettings({
           </Card>
         );
       })}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Check a myDATA MARK</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Looks up a MARK directly against AADE - read-only, does not touch
+            any receipt or the submission log.
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Input
+              placeholder="MARK"
+              value={markToCheck}
+              onChange={(event) => setMarkToCheck(event.target.value)}
+              className="w-56"
+            />
+            <select
+              aria-label="Environment to check against"
+              value={markCheckEnvironment}
+              onChange={(event) =>
+                setMarkCheckEnvironment(
+                  event.target.value as "sandbox" | "production",
+                )
+              }
+              className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="sandbox">Sandbox</option>
+              <option value="production">Production</option>
+            </select>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={isCheckingMark}
+              onClick={() => void handleCheckMark()}
+            >
+              {isCheckingMark ? "Checking..." : "Check"}
+            </Button>
+          </div>
+          {markCheckResult && (
+            <div className="space-y-2 rounded-md border p-3 text-sm">
+              <p>
+                {markCheckResult.ok
+                  ? markCheckResult.verification?.found
+                    ? "Found in AADE's transmitted documents."
+                    : "Not found in AADE's transmitted documents."
+                  : `Error: ${markCheckResult.error}`}
+              </p>
+              <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all rounded bg-muted p-2 text-xs">
+                {markCheckResult.raw || "(empty response)"}
+              </pre>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Dialog
         open={editing !== null}

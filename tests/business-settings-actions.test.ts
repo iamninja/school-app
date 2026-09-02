@@ -27,10 +27,15 @@ vi.mock("@/lib/integrations/credentials", () => ({
   deleteCredential: vi.fn(async () => {}),
 }));
 
+vi.mock("@/lib/mydata/client", () => ({
+  verifyReceiptMark: vi.fn(),
+}));
+
 import {
   deleteCredential,
   setCredential,
 } from "@/lib/integrations/credentials";
+import { verifyReceiptMark } from "@/lib/mydata/client";
 
 /**
  * The export-surface test below is the important one. Every exported async
@@ -42,6 +47,7 @@ import {
 describe("business-settings-actions - export surface", () => {
   it("exports only the intended actions, and nothing that returns a secret", () => {
     expect(Object.keys(businessSettingsActions).sort()).toEqual([
+      "checkMyDataMarkAction",
       "deleteCredentialAction",
       "getBusinessSettingsAction",
       "setCredentialAction",
@@ -146,6 +152,52 @@ describe("business-settings-actions - authorization", () => {
       lastFour: "1234",
       updatedAt: "2026-08-20T00:00:00Z",
       lastUsedAt: null,
+    });
+  });
+
+  it("checkMyDataMarkAction refuses a non-teacher before checking anything", async () => {
+    vi.mocked(createClient).mockResolvedValue(
+      createMockSupabaseClient({}, { id: "parent-1" }) as never,
+    );
+    vi.mocked(requireTeacher).mockRejectedValue(
+      new Error("Not authorized as a teacher"),
+    );
+
+    await expect(
+      businessSettingsActions.checkMyDataMarkAction("123", "production"),
+    ).rejects.toThrow("Not authorized as a teacher");
+
+    expect(verifyReceiptMark).not.toHaveBeenCalled();
+  });
+
+  it("checkMyDataMarkAction passes the mark/environment straight through and returns whatever AADE said, raw response included", async () => {
+    vi.mocked(createClient).mockResolvedValue(
+      createMockSupabaseClient({}, { id: "teacher-1" }) as never,
+    );
+    vi.mocked(verifyReceiptMark).mockResolvedValue({
+      ok: true,
+      mark: "400015102490640",
+      uid: "some-uid",
+      qrUrl: null,
+      raw: "<RequestedDoc/>",
+      warning: null,
+      verification: { found: false, invoiceType: null, grossValue: null },
+    });
+
+    const result = await businessSettingsActions.checkMyDataMarkAction(
+      "400015102490640",
+      "production",
+    );
+
+    expect(verifyReceiptMark).toHaveBeenCalledWith(
+      "400015102490640",
+      "production",
+    );
+    expect(result.raw).toBe("<RequestedDoc/>");
+    expect(result.verification).toEqual({
+      found: false,
+      invoiceType: null,
+      grossValue: null,
     });
   });
 });
