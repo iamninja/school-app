@@ -223,11 +223,13 @@ function WeeklyOverview({
   slots,
   classes,
   events,
+  onSelectDate,
 }: {
   selectedDate: string;
   slots: ProjectionSlot[];
   classes: ProjectionClass[];
   events: ProjectionEvent[];
+  onSelectDate: (date: string) => void;
 }) {
   const weekStart = startOfWeek(fromIsoDate(selectedDate), {
     weekStartsOn: 1,
@@ -257,10 +259,13 @@ function WeeklyOverview({
           {days.map((day) => {
             const dayOccurrences = occurrencesByDate.get(day) ?? [];
             return (
-              <div
+              <button
                 key={day}
+                type="button"
+                aria-pressed={day === selectedDate}
+                onClick={() => onSelectDate(day)}
                 className={cn(
-                  "rounded-md border p-2",
+                  "w-full rounded-md border p-2 text-left transition-colors hover:bg-accent",
                   overlapDates.has(day)
                     ? "border-rose-500 ring-1 ring-rose-500"
                     : day === selectedDate &&
@@ -320,7 +325,7 @@ function WeeklyOverview({
                     ))
                   )}
                 </div>
-              </div>
+              </button>
             );
           })}
         </div>
@@ -1001,6 +1006,7 @@ export function TeacherCalendar({
       slots={slots}
       classes={classes}
       events={projectionEvents}
+      onSelectDate={setSelectedDate}
     />
 
     <Card>
