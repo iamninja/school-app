@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
-import { format } from "date-fns";
+import { addDays, format, startOfWeek } from "date-fns";
 import { TeacherCalendar } from "@/components/teacher-calendar";
 import * as calendarActions from "@/app/protected/teacher/calendar-actions";
 import {
@@ -26,6 +26,14 @@ vi.mock("sonner", () => ({
 
 const todayIso = toIsoDate(new Date());
 const todayWeekday = weekdayLabelFromDate(new Date());
+
+// A day within the same Mon-Sun week as today, but distinct from it - used
+// to test clicking a different day box in the week strip.
+const weekStartIso = toIsoDate(startOfWeek(new Date(), { weekStartsOn: 1 }));
+const otherDayIso =
+  weekStartIso === todayIso
+    ? toIsoDate(addDays(startOfWeek(new Date(), { weekStartsOn: 1 }), 1))
+    : weekStartIso;
 
 const classA = { id: "class-1", name: "Algebra II", archivedAt: null };
 const classB = { id: "class-2", name: "Geometry", archivedAt: null };
@@ -109,9 +117,10 @@ describe("TeacherCalendar", () => {
       .closest(".rounded-2xl") as HTMLElement;
     expect(within(weekCard).getByText("15:00")).toBeInTheDocument();
     expect(within(weekCard).getByText("Algebra II")).toBeInTheDocument();
-    // Read-only: no Cancel/Edit/Delete controls inside the week strip itself.
+    // The day boxes themselves are clickable (to change the selected day),
+    // but there are still no per-occurrence Cancel/Edit/Delete controls.
     expect(
-      within(weekCard).queryByRole("button"),
+      within(weekCard).queryByRole("button", { name: /cancel|edit|delete/i }),
     ).not.toBeInTheDocument();
   });
 
@@ -207,6 +216,77 @@ describe("TeacherCalendar", () => {
       .find((el) => el.textContent?.startsWith(format(fromIsoDate(todayIso), "EEE d")))
       ?.closest(".rounded-md") as HTMLElement;
     expect(todayColumn.className).not.toContain("border-rose-500");
+  });
+
+  it("clicking a day box in the week strip changes which day's attendance shows below", async () => {
+    const user = userEvent.setup();
+    renderCalendar();
+
+    // Starts on today - the Attendance section below shows today's date.
+    expect(
+      screen.getByText(
+        new RegExp(
+          `Attendance — ${format(fromIsoDate(todayIso), "EEEE, d MMMM yyyy")}`,
+        ),
+      ),
+    ).toBeInTheDocument();
+
+    const otherDayBox = screen
+      .getAllByText(/^\w{3} \d+$/)
+      .find((el) =>
+        el.textContent?.startsWith(format(fromIsoDate(otherDayIso), "EEE d")),
+      )
+      ?.closest("button") as HTMLElement;
+    await user.click(otherDayBox);
+
+    expect(
+      screen.getByText(
+        new RegExp(
+          `Attendance — ${format(fromIsoDate(otherDayIso), "EEEE, d MMMM yyyy")}`,
+        ),
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        new RegExp(
+          `Attendance — ${format(fromIsoDate(todayIso), "EEEE, d MMMM yyyy")}`,
+        ),
+      ),
+    ).not.toBeInTheDocument();
+  });
+
+  it("clicking a day box in the week strip also moves the month view's selected day", async () => {
+    const user = userEvent.setup();
+    renderCalendar();
+
+    const todayBox = screen
+      .getAllByText(/^\w{3} \d+$/)
+      .find((el) => el.textContent?.startsWith(format(fromIsoDate(todayIso), "EEE d")))
+      ?.closest("button") as HTMLElement;
+    const otherDayBox = screen
+      .getAllByText(/^\w{3} \d+$/)
+      .find((el) =>
+        el.textContent?.startsWith(format(fromIsoDate(otherDayIso), "EEE d")),
+      )
+      ?.closest("button") as HTMLElement;
+
+    expect(todayBox).toHaveAttribute("aria-pressed", "true");
+    expect(otherDayBox).toHaveAttribute("aria-pressed", "false");
+
+    await user.click(otherDayBox);
+
+    expect(otherDayBox).toHaveAttribute("aria-pressed", "true");
+    expect(todayBox).toHaveAttribute("aria-pressed", "false");
+    // The month calendar grid shares the same selectedDate state, so its
+    // own selected-day cell moves too - shadcn's Calendar marks the
+    // selected day via data-selected-single on the day button.
+    const monthSelectedDay = document.querySelector(
+      '[data-selected-single="true"]',
+    );
+    expect(monthSelectedDay).toHaveAttribute(
+      "data-day",
+      format(fromIsoDate(otherDayIso), "M/d/yyyy"),
+    );
   });
 
   it("derives a recurring class's real teaching window from the schedule grid when flagging an overlap", () => {
