@@ -36,6 +36,7 @@ const baseProps = {
   attendance: [],
   quizzes: [],
   calendarEvents: [],
+  tests: [],
 };
 
 describe("StudentDashboard", () => {
