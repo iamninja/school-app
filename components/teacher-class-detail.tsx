@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { format } from "date-fns";
 import {
   ArchiveIcon,
   PencilIcon,
@@ -37,6 +38,7 @@ import { QuizQuestionImage } from "@/components/quiz-question-image";
 import { QuizReviewAnswers } from "@/components/quiz-review-answers";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CLASS_GRADE_LABELS } from "@/lib/class-grades";
+import { fromIsoDate } from "@/lib/calendar-projection";
 import { lessonTimeLabel } from "@/lib/schedule-grid";
 import type {
   PendingGradingItem,
@@ -45,7 +47,22 @@ import type {
   QuizQuestionBreakdownResult,
   QuizResultRow,
   TeacherQuizListItem,
+  TeacherTestListItem,
 } from "@/lib/types/database";
+
+// Small standalone summary, deliberately not shared with teacher-tests.tsx's
+// scheduleSummary - this tie-in only ever shows a one-line "when", not the
+// full create/edit form logic that function's signature is shaped for.
+function testWhenLabel(test: TeacherTestListItem): string {
+  if (test.kind === "mock_exam") {
+    if (!test.scheduled_date) return "No date set";
+    const dateLabel = format(fromIsoDate(test.scheduled_date), "d MMM yyyy");
+    return test.scheduled_time ? `${dateLabel} at ${test.scheduled_time}` : dateLabel;
+  }
+  return test.deadline_at
+    ? `Due ${format(new Date(test.deadline_at), "d MMM yyyy, HH:mm")}`
+    : "Open (no deadline)";
+}
 
 const DAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
@@ -71,6 +88,7 @@ type TeacherClassDetailProps = {
   enrolledStudents: StudentItem[];
   allStudents: StudentItem[];
   assignedQuizzes: TeacherQuizListItem[];
+  assignedTests: TeacherTestListItem[];
   isSavingClass: boolean;
   isMutatingEnrollment: boolean;
   onBack: () => void;
@@ -80,6 +98,7 @@ type TeacherClassDetailProps = {
   onDelete: () => void;
   onViewStudent: (studentId: string) => void;
   onGoToQuizzes: () => void;
+  onGoToTests: (testId?: string) => void;
   onEnrollStudent: (studentId: string) => void;
   onUnenrollStudent: (studentId: string) => void;
 };
@@ -90,6 +109,7 @@ export function TeacherClassDetail({
   enrolledStudents,
   allStudents,
   assignedQuizzes,
+  assignedTests,
   isSavingClass,
   isMutatingEnrollment,
   onBack,
@@ -99,6 +119,7 @@ export function TeacherClassDetail({
   onDelete,
   onViewStudent,
   onGoToQuizzes,
+  onGoToTests,
   onEnrollStudent,
   onUnenrollStudent,
 }: TeacherClassDetailProps) {
@@ -566,6 +587,45 @@ export function TeacherClassDetail({
                   onClick={onGoToQuizzes}
                 >
                   Go to Quizzes &rarr;
+                </Button>
+              </div>
+            </div>
+
+            <div className="rounded-lg border p-4">
+              <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                Assigned tests
+              </div>
+              <div className="mt-3 space-y-2">
+                {assignedTests.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    No tests assigned to this class.
+                  </p>
+                ) : (
+                  assignedTests.map((test) => (
+                    <button
+                      key={test.id}
+                      type="button"
+                      onClick={() => onGoToTests(test.id)}
+                      className="flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm hover:bg-muted/50"
+                    >
+                      <span className="font-medium">{test.title}</span>
+                      <span className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <Badge variant="outline">
+                          {test.kind === "mock_exam" ? "Mock exam" : "Short test"}
+                        </Badge>
+                        {testWhenLabel(test)}
+                      </span>
+                    </button>
+                  ))
+                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => onGoToTests()}
+                >
+                  Go to Tests &rarr;
                 </Button>
               </div>
             </div>

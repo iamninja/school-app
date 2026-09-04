@@ -85,6 +85,7 @@ import { LogoutButton } from "@/components/logout-button";
 import { TeacherClassDetail } from "@/components/teacher-class-detail";
 import { TeacherQuizBuilder } from "@/components/teacher-quiz-builder";
 import { TeacherTests } from "@/components/teacher-tests";
+import { TestStatusBadge } from "@/components/test-status-badge";
 import {
   TeacherBusinessSettings,
   type CredentialStatusView,
@@ -701,6 +702,33 @@ export function TeacherDashboard({
     () => classes.filter((item) => !item.archivedAt),
     [classes],
   );
+
+  // Read-only overlay for the Calendar tab (requirement: mock exam dates
+  // visible on the grid, without writing tests into calendar_events or
+  // touching lib/calendar-projection.ts). One marker per (test, date),
+  // counting how many students have that effective date.
+  const testDateMarkers = React.useMemo(() => {
+    const titleByTestId = new Map(tests.map((test) => [test.id, test.title]));
+    const byKey = new Map<
+      string,
+      { testId: string; date: string; label: string; studentCount: number }
+    >();
+    for (const assignment of testAssignments) {
+      if (assignment.kind !== "mock_exam" || !assignment.effective_scheduled_date) {
+        continue;
+      }
+      const key = `${assignment.test_id}|${assignment.effective_scheduled_date}`;
+      const entry = byKey.get(key) ?? {
+        testId: assignment.test_id,
+        date: assignment.effective_scheduled_date,
+        label: titleByTestId.get(assignment.test_id) ?? "Mock exam",
+        studentCount: 0,
+      };
+      entry.studentCount += 1;
+      byKey.set(key, entry);
+    }
+    return [...byKey.values()];
+  }, [tests, testAssignments]);
 
   const resetClassForm = () => {
     setClassFormName("");
@@ -1927,6 +1955,11 @@ export function TeacherDashboard({
             slots={scheduleSlotList}
             attendanceRecords={attendanceRecords}
             onAttendanceRecordsChange={setAttendanceRecords}
+            testMarkers={testDateMarkers}
+            onViewTest={(testId) => {
+              setSection("tests");
+              setSelectedTestId(testId);
+            }}
           />
         </TabsContent>
 
@@ -1956,6 +1989,9 @@ export function TeacherDashboard({
               const assignedQuizzes = initialQuizzes.filter((quiz) =>
                 quiz.assignedClasses.some((c) => c.id === selectedClassId),
               );
+              const assignedTests = tests.filter(
+                (test) => test.class_id === selectedClassId,
+              );
               return (
                 <TeacherClassDetail
                   classItem={classItem}
@@ -1965,6 +2001,7 @@ export function TeacherDashboard({
                     (student) => !student.withdrawnAt,
                   )}
                   assignedQuizzes={assignedQuizzes}
+                  assignedTests={assignedTests}
                   isSavingClass={isSavingClass}
                   isMutatingEnrollment={isMutatingEnrollment}
                   onBack={() => setSelectedClassId(null)}
@@ -1977,6 +2014,10 @@ export function TeacherDashboard({
                     setSelectedStudentId(studentId);
                   }}
                   onGoToQuizzes={() => setSection("quizzes")}
+                  onGoToTests={(testId) => {
+                    setSection("tests");
+                    setSelectedTestId(testId ?? null);
+                  }}
                   onEnrollStudent={(studentId) =>
                     void handleEnrollStudent(studentId, classItem.id)
                   }
@@ -2627,6 +2668,64 @@ export function TeacherDashboard({
                                   })}
                               </div>
                             )}
+                          </div>
+                        </div>
+
+                        <div className="rounded-lg border p-4">
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                            Test history
+                          </div>
+                          <div className="mt-3 space-y-2 text-xs">
+                            {(() => {
+                              const studentTestAssignments = testAssignments
+                                .filter(
+                                  (assignment) =>
+                                    assignment.student_id === student.id,
+                                )
+                                .sort((a, b) =>
+                                  b.created_at.localeCompare(a.created_at),
+                                );
+                              if (studentTestAssignments.length === 0) {
+                                return (
+                                  <div className="text-muted-foreground">
+                                    No tests yet.
+                                  </div>
+                                );
+                              }
+                              return (
+                                <div className="divide-y rounded-md border">
+                                  {studentTestAssignments
+                                    .slice(0, 10)
+                                    .map((assignment) => {
+                                      const test = tests.find(
+                                        (t) => t.id === assignment.test_id,
+                                      );
+                                      return (
+                                        <div
+                                          key={assignment.id}
+                                          className="flex items-center justify-between gap-2 px-3 py-2"
+                                        >
+                                          <div>
+                                            <div className="font-medium">
+                                              {test?.title ?? "Deleted test"}
+                                            </div>
+                                            {assignment.status === "marked" ? (
+                                              <div className="text-muted-foreground">
+                                                {assignment.score}/
+                                                {test?.max_score ?? "?"}
+                                              </div>
+                                            ) : null}
+                                          </div>
+                                          <TestStatusBadge
+                                            status={assignment.status}
+                                            isLate={assignment.isLate}
+                                          />
+                                        </div>
+                                      );
+                                    })}
+                                </div>
+                              );
+                            })()}
                           </div>
                         </div>
                       </div>
