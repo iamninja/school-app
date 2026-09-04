@@ -12,16 +12,16 @@ import {
 } from "lucide-react";
 
 import {
-  addStudentToTestAction,
-  clearTestMarkAction,
-  createTestAction,
-  deleteTestAction,
-  editTestAssignmentScheduleAction,
-  enterTestMarkAction,
-  markTestTakenAction,
-  removeStudentFromTestAction,
-  updateTestAction,
-} from "@/app/protected/teacher/tests-actions";
+  addStudentToAssessmentAction,
+  clearAssessmentMarkAction,
+  createAssessmentAction,
+  deleteAssessmentAction,
+  editAssessmentAssignmentScheduleAction,
+  enterAssessmentMarkAction,
+  markAssessmentTakenAction,
+  removeStudentFromAssessmentAction,
+  updateAssessmentAction,
+} from "@/app/protected/teacher/assessments-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -45,21 +45,21 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { TestStatusBadge } from "@/components/test-status-badge";
+import { AssessmentStatusBadge } from "@/components/assessment-status-badge";
 import { fromIsoDate } from "@/lib/calendar-projection";
-import { upsertTestAssignment } from "@/lib/test-status";
+import { upsertAssessmentAssignment } from "@/lib/assessment-status";
 import type {
-  TeacherTestAssignmentRow,
-  TeacherTestListItem,
-  TestInput,
-  TestKind,
+  TeacherAssessmentAssignmentRow,
+  TeacherAssessmentListItem,
+  AssessmentInput,
+  AssessmentKind,
 } from "@/lib/types/database";
 
 type ClassOption = { id: string; name: string };
 type StudentOption = { id: string; firstName: string; lastName: string };
 
-const KIND_LABELS: Record<TestKind, string> = {
-  short_test: "Short test",
+const KIND_LABELS: Record<AssessmentKind, string> = {
+  short_assessment: "Short assessment",
   mock_exam: "Mock exam",
 };
 
@@ -72,7 +72,7 @@ function formatDateLabel(iso: string): string {
 }
 
 function scheduleSummary(input: {
-  kind: TestKind;
+  kind: AssessmentKind;
   scheduledDate: string | null;
   scheduledTime: string | null;
   deadlineAt: string | null;
@@ -88,8 +88,8 @@ function scheduleSummary(input: {
     : "Open (no deadline)";
 }
 
-type TestFormState = {
-  kind: TestKind;
+type AssessmentFormState = {
+  kind: AssessmentKind;
   title: string;
   description: string;
   maxScore: string;
@@ -103,9 +103,9 @@ type TestFormState = {
   studentIds: string[];
 };
 
-function emptyForm(): TestFormState {
+function emptyForm(): AssessmentFormState {
   return {
-    kind: "short_test",
+    kind: "short_assessment",
     title: "",
     description: "",
     maxScore: "20",
@@ -120,24 +120,28 @@ function emptyForm(): TestFormState {
   };
 }
 
-function testToForm(test: TeacherTestListItem): TestFormState {
+function assessmentToForm(
+  assessment: TeacherAssessmentListItem,
+): AssessmentFormState {
   return {
-    kind: test.kind,
-    title: test.title,
-    description: test.description ?? "",
-    maxScore: String(test.max_score),
-    durationMinutes: String(test.duration_minutes),
-    scheduledDate: test.scheduled_date ?? "",
-    scheduledTime: test.scheduled_time ?? "",
-    hasDeadline: Boolean(test.deadline_at),
-    deadlineLocal: test.deadline_at ? toDatetimeLocalValue(test.deadline_at) : "",
+    kind: assessment.kind,
+    title: assessment.title,
+    description: assessment.description ?? "",
+    maxScore: String(assessment.max_score),
+    durationMinutes: String(assessment.duration_minutes),
+    scheduledDate: assessment.scheduled_date ?? "",
+    scheduledTime: assessment.scheduled_time ?? "",
+    hasDeadline: Boolean(assessment.deadline_at),
+    deadlineLocal: assessment.deadline_at
+      ? toDatetimeLocalValue(assessment.deadline_at)
+      : "",
     targetType: "class",
-    classId: test.class_id ?? "",
+    classId: assessment.class_id ?? "",
     studentIds: [],
   };
 }
 
-function formToInput(form: TestFormState): TestInput {
+function formToInput(form: AssessmentFormState): AssessmentInput {
   return {
     kind: form.kind,
     title: form.title,
@@ -148,7 +152,7 @@ function formToInput(form: TestFormState): TestInput {
     scheduledTime:
       form.kind === "mock_exam" ? form.scheduledTime || undefined : undefined,
     deadlineAt:
-      form.kind === "short_test" && form.hasDeadline && form.deadlineLocal
+      form.kind === "short_assessment" && form.hasDeadline && form.deadlineLocal
         ? new Date(form.deadlineLocal).toISOString()
         : null,
     classId: form.targetType === "class" ? form.classId || undefined : undefined,
@@ -160,47 +164,51 @@ function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
-export function TeacherTests({
+export function TeacherAssessments({
   classes,
   students,
-  tests,
-  testAssignments,
-  onTestsChange,
-  onTestAssignmentsChange,
-  selectedTestId,
-  onSelectedTestIdChange,
+  assessments,
+  assessmentAssignments,
+  onAssessmentsChange,
+  onAssessmentAssignmentsChange,
+  selectedAssessmentId,
+  onSelectedAssessmentIdChange,
 }: {
   classes: ClassOption[];
   students: StudentOption[];
-  tests: TeacherTestListItem[];
-  testAssignments: TeacherTestAssignmentRow[];
-  onTestsChange: React.Dispatch<React.SetStateAction<TeacherTestListItem[]>>;
-  onTestAssignmentsChange: React.Dispatch<
-    React.SetStateAction<TeacherTestAssignmentRow[]>
+  assessments: TeacherAssessmentListItem[];
+  assessmentAssignments: TeacherAssessmentAssignmentRow[];
+  onAssessmentsChange: React.Dispatch<
+    React.SetStateAction<TeacherAssessmentListItem[]>
   >;
-  selectedTestId: string | null;
-  onSelectedTestIdChange: (testId: string | null) => void;
+  onAssessmentAssignmentsChange: React.Dispatch<
+    React.SetStateAction<TeacherAssessmentAssignmentRow[]>
+  >;
+  selectedAssessmentId: string | null;
+  onSelectedAssessmentIdChange: (assessmentId: string | null) => void;
 }) {
   const [dialog, setDialog] = React.useState<
-    { mode: "create" } | { mode: "edit"; test: TeacherTestListItem } | null
+    | { mode: "create" }
+    | { mode: "edit"; assessment: TeacherAssessmentListItem }
+    | null
   >(null);
-  const [form, setForm] = React.useState<TestFormState>(emptyForm());
+  const [form, setForm] = React.useState<AssessmentFormState>(emptyForm());
   const [isSaving, setIsSaving] = React.useState(false);
   const [addStudentId, setAddStudentId] = React.useState("");
   const [scheduleTarget, setScheduleTarget] =
-    React.useState<TeacherTestAssignmentRow | null>(null);
+    React.useState<TeacherAssessmentAssignmentRow | null>(null);
   const [markTarget, setMarkTarget] = React.useState<{
-    assignment: TeacherTestAssignmentRow;
+    assignment: TeacherAssessmentAssignmentRow;
     maxScore: number;
   } | null>(null);
 
-  const summaryByTest = React.useMemo(() => {
+  const summaryByAssessment = React.useMemo(() => {
     const map = new Map<
       string,
       { count: number; marked: number; late: number }
     >();
-    for (const assignment of testAssignments) {
-      const entry = map.get(assignment.test_id) ?? {
+    for (const assignment of assessmentAssignments) {
+      const entry = map.get(assignment.assessment_id) ?? {
         count: 0,
         marked: 0,
         late: 0,
@@ -208,13 +216,13 @@ export function TeacherTests({
       entry.count += 1;
       if (assignment.status === "marked") entry.marked += 1;
       if (assignment.isLate) entry.late += 1;
-      map.set(assignment.test_id, entry);
+      map.set(assignment.assessment_id, entry);
     }
     return map;
-  }, [testAssignments]);
+  }, [assessmentAssignments]);
 
-  const selectedTest = selectedTestId
-    ? tests.find((t) => t.id === selectedTestId) ?? null
+  const selectedAssessment = selectedAssessmentId
+    ? assessments.find((a) => a.id === selectedAssessmentId) ?? null
     : null;
 
   function openCreateDialog() {
@@ -222,9 +230,9 @@ export function TeacherTests({
     setDialog({ mode: "create" });
   }
 
-  function openEditDialog(test: TeacherTestListItem) {
-    setForm(testToForm(test));
-    setDialog({ mode: "edit", test });
+  function openEditDialog(assessment: TeacherAssessmentListItem) {
+    setForm(assessmentToForm(assessment));
+    setDialog({ mode: "edit", assessment });
   }
 
   function toggleStudentId(id: string) {
@@ -242,55 +250,65 @@ export function TeacherTests({
     try {
       const input = formToInput(form);
       if (dialog?.mode === "edit") {
-        const updated = await updateTestAction(dialog.test.id, input);
-        onTestsChange((prev) =>
-          prev.map((t) => (t.id === updated.id ? { ...t, ...updated } : t)),
+        const updated = await updateAssessmentAction(
+          dialog.assessment.id,
+          input,
         );
-        toast.success("Test updated");
+        onAssessmentsChange((prev) =>
+          prev.map((a) => (a.id === updated.id ? { ...a, ...updated } : a)),
+        );
+        toast.success("Assessment updated");
       } else {
-        const { test, assignments } = await createTestAction(input);
-        onTestsChange((prev) => [
-          { ...test, assignmentCount: assignments.length, markedCount: 0 },
+        const { assessment, assignments } = await createAssessmentAction(input);
+        onAssessmentsChange((prev) => [
+          { ...assessment, assignmentCount: assignments.length, markedCount: 0 },
           ...prev,
         ]);
-        onTestAssignmentsChange((prev) => [...assignments, ...prev]);
-        toast.success("Test created");
-        onSelectedTestIdChange(test.id);
+        onAssessmentAssignmentsChange((prev) => [...assignments, ...prev]);
+        toast.success("Assessment created");
+        onSelectedAssessmentIdChange(assessment.id);
       }
       setDialog(null);
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to save the test"));
+      toast.error(errorMessage(error, "Failed to save the assessment"));
     } finally {
       setIsSaving(false);
     }
   }
 
-  async function handleDeleteTest(test: TeacherTestListItem) {
+  async function handleDeleteAssessment(assessment: TeacherAssessmentListItem) {
     if (
       !window.confirm(
-        `Delete "${test.title}"? This removes every student's record for it.`,
+        `Delete "${assessment.title}"? This removes every student's record for it.`,
       )
     ) {
       return;
     }
     try {
-      await deleteTestAction(test.id);
-      onTestsChange((prev) => prev.filter((t) => t.id !== test.id));
-      onTestAssignmentsChange((prev) =>
-        prev.filter((a) => a.test_id !== test.id),
+      await deleteAssessmentAction(assessment.id);
+      onAssessmentsChange((prev) => prev.filter((a) => a.id !== assessment.id));
+      onAssessmentAssignmentsChange((prev) =>
+        prev.filter((a) => a.assessment_id !== assessment.id),
       );
-      if (selectedTestId === test.id) onSelectedTestIdChange(null);
-      toast.success("Test deleted");
+      if (selectedAssessmentId === assessment.id) {
+        onSelectedAssessmentIdChange(null);
+      }
+      toast.success("Assessment deleted");
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to delete the test"));
+      toast.error(errorMessage(error, "Failed to delete the assessment"));
     }
   }
 
-  async function handleAddStudent(testId: string) {
+  async function handleAddStudent(assessmentId: string) {
     if (!addStudentId) return;
     try {
-      const assignment = await addStudentToTestAction(testId, addStudentId);
-      onTestAssignmentsChange((prev) => upsertTestAssignment(prev, assignment));
+      const assignment = await addStudentToAssessmentAction(
+        assessmentId,
+        addStudentId,
+      );
+      onAssessmentAssignmentsChange((prev) =>
+        upsertAssessmentAssignment(prev, assignment),
+      );
       setAddStudentId("");
       toast.success("Student added");
     } catch (error) {
@@ -298,17 +316,19 @@ export function TeacherTests({
     }
   }
 
-  async function handleRemoveStudent(assignment: TeacherTestAssignmentRow) {
+  async function handleRemoveStudent(
+    assignment: TeacherAssessmentAssignmentRow,
+  ) {
     if (
       !window.confirm(
-        `Remove ${assignment.studentName} from this test?`,
+        `Remove ${assignment.studentName} from this assessment?`,
       )
     ) {
       return;
     }
     try {
-      await removeStudentFromTestAction(assignment.id);
-      onTestAssignmentsChange((prev) =>
+      await removeStudentFromAssessmentAction(assignment.id);
+      onAssessmentAssignmentsChange((prev) =>
         prev.filter((a) => a.id !== assignment.id),
       );
       toast.success("Removed");
@@ -317,20 +337,24 @@ export function TeacherTests({
     }
   }
 
-  async function handleMarkTaken(assignment: TeacherTestAssignmentRow) {
+  async function handleMarkTaken(assignment: TeacherAssessmentAssignmentRow) {
     try {
-      const updated = await markTestTakenAction(assignment.id);
-      onTestAssignmentsChange((prev) => upsertTestAssignment(prev, updated));
+      const updated = await markAssessmentTakenAction(assignment.id);
+      onAssessmentAssignmentsChange((prev) =>
+        upsertAssessmentAssignment(prev, updated),
+      );
       toast.success("Marked taken");
     } catch (error) {
       toast.error(errorMessage(error, "Failed to mark taken"));
     }
   }
 
-  async function handleClearMark(assignment: TeacherTestAssignmentRow) {
+  async function handleClearMark(assignment: TeacherAssessmentAssignmentRow) {
     try {
-      const updated = await clearTestMarkAction(assignment.id);
-      onTestAssignmentsChange((prev) => upsertTestAssignment(prev, updated));
+      const updated = await clearAssessmentMarkAction(assignment.id);
+      onAssessmentAssignmentsChange((prev) =>
+        upsertAssessmentAssignment(prev, updated),
+      );
       toast.success("Mark cleared");
     } catch (error) {
       toast.error(errorMessage(error, "Failed to clear the mark"));
@@ -339,87 +363,92 @@ export function TeacherTests({
 
   return (
     <div className="space-y-6">
-      {selectedTest ? (
-        <TestDetailView
-          test={selectedTest}
-          assignments={testAssignments.filter(
-            (a) => a.test_id === selectedTest.id,
+      {selectedAssessment ? (
+        <AssessmentDetailView
+          assessment={selectedAssessment}
+          assignments={assessmentAssignments.filter(
+            (a) => a.assessment_id === selectedAssessment.id,
           )}
           studentOptions={students.filter(
             (s) =>
-              !testAssignments.some(
-                (a) => a.test_id === selectedTest.id && a.student_id === s.id,
+              !assessmentAssignments.some(
+                (a) =>
+                  a.assessment_id === selectedAssessment.id &&
+                  a.student_id === s.id,
               ),
           )}
           addStudentId={addStudentId}
           onAddStudentIdChange={setAddStudentId}
-          onBack={() => onSelectedTestIdChange(null)}
-          onEdit={() => openEditDialog(selectedTest)}
-          onDelete={() => void handleDeleteTest(selectedTest)}
-          onAddStudent={() => void handleAddStudent(selectedTest.id)}
+          onBack={() => onSelectedAssessmentIdChange(null)}
+          onEdit={() => openEditDialog(selectedAssessment)}
+          onDelete={() => void handleDeleteAssessment(selectedAssessment)}
+          onAddStudent={() => void handleAddStudent(selectedAssessment.id)}
           onRemoveStudent={(a) => void handleRemoveStudent(a)}
           onEditSchedule={(a) => setScheduleTarget(a)}
           onMarkTaken={(a) => void handleMarkTaken(a)}
           onEnterMark={(a) =>
-            setMarkTarget({ assignment: a, maxScore: selectedTest.max_score })
+            setMarkTarget({
+              assignment: a,
+              maxScore: selectedAssessment.max_score,
+            })
           }
           onClearMark={(a) => void handleClearMark(a)}
         />
       ) : (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-3">
-            <CardTitle>Tests</CardTitle>
+            <CardTitle>Assessments</CardTitle>
             <Button size="sm" onClick={openCreateDialog}>
               <PlusIcon className="mr-1.5 h-4 w-4" />
-              New test
+              New assessment
             </Button>
           </CardHeader>
           <CardContent>
-            {tests.length === 0 ? (
+            {assessments.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                No tests registered yet.
+                No assessments registered yet.
               </p>
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Test</TableHead>
+                    <TableHead>Assessment</TableHead>
                     <TableHead>Assigned to</TableHead>
                     <TableHead>When</TableHead>
                     <TableHead>Progress</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {tests.map((test) => {
-                    const summary = summaryByTest.get(test.id) ?? {
+                  {assessments.map((assessment) => {
+                    const summary = summaryByAssessment.get(assessment.id) ?? {
                       count: 0,
                       marked: 0,
                       late: 0,
                     };
                     return (
                       <TableRow
-                        key={test.id}
+                        key={assessment.id}
                         className="cursor-pointer"
-                        onClick={() => onSelectedTestIdChange(test.id)}
+                        onClick={() => onSelectedAssessmentIdChange(assessment.id)}
                       >
                         <TableCell>
-                          <div className="font-medium">{test.title}</div>
+                          <div className="font-medium">{assessment.title}</div>
                           <div className="text-xs text-muted-foreground">
                             <Badge variant="outline" className="mr-1.5">
-                              {KIND_LABELS[test.kind]}
+                              {KIND_LABELS[assessment.kind]}
                             </Badge>
-                            out of {test.max_score}
+                            out of {assessment.max_score}
                           </div>
                         </TableCell>
                         <TableCell className="text-sm">
-                          {test.class_name ?? `${summary.count} student(s)`}
+                          {assessment.class_name ?? `${summary.count} student(s)`}
                         </TableCell>
                         <TableCell className="text-sm">
                           {scheduleSummary({
-                            kind: test.kind,
-                            scheduledDate: test.scheduled_date,
-                            scheduledTime: test.scheduled_time,
-                            deadlineAt: test.deadline_at,
+                            kind: assessment.kind,
+                            scheduledDate: assessment.scheduled_date,
+                            scheduledTime: assessment.scheduled_time,
+                            deadlineAt: assessment.deadline_at,
                           })}
                         </TableCell>
                         <TableCell className="text-sm">
@@ -451,7 +480,7 @@ export function TeacherTests({
         <DialogContent className="max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {dialog?.mode === "edit" ? "Edit test" : "New test"}
+              {dialog?.mode === "edit" ? "Edit assessment" : "New assessment"}
             </DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmitForm} className="space-y-4">
@@ -462,7 +491,7 @@ export function TeacherTests({
                 onValueChange={(value) =>
                   setForm((prev) => ({
                     ...prev,
-                    kind: value as TestKind,
+                    kind: value as AssessmentKind,
                     durationMinutes: value === "mock_exam" ? "120" : "45",
                   }))
                 }
@@ -470,8 +499,8 @@ export function TeacherTests({
                 disabled={dialog?.mode === "edit"}
               >
                 <label className="flex items-center gap-2 text-sm">
-                  <RadioGroupItem value="short_test" />
-                  Short test (≤ 1h)
+                  <RadioGroupItem value="short_assessment" />
+                  Short assessment (≤ 1h)
                 </label>
                 <label className="flex items-center gap-2 text-sm">
                   <RadioGroupItem value="mock_exam" />
@@ -481,9 +510,9 @@ export function TeacherTests({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="test-title">Title</Label>
+              <Label htmlFor="assessment-title">Title</Label>
               <Input
-                id="test-title"
+                id="assessment-title"
                 value={form.title}
                 onChange={(e) =>
                   setForm((prev) => ({ ...prev, title: e.target.value }))
@@ -493,9 +522,11 @@ export function TeacherTests({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="test-description">Description (optional)</Label>
+              <Label htmlFor="assessment-description">
+                Description (optional)
+              </Label>
               <Textarea
-                id="test-description"
+                id="assessment-description"
                 value={form.description}
                 onChange={(e) =>
                   setForm((prev) => ({ ...prev, description: e.target.value }))
@@ -505,9 +536,9 @@ export function TeacherTests({
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="test-max-score">Max score</Label>
+                <Label htmlFor="assessment-max-score">Max score</Label>
                 <Input
-                  id="test-max-score"
+                  id="assessment-max-score"
                   type="number"
                   min={1}
                   step="0.01"
@@ -519,12 +550,12 @@ export function TeacherTests({
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="test-duration">Duration (minutes)</Label>
+                <Label htmlFor="assessment-duration">Duration (minutes)</Label>
                 <Input
-                  id="test-duration"
+                  id="assessment-duration"
                   type="number"
                   min={1}
-                  max={form.kind === "short_test" ? 60 : 180}
+                  max={form.kind === "short_assessment" ? 60 : 180}
                   value={form.durationMinutes}
                   onChange={(e) =>
                     setForm((prev) => ({
@@ -535,7 +566,9 @@ export function TeacherTests({
                   required
                 />
                 <p className="text-xs text-muted-foreground">
-                  {form.kind === "short_test" ? "1-60 minutes" : "60-180 minutes"}
+                  {form.kind === "short_assessment"
+                    ? "1-60 minutes"
+                    : "60-180 minutes"}
                 </p>
               </div>
             </div>
@@ -543,9 +576,9 @@ export function TeacherTests({
             {form.kind === "mock_exam" ? (
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="test-scheduled-date">Exam date</Label>
+                  <Label htmlFor="assessment-scheduled-date">Exam date</Label>
                   <Input
-                    id="test-scheduled-date"
+                    id="assessment-scheduled-date"
                     type="date"
                     value={form.scheduledDate}
                     onChange={(e) =>
@@ -558,9 +591,11 @@ export function TeacherTests({
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="test-scheduled-time">Time (optional)</Label>
+                  <Label htmlFor="assessment-scheduled-time">
+                    Time (optional)
+                  </Label>
                   <Input
-                    id="test-scheduled-time"
+                    id="assessment-scheduled-time"
                     type="time"
                     value={form.scheduledTime}
                     onChange={(e) =>
@@ -576,7 +611,7 @@ export function TeacherTests({
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
                   <Checkbox
-                    id="test-has-deadline"
+                    id="assessment-has-deadline"
                     checked={form.hasDeadline}
                     onCheckedChange={(checked) =>
                       setForm((prev) => ({
@@ -585,7 +620,7 @@ export function TeacherTests({
                       }))
                     }
                   />
-                  <Label htmlFor="test-has-deadline" className="font-normal">
+                  <Label htmlFor="assessment-has-deadline" className="font-normal">
                     Set a deadline (otherwise open, no deadline)
                   </Label>
                 </div>
@@ -677,7 +712,9 @@ export function TeacherTests({
         assignment={scheduleTarget}
         onClose={() => setScheduleTarget(null)}
         onSaved={(updated) => {
-          onTestAssignmentsChange((prev) => upsertTestAssignment(prev, updated));
+          onAssessmentAssignmentsChange((prev) =>
+            upsertAssessmentAssignment(prev, updated),
+          );
           setScheduleTarget(null);
         }}
       />
@@ -686,7 +723,9 @@ export function TeacherTests({
         target={markTarget}
         onClose={() => setMarkTarget(null)}
         onSaved={(updated) => {
-          onTestAssignmentsChange((prev) => upsertTestAssignment(prev, updated));
+          onAssessmentAssignmentsChange((prev) =>
+            upsertAssessmentAssignment(prev, updated),
+          );
           setMarkTarget(null);
         }}
       />
@@ -694,8 +733,8 @@ export function TeacherTests({
   );
 }
 
-function TestDetailView({
-  test,
+function AssessmentDetailView({
+  assessment,
   assignments,
   studentOptions,
   addStudentId,
@@ -710,8 +749,8 @@ function TestDetailView({
   onEnterMark,
   onClearMark,
 }: {
-  test: TeacherTestListItem;
-  assignments: TeacherTestAssignmentRow[];
+  assessment: TeacherAssessmentListItem;
+  assignments: TeacherAssessmentAssignmentRow[];
   studentOptions: StudentOption[];
   addStudentId: string;
   onAddStudentIdChange: (id: string) => void;
@@ -719,18 +758,18 @@ function TestDetailView({
   onEdit: () => void;
   onDelete: () => void;
   onAddStudent: () => void;
-  onRemoveStudent: (assignment: TeacherTestAssignmentRow) => void;
-  onEditSchedule: (assignment: TeacherTestAssignmentRow) => void;
-  onMarkTaken: (assignment: TeacherTestAssignmentRow) => void;
-  onEnterMark: (assignment: TeacherTestAssignmentRow) => void;
-  onClearMark: (assignment: TeacherTestAssignmentRow) => void;
+  onRemoveStudent: (assignment: TeacherAssessmentAssignmentRow) => void;
+  onEditSchedule: (assignment: TeacherAssessmentAssignmentRow) => void;
+  onMarkTaken: (assignment: TeacherAssessmentAssignmentRow) => void;
+  onEnterMark: (assignment: TeacherAssessmentAssignmentRow) => void;
+  onClearMark: (assignment: TeacherAssessmentAssignmentRow) => void;
 }) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Button variant="ghost" size="sm" onClick={onBack}>
           <ArrowLeftIcon className="mr-1.5 h-4 w-4" />
-          Back to tests
+          Back to assessments
         </Button>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={onEdit}>
@@ -747,22 +786,24 @@ function TestDetailView({
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            {test.title}
-            <Badge variant="outline">{KIND_LABELS[test.kind]}</Badge>
+            {assessment.title}
+            <Badge variant="outline">{KIND_LABELS[assessment.kind]}</Badge>
           </CardTitle>
-          {test.description ? (
-            <p className="text-sm text-muted-foreground">{test.description}</p>
+          {assessment.description ? (
+            <p className="text-sm text-muted-foreground">
+              {assessment.description}
+            </p>
           ) : null}
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="text-sm text-muted-foreground">
-            {test.class_name ? `Class: ${test.class_name} • ` : ""}
-            Out of {test.max_score} • {test.duration_minutes} min •{" "}
+            {assessment.class_name ? `Class: ${assessment.class_name} • ` : ""}
+            Out of {assessment.max_score} • {assessment.duration_minutes} min •{" "}
             {scheduleSummary({
-              kind: test.kind,
-              scheduledDate: test.scheduled_date,
-              scheduledTime: test.scheduled_time,
-              deadlineAt: test.deadline_at,
+              kind: assessment.kind,
+              scheduledDate: assessment.scheduled_date,
+              scheduledTime: assessment.scheduled_time,
+              deadlineAt: assessment.deadline_at,
             })}
           </div>
 
@@ -819,7 +860,7 @@ function TestDetailView({
                     </button>
                   </TableCell>
                   <TableCell>
-                    <TestStatusBadge
+                    <AssessmentStatusBadge
                       status={assignment.status}
                       isLate={assignment.isLate}
                     />
@@ -828,7 +869,7 @@ function TestDetailView({
                     {assignment.status === "marked" ? (
                       <div>
                         <div className="font-medium">
-                          {assignment.score}/{test.max_score}
+                          {assignment.score}/{assessment.max_score}
                         </div>
                         {assignment.teacher_comment ? (
                           <div className="text-xs text-muted-foreground">
@@ -905,9 +946,9 @@ function ScheduleEditDialog({
   onClose,
   onSaved,
 }: {
-  assignment: TeacherTestAssignmentRow | null;
+  assignment: TeacherAssessmentAssignmentRow | null;
   onClose: () => void;
-  onSaved: (updated: TeacherTestAssignmentRow) => void;
+  onSaved: (updated: TeacherAssessmentAssignmentRow) => void;
 }) {
   return (
     <Dialog
@@ -936,8 +977,8 @@ function ScheduleEditForm({
   assignment,
   onSaved,
 }: {
-  assignment: TeacherTestAssignmentRow;
-  onSaved: (updated: TeacherTestAssignmentRow) => void;
+  assignment: TeacherAssessmentAssignmentRow;
+  onSaved: (updated: TeacherAssessmentAssignmentRow) => void;
 }) {
   const [scheduledDate, setScheduledDate] = React.useState(
     assignment.effective_scheduled_date ?? "",
@@ -959,14 +1000,19 @@ function ScheduleEditForm({
     event.preventDefault();
     setIsSaving(true);
     try {
-      const updated = await editTestAssignmentScheduleAction(assignment.id, {
-        scheduledDate: assignment.kind === "mock_exam" ? scheduledDate : undefined,
-        scheduledTime: assignment.kind === "mock_exam" ? scheduledTime || undefined : undefined,
-        deadlineAt:
-          assignment.kind === "short_test" && hasDeadline && deadlineLocal
-            ? new Date(deadlineLocal).toISOString()
-            : null,
-      });
+      const updated = await editAssessmentAssignmentScheduleAction(
+        assignment.id,
+        {
+          scheduledDate:
+            assignment.kind === "mock_exam" ? scheduledDate : undefined,
+          scheduledTime:
+            assignment.kind === "mock_exam" ? scheduledTime || undefined : undefined,
+          deadlineAt:
+            assignment.kind === "short_assessment" && hasDeadline && deadlineLocal
+              ? new Date(deadlineLocal).toISOString()
+              : null,
+        },
+      );
       onSaved(updated);
       toast.success("Schedule updated");
     } catch (error) {
@@ -1036,9 +1082,12 @@ function MarkEntryDialog({
   onClose,
   onSaved,
 }: {
-  target: { assignment: TeacherTestAssignmentRow; maxScore: number } | null;
+  target: {
+    assignment: TeacherAssessmentAssignmentRow;
+    maxScore: number;
+  } | null;
   onClose: () => void;
-  onSaved: (updated: TeacherTestAssignmentRow) => void;
+  onSaved: (updated: TeacherAssessmentAssignmentRow) => void;
 }) {
   return (
     <Dialog
@@ -1069,9 +1118,9 @@ function MarkEntryForm({
   maxScore,
   onSaved,
 }: {
-  assignment: TeacherTestAssignmentRow;
+  assignment: TeacherAssessmentAssignmentRow;
   maxScore: number;
-  onSaved: (updated: TeacherTestAssignmentRow) => void;
+  onSaved: (updated: TeacherAssessmentAssignmentRow) => void;
 }) {
   const [score, setScore] = React.useState(
     assignment.score !== null ? String(assignment.score) : "",
@@ -1088,7 +1137,7 @@ function MarkEntryForm({
     event.preventDefault();
     setIsSaving(true);
     try {
-      const updated = await enterTestMarkAction(assignment.id, {
+      const updated = await enterAssessmentMarkAction(assignment.id, {
         score: Number(score),
         teacherComment: comment || undefined,
         takenAt: takenAtLocal ? new Date(takenAtLocal).toISOString() : undefined,

@@ -3,23 +3,23 @@
 import { createClient } from "@/lib/supabase/server";
 import { requireTeacher } from "@/lib/auth/require-teacher";
 import { ExpectedError } from "@/lib/expected-error";
-import { isTestAssignmentLate } from "@/lib/test-status";
+import { isAssessmentAssignmentLate } from "@/lib/assessment-status";
 import type {
-  Test,
-  TestInput,
-  TeacherTestAssignmentRow,
-  TeacherTestListItem,
-  TestAssignmentStatus,
+  Assessment,
+  AssessmentInput,
+  TeacherAssessmentAssignmentRow,
+  TeacherAssessmentListItem,
+  AssessmentAssignmentStatus,
 } from "@/lib/types/database";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
-const TEST_COLUMNS =
+const ASSESSMENT_COLUMNS =
   "id, kind, title, description, max_score, duration_minutes, scheduled_date, " +
   "scheduled_time, deadline_at, class_id, class_name, created_at";
 
 const ASSIGNMENT_COLUMNS =
-  "id, test_id, student_id, kind, effective_scheduled_date, effective_scheduled_time, " +
+  "id, assessment_id, student_id, kind, effective_scheduled_date, effective_scheduled_time, " +
   "effective_deadline_at, taken_at, status, score, teacher_comment, created_at";
 
 const ASSIGNMENT_COLUMNS_WITH_STUDENT = `${ASSIGNMENT_COLUMNS}, students:student_id (first_name, last_name)`;
@@ -61,24 +61,26 @@ function isValidDateTimeString(value: string): boolean {
 
 type RawAssignmentRow = {
   id: string;
-  test_id: string;
+  assessment_id: string;
   student_id: string;
-  kind: "short_test" | "mock_exam";
+  kind: "short_assessment" | "mock_exam";
   effective_scheduled_date: string | null;
   effective_scheduled_time: string | null;
   effective_deadline_at: string | null;
   taken_at: string | null;
-  status: TestAssignmentStatus;
+  status: AssessmentAssignmentStatus;
   score: number | null;
   teacher_comment: string | null;
   created_at: string;
   students: { first_name: string; last_name: string } | null;
 };
 
-function toTeacherAssignmentRow(row: RawAssignmentRow): TeacherTestAssignmentRow {
+function toTeacherAssignmentRow(
+  row: RawAssignmentRow,
+): TeacherAssessmentAssignmentRow {
   return {
     id: row.id,
-    test_id: row.test_id,
+    assessment_id: row.assessment_id,
     student_id: row.student_id,
     kind: row.kind,
     effective_scheduled_date: row.effective_scheduled_date,
@@ -92,7 +94,7 @@ function toTeacherAssignmentRow(row: RawAssignmentRow): TeacherTestAssignmentRow
     studentName: row.students
       ? `${row.students.first_name} ${row.students.last_name}`.trim()
       : "",
-    isLate: isTestAssignmentLate({
+    isLate: isAssessmentAssignmentLate({
       kind: row.kind,
       effectiveScheduledDate: row.effective_scheduled_date,
       effectiveScheduledTime: row.effective_scheduled_time,
@@ -102,34 +104,41 @@ function toTeacherAssignmentRow(row: RawAssignmentRow): TeacherTestAssignmentRow
   };
 }
 
-// Validates kind-specific fields and returns the tests-table row shape
-// (minus class_id/class_name, which the caller resolves separately since
-// only createTestAction/updateTestAction need the ownership lookup that
-// produces them). Shared so create/update can't drift out of sync with
-// each other or with the DB's own shape/duration CHECK constraints -
-// these checks exist to turn a raw Postgres constraint violation into a
-// readable ExpectedError before it ever reaches the database.
-function validateTestFields(input: TestInput): Record<string, unknown> {
+// Validates kind-specific fields and returns the assessments-table row
+// shape (minus class_id/class_name, which the caller resolves separately
+// since only createAssessmentAction/updateAssessmentAction need the
+// ownership lookup that produces them). Shared so create/update can't
+// drift out of sync with each other or with the DB's own shape/duration
+// CHECK constraints - these checks exist to turn a raw Postgres
+// constraint violation into a readable ExpectedError before it ever
+// reaches the database.
+function validateAssessmentFields(
+  input: AssessmentInput,
+): Record<string, unknown> {
   const title = input.title.trim();
   if (!title) {
-    throw new ExpectedError("Give the test a title");
+    throw new ExpectedError("Give the assessment a title");
   }
   if (!(input.maxScore > 0)) {
     throw new ExpectedError("Max score must be greater than 0");
   }
 
-  if (input.kind === "short_test") {
+  if (input.kind === "short_assessment") {
     if (!(input.durationMinutes > 0 && input.durationMinutes <= 60)) {
-      throw new ExpectedError("A short test's duration must be 1-60 minutes");
+      throw new ExpectedError(
+        "A short assessment's duration must be 1-60 minutes",
+      );
     }
     if (input.scheduledDate || input.scheduledTime) {
-      throw new ExpectedError("A short test doesn't have a scheduled date");
+      throw new ExpectedError(
+        "A short assessment doesn't have a scheduled date",
+      );
     }
     if (input.deadlineAt && !isValidDateTimeString(input.deadlineAt)) {
       throw new ExpectedError("Pick a valid deadline");
     }
     return {
-      kind: "short_test",
+      kind: "short_assessment",
       title,
       description: input.description?.trim() || null,
       max_score: input.maxScore,
@@ -165,42 +174,59 @@ function validateTestFields(input: TestInput): Record<string, unknown> {
   };
 }
 
-export async function listTestsAction(): Promise<TeacherTestListItem[]> {
+export async function listAssessmentsAction(): Promise<
+  TeacherAssessmentListItem[]
+> {
   const { supabase } = await requireTeacherSession();
 
-  const [{ data: tests, error: testsError }, { data: assignments, error: assignmentsError }] =
-    await Promise.all([
-      supabase
-        .from("tests")
-        .select(TEST_COLUMNS)
-        .order("created_at", { ascending: false }),
-      supabase.from("test_assignments").select("test_id, status"),
-    ]);
+  const [
+    { data: assessments, error: assessmentsError },
+    { data: assignments, error: assignmentsError },
+  ] = await Promise.all([
+    supabase
+      .from("assessments")
+      .select(ASSESSMENT_COLUMNS)
+      .order("created_at", { ascending: false }),
+    supabase.from("assessment_assignments").select("assessment_id, status"),
+  ]);
 
-  if (testsError) throw testsError;
+  if (assessmentsError) throw assessmentsError;
   if (assignmentsError) throw assignmentsError;
 
-  const countsByTest = new Map<string, { count: number; marked: number }>();
+  const countsByAssessment = new Map<
+    string,
+    { count: number; marked: number }
+  >();
   for (const row of assignments ?? []) {
-    const entry = countsByTest.get(row.test_id) ?? { count: 0, marked: 0 };
+    const entry = countsByAssessment.get(row.assessment_id) ?? {
+      count: 0,
+      marked: 0,
+    };
     entry.count += 1;
     if (row.status === "marked") entry.marked += 1;
-    countsByTest.set(row.test_id, entry);
+    countsByAssessment.set(row.assessment_id, entry);
   }
 
-  return ((tests ?? []) as unknown as Test[]).map((test) => {
-    const counts = countsByTest.get(test.id) ?? { count: 0, marked: 0 };
-    return { ...test, assignmentCount: counts.count, markedCount: counts.marked };
+  return ((assessments ?? []) as unknown as Assessment[]).map((assessment) => {
+    const counts = countsByAssessment.get(assessment.id) ?? {
+      count: 0,
+      marked: 0,
+    };
+    return {
+      ...assessment,
+      assignmentCount: counts.count,
+      markedCount: counts.marked,
+    };
   });
 }
 
-export async function listTestAssignmentsAction(): Promise<
-  TeacherTestAssignmentRow[]
+export async function listAssessmentAssignmentsAction(): Promise<
+  TeacherAssessmentAssignmentRow[]
 > {
   const { supabase } = await requireTeacherSession();
 
   const { data, error } = await supabase
-    .from("test_assignments")
+    .from("assessment_assignments")
     .select(ASSIGNMENT_COLUMNS_WITH_STUDENT)
     .order("created_at", { ascending: false });
 
@@ -211,19 +237,21 @@ export async function listTestAssignmentsAction(): Promise<
   );
 }
 
-export async function createTestAction(input: TestInput): Promise<{
-  test: Test;
-  assignments: TeacherTestAssignmentRow[];
+export async function createAssessmentAction(input: AssessmentInput): Promise<{
+  assessment: Assessment;
+  assignments: TeacherAssessmentAssignmentRow[];
 }> {
   const { supabase, userId } = await requireTeacherSession();
 
   const hasClass = Boolean(input.classId);
   const hasStudents = Boolean(input.studentIds && input.studentIds.length > 0);
   if (hasClass === hasStudents) {
-    throw new ExpectedError("Assign the test to either a class or specific students");
+    throw new ExpectedError(
+      "Assign the assessment to either a class or specific students",
+    );
   }
 
-  const row = validateTestFields(input);
+  const row = validateAssessmentFields(input);
   row.teacher_id = userId;
   row.class_id = null;
   row.class_name = null;
@@ -268,17 +296,17 @@ export async function createTestAction(input: TestInput): Promise<{
     studentIds = (studentRows ?? []).map((r) => r.id);
   }
 
-  const { data: insertedTest, error: testError } = await supabase
-    .from("tests")
+  const { data: insertedAssessment, error: assessmentError } = await supabase
+    .from("assessments")
     .insert(row)
-    .select(TEST_COLUMNS)
+    .select(ASSESSMENT_COLUMNS)
     .single();
-  if (testError) throw testError;
-  const test = insertedTest as unknown as Test;
+  if (assessmentError) throw assessmentError;
+  const assessment = insertedAssessment as unknown as Assessment;
 
   const assignmentRows = studentIds.map((studentId) => ({
     teacher_id: userId,
-    test_id: test.id,
+    assessment_id: assessment.id,
     student_id: studentId,
     kind: row.kind,
     effective_scheduled_date: row.scheduled_date,
@@ -287,13 +315,13 @@ export async function createTestAction(input: TestInput): Promise<{
   }));
 
   const { data: assignments, error: assignmentsError } = await supabase
-    .from("test_assignments")
+    .from("assessment_assignments")
     .insert(assignmentRows)
     .select(ASSIGNMENT_COLUMNS_WITH_STUDENT);
   if (assignmentsError) throw assignmentsError;
 
   return {
-    test,
+    assessment,
     assignments: ((assignments ?? []) as unknown as RawAssignmentRow[]).map(
       toTeacherAssignmentRow,
     ),
@@ -301,75 +329,76 @@ export async function createTestAction(input: TestInput): Promise<{
 }
 
 // Template-only edit - never touches existing assignments' effective_*
-// columns, so a date change here doesn't silently move a test out from
-// under a student the teacher already rescheduled individually.
-export async function updateTestAction(
-  testId: string,
-  input: TestInput,
-): Promise<Test> {
+// columns, so a date change here doesn't silently move an assessment out
+// from under a student the teacher already rescheduled individually.
+export async function updateAssessmentAction(
+  assessmentId: string,
+  input: AssessmentInput,
+): Promise<Assessment> {
   const { supabase, userId } = await requireTeacherSession();
 
   const { data: existing, error: fetchError } = await supabase
-    .from("tests")
+    .from("assessments")
     .select("id, kind")
-    .eq("id", testId)
+    .eq("id", assessmentId)
     .eq("teacher_id", userId)
     .maybeSingle();
   if (fetchError || !existing) {
-    throw new ExpectedError("That test no longer exists");
+    throw new ExpectedError("That assessment no longer exists");
   }
   if (existing.kind !== input.kind) {
     throw new ExpectedError(
-      "A test's kind can't be changed - delete it and create a new one.",
+      "An assessment's kind can't be changed - delete it and create a new one.",
     );
   }
 
-  const row = validateTestFields(input);
+  const row = validateAssessmentFields(input);
 
   const { data, error } = await supabase
-    .from("tests")
+    .from("assessments")
     .update(row)
-    .eq("id", testId)
+    .eq("id", assessmentId)
     .eq("teacher_id", userId)
-    .select(TEST_COLUMNS)
+    .select(ASSESSMENT_COLUMNS)
     .single();
   if (error) throw error;
 
-  return data as unknown as Test;
+  return data as unknown as Assessment;
 }
 
-export async function deleteTestAction(testId: string): Promise<void> {
+export async function deleteAssessmentAction(
+  assessmentId: string,
+): Promise<void> {
   const { supabase, userId } = await requireTeacherSession();
 
-  // test_assignments cascades with its parent test (see the migration) -
-  // no separate cleanup needed here.
+  // assessment_assignments cascades with its parent assessment (see the
+  // migration) - no separate cleanup needed here.
   const { error } = await supabase
-    .from("tests")
+    .from("assessments")
     .delete()
-    .eq("id", testId)
+    .eq("id", assessmentId)
     .eq("teacher_id", userId);
   if (error) throw error;
 }
 
 // The "add a latecomer" flow (requirement 4): defaults the new
-// assignment's effective_* from the test's CURRENT template values, same
-// as createTestAction's class-roster snapshot does at creation time.
-export async function addStudentToTestAction(
-  testId: string,
+// assignment's effective_* from the assessment's CURRENT template values,
+// same as createAssessmentAction's class-roster snapshot does at creation
+// time.
+export async function addStudentToAssessmentAction(
+  assessmentId: string,
   studentId: string,
-): Promise<TeacherTestAssignmentRow> {
+): Promise<TeacherAssessmentAssignmentRow> {
   const { supabase, userId } = await requireTeacherSession();
 
-  const { data: test, error: testError } = await supabase
-    .from("tests")
-    .select(
-      "id, kind, scheduled_date, scheduled_time, deadline_at",
-    )
-    .eq("id", testId)
+  const { data: assessment, error: assessmentError } = await supabase
+    .from("assessments")
+    .select("id, kind, scheduled_date, scheduled_time, deadline_at")
+    .eq("id", assessmentId)
     .eq("teacher_id", userId)
     .maybeSingle();
-  if (testError || !test) {
-    throw new ExpectedError("That test no longer exists");
+  if (assessmentError || !assessment) {
+    throw new ExpectedError("That assessment no longer exists");
   }
 
   const { data: student, error: studentError } = await supabase
@@ -383,22 +412,24 @@ export async function addStudentToTestAction(
   }
 
   const { data, error } = await supabase
-    .from("test_assignments")
+    .from("assessment_assignments")
     .insert({
       teacher_id: userId,
-      test_id: test.id,
+      assessment_id: assessment.id,
       student_id: student.id,
-      kind: test.kind,
-      effective_scheduled_date: test.scheduled_date,
-      effective_scheduled_time: test.scheduled_time,
-      effective_deadline_at: test.deadline_at,
+      kind: assessment.kind,
+      effective_scheduled_date: assessment.scheduled_date,
+      effective_scheduled_time: assessment.scheduled_time,
+      effective_deadline_at: assessment.deadline_at,
     })
     .select(ASSIGNMENT_COLUMNS_WITH_STUDENT)
     .single();
 
   if (error) {
     if (error.code === "23505") {
-      throw new ExpectedError("This student is already assigned to this test");
+      throw new ExpectedError(
+        "This student is already assigned to this assessment",
+      );
     }
     throw error;
   }
@@ -406,13 +437,13 @@ export async function addStudentToTestAction(
   return toTeacherAssignmentRow(data as unknown as RawAssignmentRow);
 }
 
-export async function removeStudentFromTestAction(
+export async function removeStudentFromAssessmentAction(
   assignmentId: string,
 ): Promise<void> {
   const { supabase, userId } = await requireTeacherSession();
 
   const { error } = await supabase
-    .from("test_assignments")
+    .from("assessment_assignments")
     .delete()
     .eq("id", assignmentId)
     .eq("teacher_id", userId);
@@ -420,26 +451,26 @@ export async function removeStudentFromTestAction(
 }
 
 // Per-student schedule override (requirement 5) - moves ONE student's
-// effective date/time/deadline without touching the test's own template
-// or any other student's assignment row.
-export async function editTestAssignmentScheduleAction(
+// effective date/time/deadline without touching the assessment's own
+// template or any other student's assignment row.
+export async function editAssessmentAssignmentScheduleAction(
   assignmentId: string,
   input: {
     scheduledDate?: string | null;
     scheduledTime?: string | null;
     deadlineAt?: string | null;
   },
-): Promise<TeacherTestAssignmentRow> {
+): Promise<TeacherAssessmentAssignmentRow> {
   const { supabase, userId } = await requireTeacherSession();
 
   const { data: existing, error: fetchError } = await supabase
-    .from("test_assignments")
+    .from("assessment_assignments")
     .select("id, kind")
     .eq("id", assignmentId)
     .eq("teacher_id", userId)
     .maybeSingle();
   if (fetchError || !existing) {
-    throw new ExpectedError("That test assignment no longer exists");
+    throw new ExpectedError("That assessment assignment no longer exists");
   }
 
   const row: Record<string, unknown> = {};
@@ -460,7 +491,7 @@ export async function editTestAssignmentScheduleAction(
   }
 
   const { data, error } = await supabase
-    .from("test_assignments")
+    .from("assessment_assignments")
     .update(row)
     .eq("id", assignmentId)
     .eq("teacher_id", userId)
@@ -471,30 +502,30 @@ export async function editTestAssignmentScheduleAction(
   return toTeacherAssignmentRow(data as unknown as RawAssignmentRow);
 }
 
-export async function markTestTakenAction(
+export async function markAssessmentTakenAction(
   assignmentId: string,
   takenAt?: string,
-): Promise<TeacherTestAssignmentRow> {
+): Promise<TeacherAssessmentAssignmentRow> {
   const { supabase, userId } = await requireTeacherSession();
 
   const { data: existing, error: fetchError } = await supabase
-    .from("test_assignments")
+    .from("assessment_assignments")
     .select("id, status")
     .eq("id", assignmentId)
     .eq("teacher_id", userId)
     .maybeSingle();
   if (fetchError || !existing) {
-    throw new ExpectedError("That test assignment no longer exists");
+    throw new ExpectedError("That assessment assignment no longer exists");
   }
   if (existing.status !== "registered") {
-    throw new ExpectedError("This test has already been marked taken");
+    throw new ExpectedError("This assessment has already been marked taken");
   }
   if (takenAt && !isValidDateTimeString(takenAt)) {
     throw new ExpectedError("Pick a valid date/time");
   }
 
   const { data, error } = await supabase
-    .from("test_assignments")
+    .from("assessment_assignments")
     .update({ status: "taken", taken_at: takenAt || new Date().toISOString() })
     .eq("id", assignmentId)
     .eq("teacher_id", userId)
@@ -505,25 +536,25 @@ export async function markTestTakenAction(
   return toTeacherAssignmentRow(data as unknown as RawAssignmentRow);
 }
 
-export async function enterTestMarkAction(
+export async function enterAssessmentMarkAction(
   assignmentId: string,
   input: { score: number; teacherComment?: string; takenAt?: string },
-): Promise<TeacherTestAssignmentRow> {
+): Promise<TeacherAssessmentAssignmentRow> {
   const { supabase, userId } = await requireTeacherSession();
 
   const { data: existing, error: fetchError } = await supabase
-    .from("test_assignments")
-    .select("id, taken_at, test_id, tests:test_id (max_score)")
+    .from("assessment_assignments")
+    .select("id, taken_at, assessment_id, assessments:assessment_id (max_score)")
     .eq("id", assignmentId)
     .eq("teacher_id", userId)
     .maybeSingle();
   if (fetchError || !existing) {
-    throw new ExpectedError("That test assignment no longer exists");
+    throw new ExpectedError("That assessment assignment no longer exists");
   }
 
   const maxScore = (
-    existing as unknown as { tests: { max_score: number } }
-  ).tests.max_score;
+    existing as unknown as { assessments: { max_score: number } }
+  ).assessments.max_score;
   if (input.score < 0 || input.score > maxScore) {
     throw new ExpectedError(`Score must be between 0 and ${maxScore}`);
   }
@@ -532,12 +563,12 @@ export async function enterTestMarkAction(
   }
 
   // taken_at is set once and never overwritten again (see
-  // lib/test-status.ts) - only fill it in here if this is the first time
-  // the assignment is being taken/graded.
+  // lib/assessment-status.ts) - only fill it in here if this is the first
+  // time the assignment is being taken/graded.
   const takenAt = existing.taken_at ?? input.takenAt ?? new Date().toISOString();
 
   const { data, error } = await supabase
-    .from("test_assignments")
+    .from("assessment_assignments")
     .update({
       status: "marked",
       score: input.score,
@@ -556,26 +587,26 @@ export async function enterTestMarkAction(
 // Reverts a graded assignment back to 'taken' - deliberately never touches
 // taken_at, so clearing a mark can't erase the "was this taken late"
 // history the whole feature is built to preserve.
-export async function clearTestMarkAction(
+export async function clearAssessmentMarkAction(
   assignmentId: string,
-): Promise<TeacherTestAssignmentRow> {
+): Promise<TeacherAssessmentAssignmentRow> {
   const { supabase, userId } = await requireTeacherSession();
 
   const { data: existing, error: fetchError } = await supabase
-    .from("test_assignments")
+    .from("assessment_assignments")
     .select("id, status")
     .eq("id", assignmentId)
     .eq("teacher_id", userId)
     .maybeSingle();
   if (fetchError || !existing) {
-    throw new ExpectedError("That test assignment no longer exists");
+    throw new ExpectedError("That assessment assignment no longer exists");
   }
   if (existing.status !== "marked") {
-    throw new ExpectedError("This test hasn't been marked yet");
+    throw new ExpectedError("This assessment hasn't been marked yet");
   }
 
   const { data, error } = await supabase
-    .from("test_assignments")
+    .from("assessment_assignments")
     .update({ status: "taken", score: null, teacher_comment: null })
     .eq("id", assignmentId)
     .eq("teacher_id", userId)

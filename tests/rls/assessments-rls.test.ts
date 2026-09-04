@@ -3,26 +3,27 @@ import { signInAs, serviceClient } from "./helpers";
 import { cleanupFixtures, createFixtures, type Fixtures } from "./fixtures";
 
 /**
- * tests/test_assignments RLS. Two things this proves beyond simple
- * ownership isolation:
+ * assessments/assessment_assignments RLS. Two things this proves beyond
+ * simple ownership isolation:
  *
- * - Unlike calendar_events/attendance_records, test_assignments' FKs are a
- *   plain CASCADE (not SET NULL + snapshot) - deleting the parent test
- *   takes its roster with it. tests.class_id, however, DOES use the
- *   snapshot+SET NULL convention, so a class delete must survive.
- * - The status/shape CHECK constraints are load-bearing, not just app-layer
- *   validation - a direct insert that violates them must be rejected by
- *   Postgres itself.
+ * - Unlike calendar_events/attendance_records, assessment_assignments' FKs
+ *   are a plain CASCADE (not SET NULL + snapshot) - deleting the parent
+ *   assessment takes its roster with it. assessments.class_id, however,
+ *   DOES use the snapshot+SET NULL convention, so a class delete must
+ *   survive.
+ * - The status/shape CHECK constraints are load-bearing, not just
+ *   app-layer validation - a direct insert that violates them must be
+ *   rejected by Postgres itself.
  */
-describe("RLS: tests / test_assignments", () => {
+describe("RLS: assessments / assessment_assignments", () => {
   let fixtures: Fixtures;
   let teacherA: Awaited<ReturnType<typeof signInAs>>;
   let teacherB: Awaited<ReturnType<typeof signInAs>>;
   let parentA1: Awaited<ReturnType<typeof signInAs>>;
   let parentB1: Awaited<ReturnType<typeof signInAs>>;
   let studentA: Awaited<ReturnType<typeof signInAs>>;
-  const createdTestIds: string[] = [];
-  const STUDENT_A_EMAIL = "rls-tests-student-a@example.test";
+  const createdAssessmentIds: string[] = [];
+  const STUDENT_A_EMAIL = "rls-assessments-student-a@example.test";
 
   beforeAll(async () => {
     fixtures = await createFixtures();
@@ -45,10 +46,14 @@ describe("RLS: tests / test_assignments", () => {
   }, 30000);
 
   afterEach(async () => {
-    if (createdTestIds.length > 0) {
-      // test_assignments cascades with its parent test - one delete covers both.
-      await serviceClient().from("tests").delete().in("id", createdTestIds);
-      createdTestIds.length = 0;
+    if (createdAssessmentIds.length > 0) {
+      // assessment_assignments cascades with its parent assessment - one
+      // delete covers both.
+      await serviceClient()
+        .from("assessments")
+        .delete()
+        .in("id", createdAssessmentIds);
+      createdAssessmentIds.length = 0;
     }
   });
 
@@ -67,16 +72,16 @@ describe("RLS: tests / test_assignments", () => {
     await cleanupFixtures(fixtures);
   }, 30000);
 
-  async function insertTestAndAssignment(
+  async function insertAssessmentAndAssignment(
     admin: ReturnType<typeof serviceClient>,
     overrides: Record<string, unknown> = {},
   ) {
-    const { data: test, error } = await admin
-      .from("tests")
+    const { data: assessment, error } = await admin
+      .from("assessments")
       .insert({
         teacher_id: fixtures.teacherA.id,
-        kind: "short_test",
-        title: "RLS Test Quiz",
+        kind: "short_assessment",
+        title: "RLS Test Assessment",
         max_score: 20,
         duration_minutes: 45,
         class_id: fixtures.classA.id,
@@ -85,35 +90,38 @@ describe("RLS: tests / test_assignments", () => {
       })
       .select("id")
       .single();
-    if (error || !test) {
-      throw new Error(`Failed to insert fixture test: ${error?.message}`);
+    if (error || !assessment) {
+      throw new Error(`Failed to insert fixture assessment: ${error?.message}`);
     }
-    createdTestIds.push(test.id);
+    createdAssessmentIds.push(assessment.id);
 
     const { data: assignment, error: assignmentError } = await admin
-      .from("test_assignments")
+      .from("assessment_assignments")
       .insert({
         teacher_id: fixtures.teacherA.id,
-        test_id: test.id,
+        assessment_id: assessment.id,
         student_id: fixtures.studentA.id,
-        kind: "short_test",
+        kind: "short_assessment",
       })
       .select("id")
       .single();
     if (assignmentError || !assignment) {
       throw new Error(
-        `Failed to insert fixture test assignment: ${assignmentError?.message}`,
+        `Failed to insert fixture assessment assignment: ${assignmentError?.message}`,
       );
     }
-    return { testId: test.id as string, assignmentId: assignment.id as string };
+    return {
+      assessmentId: assessment.id as string,
+      assignmentId: assignment.id as string,
+    };
   }
 
-  it("lets a teacher create and read their own test and its assignments", async () => {
-    const { data: test, error } = await teacherA
-      .from("tests")
+  it("lets a teacher create and read their own assessment and its assignments", async () => {
+    const { data: assessment, error } = await teacherA
+      .from("assessments")
       .insert({
         teacher_id: fixtures.teacherA.id,
-        kind: "short_test",
+        kind: "short_assessment",
         title: "Owned by teacher A",
         max_score: 20,
         duration_minutes: 30,
@@ -121,40 +129,40 @@ describe("RLS: tests / test_assignments", () => {
       .select("id")
       .single();
     expect(error).toBeNull();
-    if (test) createdTestIds.push(test.id);
+    if (assessment) createdAssessmentIds.push(assessment.id);
 
     const { error: assignmentError } = await teacherA
-      .from("test_assignments")
+      .from("assessment_assignments")
       .insert({
         teacher_id: fixtures.teacherA.id,
-        test_id: test!.id,
+        assessment_id: assessment!.id,
         student_id: fixtures.studentA.id,
-        kind: "short_test",
+        kind: "short_assessment",
       });
     expect(assignmentError).toBeNull();
   });
 
-  it("blocks a teacher from reading another teacher's tests or assignments", async () => {
+  it("blocks a teacher from reading another teacher's assessments or assignments", async () => {
     const admin = serviceClient();
-    const { testId } = await insertTestAndAssignment(admin);
+    const { assessmentId } = await insertAssessmentAndAssignment(admin);
 
-    const { data: testRows } = await teacherB
-      .from("tests")
+    const { data: assessmentRows } = await teacherB
+      .from("assessments")
       .select("id")
-      .eq("id", testId);
-    expect(testRows ?? []).toHaveLength(0);
+      .eq("id", assessmentId);
+    expect(assessmentRows ?? []).toHaveLength(0);
 
     const { data: assignmentRows } = await teacherB
-      .from("test_assignments")
+      .from("assessment_assignments")
       .select("id")
-      .eq("test_id", testId);
+      .eq("assessment_id", assessmentId);
     expect(assignmentRows ?? []).toHaveLength(0);
   });
 
-  it("blocks a parent from writing tests or test assignments", async () => {
-    const { error } = await parentA1.from("tests").insert({
+  it("blocks a parent from writing assessments or assessment assignments", async () => {
+    const { error } = await parentA1.from("assessments").insert({
       teacher_id: fixtures.teacherA.id,
-      kind: "short_test",
+      kind: "short_assessment",
       title: "Should not be allowed",
       max_score: 20,
       duration_minutes: 30,
@@ -162,47 +170,49 @@ describe("RLS: tests / test_assignments", () => {
     expect(error).not.toBeNull();
   });
 
-  it("lets a parent see their own child's test and assignment, never another family's", async () => {
+  it("lets a parent see their own child's assessment and assignment, never another family's", async () => {
     const admin = serviceClient();
-    const { testId, assignmentId } = await insertTestAndAssignment(admin);
+    const { assessmentId, assignmentId } =
+      await insertAssessmentAndAssignment(admin);
 
-    const { data: ownTest } = await parentA1
-      .from("tests")
+    const { data: ownAssessment } = await parentA1
+      .from("assessments")
       .select("id")
-      .eq("id", testId);
-    expect(ownTest).toHaveLength(1);
+      .eq("id", assessmentId);
+    expect(ownAssessment).toHaveLength(1);
 
     const { data: ownAssignment } = await parentA1
-      .from("test_assignments")
+      .from("assessment_assignments")
       .select("id")
       .eq("id", assignmentId);
     expect(ownAssignment).toHaveLength(1);
 
-    const { data: otherFamilyTest } = await parentB1
-      .from("tests")
+    const { data: otherFamilyAssessment } = await parentB1
+      .from("assessments")
       .select("id")
-      .eq("id", testId);
-    expect(otherFamilyTest ?? []).toHaveLength(0);
+      .eq("id", assessmentId);
+    expect(otherFamilyAssessment ?? []).toHaveLength(0);
 
     const { data: otherFamilyAssignment } = await parentB1
-      .from("test_assignments")
+      .from("assessment_assignments")
       .select("id")
       .eq("id", assignmentId);
     expect(otherFamilyAssignment ?? []).toHaveLength(0);
   });
 
-  it("lets a signed-in student see their own test and assignment", async () => {
+  it("lets a signed-in student see their own assessment and assignment", async () => {
     const admin = serviceClient();
-    const { testId, assignmentId } = await insertTestAndAssignment(admin);
+    const { assessmentId, assignmentId } =
+      await insertAssessmentAndAssignment(admin);
 
-    const { data: testRows } = await studentA
-      .from("tests")
+    const { data: assessmentRows } = await studentA
+      .from("assessments")
       .select("id")
-      .eq("id", testId);
-    expect(testRows).toHaveLength(1);
+      .eq("id", assessmentId);
+    expect(assessmentRows).toHaveLength(1);
 
     const { data: assignmentRows } = await studentA
-      .from("test_assignments")
+      .from("assessment_assignments")
       .select("id")
       .eq("id", assignmentId);
     expect(assignmentRows).toHaveLength(1);
@@ -210,7 +220,7 @@ describe("RLS: tests / test_assignments", () => {
 
   it("rejects a mock_exam row with a deadline set instead of a scheduled date (shape check)", async () => {
     const admin = serviceClient();
-    const { error } = await admin.from("tests").insert({
+    const { error } = await admin.from("assessments").insert({
       teacher_id: fixtures.teacherA.id,
       kind: "mock_exam",
       title: "Bad shape",
@@ -221,11 +231,11 @@ describe("RLS: tests / test_assignments", () => {
     expect(error).not.toBeNull();
   });
 
-  it("rejects a short_test row with a scheduled date set (shape check)", async () => {
+  it("rejects a short_assessment row with a scheduled date set (shape check)", async () => {
     const admin = serviceClient();
-    const { error } = await admin.from("tests").insert({
+    const { error } = await admin.from("assessments").insert({
       teacher_id: fixtures.teacherA.id,
-      kind: "short_test",
+      kind: "short_assessment",
       title: "Bad shape",
       max_score: 20,
       duration_minutes: 30,
@@ -236,27 +246,27 @@ describe("RLS: tests / test_assignments", () => {
 
   it("rejects a duration outside the bounds for its kind", async () => {
     const admin = serviceClient();
-    const { error } = await admin.from("tests").insert({
+    const { error } = await admin.from("assessments").insert({
       teacher_id: fixtures.teacherA.id,
-      kind: "short_test",
-      title: "Too long for a short test",
+      kind: "short_assessment",
+      title: "Too long for a short assessment",
       max_score: 20,
       duration_minutes: 90,
     });
     expect(error).not.toBeNull();
   });
 
-  it("rejects a test_assignments row claiming 'marked' status without a score", async () => {
+  it("rejects an assessment_assignments row claiming 'marked' status without a score", async () => {
     const admin = serviceClient();
-    const { testId } = await insertTestAndAssignment(admin, {
+    const { assessmentId } = await insertAssessmentAndAssignment(admin, {
       title: "For status check",
     });
 
-    const { error } = await admin.from("test_assignments").insert({
+    const { error } = await admin.from("assessment_assignments").insert({
       teacher_id: fixtures.teacherA.id,
-      test_id: testId,
+      assessment_id: assessmentId,
       student_id: fixtures.studentB.id,
-      kind: "short_test",
+      kind: "short_assessment",
       status: "marked",
       taken_at: new Date().toISOString(),
       // score deliberately omitted - must be rejected.
@@ -264,47 +274,47 @@ describe("RLS: tests / test_assignments", () => {
     expect(error).not.toBeNull();
   });
 
-  it("rejects a second assignment for the same test/student pair", async () => {
+  it("rejects a second assignment for the same assessment/student pair", async () => {
     const admin = serviceClient();
-    const { testId } = await insertTestAndAssignment(admin);
+    const { assessmentId } = await insertAssessmentAndAssignment(admin);
 
-    const { error } = await admin.from("test_assignments").insert({
+    const { error } = await admin.from("assessment_assignments").insert({
       teacher_id: fixtures.teacherA.id,
-      test_id: testId,
+      assessment_id: assessmentId,
       student_id: fixtures.studentA.id,
-      kind: "short_test",
+      kind: "short_assessment",
     });
     expect(error).not.toBeNull();
   });
 
-  it("survives deleting a class that still has a test referencing it, snapshotting class_name and setting class_id null", async () => {
+  it("survives deleting a class that still has an assessment referencing it, snapshotting class_name and setting class_id null", async () => {
     const admin = serviceClient();
     const { data: throwawayClass, error: classError } = await admin
       .from("classes")
       .insert({
         teacher_id: fixtures.teacherA.id,
-        name: "Throwaway Class For Test Delete",
+        name: "Throwaway Class For Assessment Delete",
         hours_per_week: 1,
       })
       .select("id")
       .single();
     expect(classError).toBeNull();
 
-    const { data: test, error: testError } = await teacherA
-      .from("tests")
+    const { data: assessment, error: assessmentError } = await teacherA
+      .from("assessments")
       .insert({
         teacher_id: fixtures.teacherA.id,
-        kind: "short_test",
+        kind: "short_assessment",
         title: "Class delete survival",
         max_score: 20,
         duration_minutes: 30,
         class_id: throwawayClass!.id,
-        class_name: "Throwaway Class For Test Delete",
+        class_name: "Throwaway Class For Assessment Delete",
       })
       .select("id")
       .single();
-    expect(testError).toBeNull();
-    if (test) createdTestIds.push(test.id);
+    expect(assessmentError).toBeNull();
+    if (assessment) createdAssessmentIds.push(assessment.id);
 
     const { error: deleteError } = await teacherA
       .from("classes")
@@ -313,27 +323,28 @@ describe("RLS: tests / test_assignments", () => {
     expect(deleteError).toBeNull();
 
     const { data: survived } = await admin
-      .from("tests")
+      .from("assessments")
       .select("class_id, class_name")
-      .eq("id", test!.id)
+      .eq("id", assessment!.id)
       .single();
     expect(survived?.class_id).toBeNull();
-    expect(survived?.class_name).toBe("Throwaway Class For Test Delete");
+    expect(survived?.class_name).toBe("Throwaway Class For Assessment Delete");
   });
 
-  it("cascades: deleting a test removes its assignments (unlike the snapshot tables)", async () => {
+  it("cascades: deleting an assessment removes its assignments (unlike the snapshot tables)", async () => {
     const admin = serviceClient();
-    const { testId, assignmentId } = await insertTestAndAssignment(admin);
+    const { assessmentId, assignmentId } =
+      await insertAssessmentAndAssignment(admin);
 
     const { error: deleteError } = await teacherA
-      .from("tests")
+      .from("assessments")
       .delete()
-      .eq("id", testId);
+      .eq("id", assessmentId);
     expect(deleteError).toBeNull();
-    createdTestIds.length = 0; // already gone, afterEach has nothing to clean up
+    createdAssessmentIds.length = 0; // already gone, afterEach has nothing to clean up
 
     const { data: survivingAssignment } = await admin
-      .from("test_assignments")
+      .from("assessment_assignments")
       .select("id")
       .eq("id", assignmentId);
     expect(survivingAssignment ?? []).toHaveLength(0);

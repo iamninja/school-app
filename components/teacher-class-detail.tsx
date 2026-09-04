@@ -47,20 +47,26 @@ import type {
   QuizQuestionBreakdownResult,
   QuizResultRow,
   TeacherQuizListItem,
-  TeacherTestListItem,
+  TeacherAssessmentListItem,
 } from "@/lib/types/database";
 
-// Small standalone summary, deliberately not shared with teacher-tests.tsx's
-// scheduleSummary - this tie-in only ever shows a one-line "when", not the
-// full create/edit form logic that function's signature is shaped for.
-function testWhenLabel(test: TeacherTestListItem): string {
-  if (test.kind === "mock_exam") {
-    if (!test.scheduled_date) return "No date set";
-    const dateLabel = format(fromIsoDate(test.scheduled_date), "d MMM yyyy");
-    return test.scheduled_time ? `${dateLabel} at ${test.scheduled_time}` : dateLabel;
+// Small standalone summary, deliberately not shared with
+// teacher-assessments.tsx's scheduleSummary - this tie-in only ever shows
+// a one-line "when", not the full create/edit form logic that function's
+// signature is shaped for.
+function assessmentWhenLabel(assessment: TeacherAssessmentListItem): string {
+  if (assessment.kind === "mock_exam") {
+    if (!assessment.scheduled_date) return "No date set";
+    const dateLabel = format(
+      fromIsoDate(assessment.scheduled_date),
+      "d MMM yyyy",
+    );
+    return assessment.scheduled_time
+      ? `${dateLabel} at ${assessment.scheduled_time}`
+      : dateLabel;
   }
-  return test.deadline_at
-    ? `Due ${format(new Date(test.deadline_at), "d MMM yyyy, HH:mm")}`
+  return assessment.deadline_at
+    ? `Due ${format(new Date(assessment.deadline_at), "d MMM yyyy, HH:mm")}`
     : "Open (no deadline)";
 }
 
@@ -88,7 +94,7 @@ type TeacherClassDetailProps = {
   enrolledStudents: StudentItem[];
   allStudents: StudentItem[];
   assignedQuizzes: TeacherQuizListItem[];
-  assignedTests: TeacherTestListItem[];
+  assignedAssessments: TeacherAssessmentListItem[];
   isSavingClass: boolean;
   isMutatingEnrollment: boolean;
   onBack: () => void;
@@ -98,7 +104,7 @@ type TeacherClassDetailProps = {
   onDelete: () => void;
   onViewStudent: (studentId: string) => void;
   onGoToQuizzes: () => void;
-  onGoToTests: (testId?: string) => void;
+  onGoToAssessments: (assessmentId?: string) => void;
   onEnrollStudent: (studentId: string) => void;
   onUnenrollStudent: (studentId: string) => void;
 };
@@ -109,7 +115,7 @@ export function TeacherClassDetail({
   enrolledStudents,
   allStudents,
   assignedQuizzes,
-  assignedTests,
+  assignedAssessments,
   isSavingClass,
   isMutatingEnrollment,
   onBack,
@@ -119,7 +125,7 @@ export function TeacherClassDetail({
   onDelete,
   onViewStudent,
   onGoToQuizzes,
-  onGoToTests,
+  onGoToAssessments,
   onEnrollStudent,
   onUnenrollStudent,
 }: TeacherClassDetailProps) {
@@ -593,27 +599,29 @@ export function TeacherClassDetail({
 
             <div className="rounded-lg border p-4">
               <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                Assigned tests
+                Assigned assessments
               </div>
               <div className="mt-3 space-y-2">
-                {assignedTests.length === 0 ? (
+                {assignedAssessments.length === 0 ? (
                   <p className="text-xs text-muted-foreground">
-                    No tests assigned to this class.
+                    No assessments assigned to this class.
                   </p>
                 ) : (
-                  assignedTests.map((test) => (
+                  assignedAssessments.map((assessment) => (
                     <button
-                      key={test.id}
+                      key={assessment.id}
                       type="button"
-                      onClick={() => onGoToTests(test.id)}
+                      onClick={() => onGoToAssessments(assessment.id)}
                       className="flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm hover:bg-muted/50"
                     >
-                      <span className="font-medium">{test.title}</span>
+                      <span className="font-medium">{assessment.title}</span>
                       <span className="flex items-center gap-2 text-xs text-muted-foreground">
                         <Badge variant="outline">
-                          {test.kind === "mock_exam" ? "Mock exam" : "Short test"}
+                          {assessment.kind === "mock_exam"
+                            ? "Mock exam"
+                            : "Short assessment"}
                         </Badge>
-                        {testWhenLabel(test)}
+                        {assessmentWhenLabel(assessment)}
                       </span>
                     </button>
                   ))
@@ -623,9 +631,9 @@ export function TeacherClassDetail({
                   variant="outline"
                   size="sm"
                   className="w-full"
-                  onClick={() => onGoToTests()}
+                  onClick={() => onGoToAssessments()}
                 >
-                  Go to Tests &rarr;
+                  Go to Assessments &rarr;
                 </Button>
               </div>
             </div>

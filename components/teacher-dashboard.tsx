@@ -84,8 +84,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LogoutButton } from "@/components/logout-button";
 import { TeacherClassDetail } from "@/components/teacher-class-detail";
 import { TeacherQuizBuilder } from "@/components/teacher-quiz-builder";
-import { TeacherTests } from "@/components/teacher-tests";
-import { TestStatusBadge } from "@/components/test-status-badge";
+import { TeacherAssessments } from "@/components/teacher-assessments";
+import { AssessmentStatusBadge } from "@/components/assessment-status-badge";
 import {
   TeacherBusinessSettings,
   type CredentialStatusView,
@@ -123,8 +123,8 @@ import type {
   Receipt,
   ReceiptPrefill,
   TeacherQuizListItem,
-  TeacherTestAssignmentRow,
-  TeacherTestListItem,
+  TeacherAssessmentAssignmentRow,
+  TeacherAssessmentListItem,
 } from "@/lib/types/database";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
@@ -166,9 +166,9 @@ const SECTIONS = [
     icon: FileTextIcon,
   },
   {
-    value: "tests",
-    label: "Tests",
-    description: "Register, schedule, and mark in-person tests",
+    value: "assessments",
+    label: "Assessments",
+    description: "Register, schedule, and mark in-person assessments",
     icon: ClipboardListIcon,
   },
   {
@@ -269,8 +269,8 @@ type TeacherDashboardProps = {
   initialFamilies?: FamilyItem[];
   initialAttendance: AttendanceRecord[];
   initialQuizzes?: TeacherQuizListItem[];
-  initialTests?: TeacherTestListItem[];
-  initialTestAssignments?: TeacherTestAssignmentRow[];
+  initialAssessments?: TeacherAssessmentListItem[];
+  initialAssessmentAssignments?: TeacherAssessmentAssignmentRow[];
   businessProfile?: BusinessProfile | null;
   integrationSettings?: IntegrationSettings[];
   credentialStatuses?: Record<string, CredentialStatusView>;
@@ -503,8 +503,8 @@ export function TeacherDashboard({
   initialFamilies = [],
   initialAttendance,
   initialQuizzes = [],
-  initialTests = [],
-  initialTestAssignments = [],
+  initialAssessments = [],
+  initialAssessmentAssignments = [],
   businessProfile = null,
   integrationSettings = [],
   credentialStatuses = {},
@@ -665,17 +665,19 @@ export function TeacherDashboard({
   const [calendarEvents, setCalendarEvents] = React.useState<CalendarEvent[]>(
     initialCalendarEvents,
   );
-  // Hoisted here (not owned inside <TeacherTests>) for the same reason as
-  // calendarEvents above: the Calendar tab's mock-exam overlay and the
-  // Classes/Students tie-in cards need to read this live, not after a page
-  // reload.
-  const [tests, setTests] = React.useState<TeacherTestListItem[]>(initialTests);
-  const [testAssignments, setTestAssignments] = React.useState<
-    TeacherTestAssignmentRow[]
-  >(initialTestAssignments);
-  const [selectedTestId, setSelectedTestId] = React.useState<string | null>(
-    null,
-  );
+  // Hoisted here (not owned inside <TeacherAssessments>) for the same
+  // reason as calendarEvents above: the Calendar tab's mock-exam overlay
+  // and the Classes/Students tie-in cards need to read this live, not
+  // after a page reload.
+  const [assessments, setAssessments] = React.useState<
+    TeacherAssessmentListItem[]
+  >(initialAssessments);
+  const [assessmentAssignments, setAssessmentAssignments] = React.useState<
+    TeacherAssessmentAssignmentRow[]
+  >(initialAssessmentAssignments);
+  const [selectedAssessmentId, setSelectedAssessmentId] = React.useState<
+    string | null
+  >(null);
 
   const scheduledCounts = React.useMemo(() => {
     const counts = new Map<string, number>();
@@ -704,31 +706,38 @@ export function TeacherDashboard({
   );
 
   // Read-only overlay for the Calendar tab (requirement: mock exam dates
-  // visible on the grid, without writing tests into calendar_events or
-  // touching lib/calendar-projection.ts). One marker per (test, date),
-  // counting how many students have that effective date.
-  const testDateMarkers = React.useMemo(() => {
-    const titleByTestId = new Map(tests.map((test) => [test.id, test.title]));
+  // visible on the grid, without writing assessments into calendar_events
+  // or touching lib/calendar-projection.ts). One marker per (assessment,
+  // date), counting how many students have that effective date.
+  const assessmentDateMarkers = React.useMemo(() => {
+    const titleByAssessmentId = new Map(
+      assessments.map((assessment) => [assessment.id, assessment.title]),
+    );
     const byKey = new Map<
       string,
-      { testId: string; date: string; label: string; studentCount: number }
+      {
+        assessmentId: string;
+        date: string;
+        label: string;
+        studentCount: number;
+      }
     >();
-    for (const assignment of testAssignments) {
+    for (const assignment of assessmentAssignments) {
       if (assignment.kind !== "mock_exam" || !assignment.effective_scheduled_date) {
         continue;
       }
-      const key = `${assignment.test_id}|${assignment.effective_scheduled_date}`;
+      const key = `${assignment.assessment_id}|${assignment.effective_scheduled_date}`;
       const entry = byKey.get(key) ?? {
-        testId: assignment.test_id,
+        assessmentId: assignment.assessment_id,
         date: assignment.effective_scheduled_date,
-        label: titleByTestId.get(assignment.test_id) ?? "Mock exam",
+        label: titleByAssessmentId.get(assignment.assessment_id) ?? "Mock exam",
         studentCount: 0,
       };
       entry.studentCount += 1;
       byKey.set(key, entry);
     }
     return [...byKey.values()];
-  }, [tests, testAssignments]);
+  }, [assessments, assessmentAssignments]);
 
   const resetClassForm = () => {
     setClassFormName("");
@@ -1955,10 +1964,10 @@ export function TeacherDashboard({
             slots={scheduleSlotList}
             attendanceRecords={attendanceRecords}
             onAttendanceRecordsChange={setAttendanceRecords}
-            testMarkers={testDateMarkers}
-            onViewTest={(testId) => {
-              setSection("tests");
-              setSelectedTestId(testId);
+            assessmentMarkers={assessmentDateMarkers}
+            onViewAssessment={(assessmentId) => {
+              setSection("assessments");
+              setSelectedAssessmentId(assessmentId);
             }}
           />
         </TabsContent>
@@ -1989,8 +1998,8 @@ export function TeacherDashboard({
               const assignedQuizzes = initialQuizzes.filter((quiz) =>
                 quiz.assignedClasses.some((c) => c.id === selectedClassId),
               );
-              const assignedTests = tests.filter(
-                (test) => test.class_id === selectedClassId,
+              const assignedAssessments = assessments.filter(
+                (assessment) => assessment.class_id === selectedClassId,
               );
               return (
                 <TeacherClassDetail
@@ -2001,7 +2010,7 @@ export function TeacherDashboard({
                     (student) => !student.withdrawnAt,
                   )}
                   assignedQuizzes={assignedQuizzes}
-                  assignedTests={assignedTests}
+                  assignedAssessments={assignedAssessments}
                   isSavingClass={isSavingClass}
                   isMutatingEnrollment={isMutatingEnrollment}
                   onBack={() => setSelectedClassId(null)}
@@ -2014,9 +2023,9 @@ export function TeacherDashboard({
                     setSelectedStudentId(studentId);
                   }}
                   onGoToQuizzes={() => setSection("quizzes")}
-                  onGoToTests={(testId) => {
-                    setSection("tests");
-                    setSelectedTestId(testId ?? null);
+                  onGoToAssessments={(assessmentId) => {
+                    setSection("assessments");
+                    setSelectedAssessmentId(assessmentId ?? null);
                   }}
                   onEnrollStudent={(studentId) =>
                     void handleEnrollStudent(studentId, classItem.id)
@@ -2673,32 +2682,33 @@ export function TeacherDashboard({
 
                         <div className="rounded-lg border p-4">
                           <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                            Test history
+                            Assessment history
                           </div>
                           <div className="mt-3 space-y-2 text-xs">
                             {(() => {
-                              const studentTestAssignments = testAssignments
-                                .filter(
-                                  (assignment) =>
-                                    assignment.student_id === student.id,
-                                )
-                                .sort((a, b) =>
-                                  b.created_at.localeCompare(a.created_at),
-                                );
-                              if (studentTestAssignments.length === 0) {
+                              const studentAssessmentAssignments =
+                                assessmentAssignments
+                                  .filter(
+                                    (assignment) =>
+                                      assignment.student_id === student.id,
+                                  )
+                                  .sort((a, b) =>
+                                    b.created_at.localeCompare(a.created_at),
+                                  );
+                              if (studentAssessmentAssignments.length === 0) {
                                 return (
                                   <div className="text-muted-foreground">
-                                    No tests yet.
+                                    No assessments yet.
                                   </div>
                                 );
                               }
                               return (
                                 <div className="divide-y rounded-md border">
-                                  {studentTestAssignments
+                                  {studentAssessmentAssignments
                                     .slice(0, 10)
                                     .map((assignment) => {
-                                      const test = tests.find(
-                                        (t) => t.id === assignment.test_id,
+                                      const assessment = assessments.find(
+                                        (a) => a.id === assignment.assessment_id,
                                       );
                                       return (
                                         <div
@@ -2707,16 +2717,17 @@ export function TeacherDashboard({
                                         >
                                           <div>
                                             <div className="font-medium">
-                                              {test?.title ?? "Deleted test"}
+                                              {assessment?.title ??
+                                                "Deleted assessment"}
                                             </div>
                                             {assignment.status === "marked" ? (
                                               <div className="text-muted-foreground">
                                                 {assignment.score}/
-                                                {test?.max_score ?? "?"}
+                                                {assessment?.max_score ?? "?"}
                                               </div>
                                             ) : null}
                                           </div>
-                                          <TestStatusBadge
+                                          <AssessmentStatusBadge
                                             status={assignment.status}
                                             isLate={assignment.isLate}
                                           />
@@ -3741,18 +3752,18 @@ export function TeacherDashboard({
           />
         </TabsContent>
 
-        <TabsContent value="tests" className="mt-0">
-          <TeacherTests
+        <TabsContent value="assessments" className="mt-0">
+          <TeacherAssessments
             classes={activeClasses.map(({ id, name }) => ({ id, name }))}
             students={students
               .filter((student) => !student.withdrawnAt)
               .map(({ id, firstName, lastName }) => ({ id, firstName, lastName }))}
-            tests={tests}
-            testAssignments={testAssignments}
-            onTestsChange={setTests}
-            onTestAssignmentsChange={setTestAssignments}
-            selectedTestId={selectedTestId}
-            onSelectedTestIdChange={setSelectedTestId}
+            assessments={assessments}
+            assessmentAssignments={assessmentAssignments}
+            onAssessmentsChange={setAssessments}
+            onAssessmentAssignmentsChange={setAssessmentAssignments}
+            selectedAssessmentId={selectedAssessmentId}
+            onSelectedAssessmentIdChange={setSelectedAssessmentId}
           />
         </TabsContent>
 

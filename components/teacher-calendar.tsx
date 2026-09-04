@@ -117,10 +117,10 @@ const KIND_DOT_CLASSES: Record<OccurrenceKind, string> = {
 // OccurrenceKind (they aren't projected occurrences and don't come from
 // calendar_events), so they get their own dot color rather than a slot in
 // KIND_DOT_CLASSES.
-const TEST_DOT_CLASS = "bg-indigo-500";
+const ASSESSMENT_DOT_CLASS = "bg-indigo-500";
 
-export type TestDateMarker = {
-  testId: string;
+export type AssessmentDateMarker = {
+  assessmentId: string;
   date: string;
   label: string;
   studentCount: number;
@@ -436,8 +436,8 @@ export function TeacherCalendar({
   slots,
   attendanceRecords,
   onAttendanceRecordsChange,
-  testMarkers = [],
-  onViewTest,
+  assessmentMarkers = [],
+  onViewAssessment,
 }: {
   events: CalendarEvent[];
   onEventsChange: React.Dispatch<React.SetStateAction<CalendarEvent[]>>;
@@ -449,10 +449,10 @@ export function TeacherCalendar({
     React.SetStateAction<AttendanceRecord[]>
   >;
   // Read-only overlay of mock exam dates - never written back into
-  // calendar_events, see supabase/migrations/*_tests.sql and
-  // lib/test-status.ts. Purely for visibility on the grid.
-  testMarkers?: TestDateMarker[];
-  onViewTest?: (testId: string) => void;
+  // calendar_events, see supabase/migrations/*_assessments.sql and
+  // lib/assessment-status.ts. Purely for visibility on the grid.
+  assessmentMarkers?: AssessmentDateMarker[];
+  onViewAssessment?: (assessmentId: string) => void;
 }) {
   const [month, setMonth] = React.useState(() => new Date());
   const [selectedDate, setSelectedDate] = React.useState(() =>
@@ -506,17 +506,18 @@ export function TeacherCalendar({
     return map;
   }, [monthOccurrences]);
 
-  const testMarkersByDate = React.useMemo(() => {
-    const map = new Map<string, TestDateMarker[]>();
-    for (const marker of testMarkers) {
+  const assessmentMarkersByDate = React.useMemo(() => {
+    const map = new Map<string, AssessmentDateMarker[]>();
+    for (const marker of assessmentMarkers) {
       const list = map.get(marker.date) ?? [];
       list.push(marker);
       map.set(marker.date, list);
     }
     return map;
-  }, [testMarkers]);
+  }, [assessmentMarkers]);
 
-  const selectedTestMarkers = testMarkersByDate.get(selectedDate) ?? [];
+  const selectedAssessmentMarkers =
+    assessmentMarkersByDate.get(selectedDate) ?? [];
 
   const selectedOccurrences = React.useMemo(
     () =>
@@ -578,7 +579,8 @@ export function TeacherCalendar({
     (dayButtonProps: React.ComponentProps<typeof CalendarDayButton>) => {
       const iso = toIsoDate(dayButtonProps.day.date);
       const kinds = kindsByDate.get(iso);
-      const hasTestMarker = (testMarkersByDate.get(iso)?.length ?? 0) > 0;
+      const hasAssessmentMarker =
+        (assessmentMarkersByDate.get(iso)?.length ?? 0) > 0;
       return (
         <CalendarDayButton
           {...dayButtonProps}
@@ -590,7 +592,7 @@ export function TeacherCalendar({
           )}
         >
           {dayButtonProps.children}
-          {(kinds && kinds.size > 0) || hasTestMarker ? (
+          {(kinds && kinds.size > 0) || hasAssessmentMarker ? (
             <span className="flex gap-0.5">
               {[...(kinds ?? [])].slice(0, 3).map((kind) => (
                 <span
@@ -601,15 +603,17 @@ export function TeacherCalendar({
                   )}
                 />
               ))}
-              {hasTestMarker ? (
-                <span className={cn("h-1 w-1 rounded-full", TEST_DOT_CLASS)} />
+              {hasAssessmentMarker ? (
+                <span
+                  className={cn("h-1 w-1 rounded-full", ASSESSMENT_DOT_CLASS)}
+                />
               ) : null}
             </span>
           ) : null}
         </CalendarDayButton>
       );
     },
-    [kindsByDate, testMarkersByDate, todayIso],
+    [kindsByDate, assessmentMarkersByDate, todayIso],
   );
 
   const openCreate = (type: AddableEventType) => {
@@ -1034,28 +1038,28 @@ export function TeacherCalendar({
             })
           )}
 
-          {selectedTestMarkers.length > 0 ? (
+          {selectedAssessmentMarkers.length > 0 ? (
             <div className="mt-3 space-y-2 border-t pt-3">
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Tests
+                Assessments
               </p>
-              {selectedTestMarkers.map((marker) => (
+              {selectedAssessmentMarkers.map((marker) => (
                 <div
-                  key={marker.testId}
+                  key={marker.assessmentId}
                   className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-2 text-sm"
                 >
                   <span>
                     {marker.label} · {marker.studentCount} student
                     {marker.studentCount === 1 ? "" : "s"}
                   </span>
-                  {onViewTest ? (
+                  {onViewAssessment ? (
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
-                      onClick={() => onViewTest(marker.testId)}
+                      onClick={() => onViewAssessment(marker.assessmentId)}
                     >
-                      View in Tests
+                      View in Assessments
                     </Button>
                   ) : null}
                 </div>

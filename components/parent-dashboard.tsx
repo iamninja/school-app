@@ -35,7 +35,7 @@ import type {
   ParentDashboardData,
   QuizSummary,
   Receipt,
-  TestSummary,
+  AssessmentSummary,
 } from "@/lib/types/database";
 import { formatEuro } from "@/lib/format-currency";
 import {
@@ -43,10 +43,10 @@ import {
   BALANCE_TRANSACTION_TYPE_LABELS_EL,
   DAY_LABELS_EL,
   formatClassDateRangeEl,
-  TEST_KIND_LABELS_EL,
-  TEST_OVERDUE_LABEL_EL,
-  TEST_STATUS_LABELS_EL,
-  TEST_TAKEN_LATE_LABEL_EL,
+  ASSESSMENT_KIND_LABELS_EL,
+  ASSESSMENT_OVERDUE_LABEL_EL,
+  ASSESSMENT_STATUS_LABELS_EL,
+  ASSESSMENT_TAKEN_LATE_LABEL_EL,
 } from "@/lib/greek-labels";
 import { fromIsoDate } from "@/lib/calendar-projection";
 import { lessonTimeLabel } from "@/lib/schedule-grid";
@@ -112,15 +112,15 @@ function QuizRow({ quiz }: { quiz: QuizSummary }) {
   );
 }
 
-function TestRow({ test }: { test: TestSummary }) {
-  const whenLabel = test.className
-    ? test.className
-    : test.kind === "mock_exam" && test.effectiveScheduledDate
-      ? format(fromIsoDate(test.effectiveScheduledDate), "d MMMM yyyy", {
+function AssessmentRow({ assessment }: { assessment: AssessmentSummary }) {
+  const whenLabel = assessment.className
+    ? assessment.className
+    : assessment.kind === "mock_exam" && assessment.effectiveScheduledDate
+      ? format(fromIsoDate(assessment.effectiveScheduledDate), "d MMMM yyyy", {
           locale: el,
         })
-      : test.effectiveDeadlineAt
-        ? format(new Date(test.effectiveDeadlineAt), "d MMMM yyyy", {
+      : assessment.effectiveDeadlineAt
+        ? format(new Date(assessment.effectiveDeadlineAt), "d MMMM yyyy", {
             locale: el,
           })
         : "";
@@ -128,35 +128,35 @@ function TestRow({ test }: { test: TestSummary }) {
   return (
     <div className="flex items-center justify-between gap-3 rounded-lg border border-border/70 bg-background/60 px-3 py-2">
       <div className="min-w-0">
-        <p className="truncate text-sm font-medium">{test.title}</p>
+        <p className="truncate text-sm font-medium">{assessment.title}</p>
         <p className="text-xs text-muted-foreground">
-          {TEST_KIND_LABELS_EL[test.kind]}
+          {ASSESSMENT_KIND_LABELS_EL[assessment.kind]}
           {whenLabel ? ` · ${whenLabel}` : ""}
         </p>
-        {test.status === "marked" && test.teacherComment ? (
+        {assessment.status === "marked" && assessment.teacherComment ? (
           <p className="mt-1 text-xs text-muted-foreground">
-            {test.teacherComment}
+            {assessment.teacherComment}
           </p>
         ) : null}
       </div>
-      {test.status === "marked" ? (
+      {assessment.status === "marked" ? (
         <div className="flex flex-wrap items-center justify-end gap-2">
           <Badge variant="outline">
-            Βαθμός: {test.score} / {test.maxScore}
+            Βαθμός: {assessment.score} / {assessment.maxScore}
           </Badge>
           {/* Persistent even once marked - shown ALONGSIDE the score, never
               instead of it. This is the portal-facing expression of "late
-              survives grading" (lib/test-status.ts). */}
-          {test.isLate ? (
-            <Badge variant="destructive">{TEST_TAKEN_LATE_LABEL_EL}</Badge>
+              survives grading" (lib/assessment-status.ts). */}
+          {assessment.isLate ? (
+            <Badge variant="destructive">{ASSESSMENT_TAKEN_LATE_LABEL_EL}</Badge>
           ) : null}
         </div>
-      ) : test.status === "taken" ? (
-        <Badge variant="outline">{TEST_STATUS_LABELS_EL.taken}</Badge>
-      ) : test.isLate ? (
-        <Badge variant="destructive">{TEST_OVERDUE_LABEL_EL}</Badge>
+      ) : assessment.status === "taken" ? (
+        <Badge variant="outline">{ASSESSMENT_STATUS_LABELS_EL.taken}</Badge>
+      ) : assessment.isLate ? (
+        <Badge variant="destructive">{ASSESSMENT_OVERDUE_LABEL_EL}</Badge>
       ) : (
-        <Badge variant="outline">{TEST_STATUS_LABELS_EL.registered}</Badge>
+        <Badge variant="outline">{ASSESSMENT_STATUS_LABELS_EL.registered}</Badge>
       )}
     </div>
   );
@@ -350,7 +350,7 @@ function ChildSection({
   attendance,
   quizzes,
   calendarEvents,
-  tests,
+  assessments,
 }: ParentDashboardChild) {
   const schedulesByClass = schedules.reduce(
     (acc, schedule) => {
@@ -566,26 +566,26 @@ function ChildSection({
                 />
                 Τεστ &amp; Διαγωνίσματα
               </CardTitle>
-              {tests.length > RECENT_PREVIEW_COUNT ? (
+              {assessments.length > RECENT_PREVIEW_COUNT ? (
                 <PortalHistoryDialog
                   triggerLabel="Ιστορικό"
                   title="Τεστ & Διαγωνίσματα"
                 >
-                  {tests.map((test) => (
-                    <TestRow key={test.id} test={test} />
+                  {assessments.map((assessment) => (
+                    <AssessmentRow key={assessment.id} assessment={assessment} />
                   ))}
                 </PortalHistoryDialog>
               ) : null}
             </CardHeader>
             <CardContent>
-              {tests.length === 0 ? (
+              {assessments.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   Δεν έχουν προγραμματιστεί τεστ ακόμα.
                 </p>
               ) : (
                 <div className="space-y-2">
-                  {tests.slice(0, RECENT_PREVIEW_COUNT).map((test) => (
-                    <TestRow key={test.id} test={test} />
+                  {assessments.slice(0, RECENT_PREVIEW_COUNT).map((assessment) => (
+                    <AssessmentRow key={assessment.id} assessment={assessment} />
                   ))}
                 </div>
               )}

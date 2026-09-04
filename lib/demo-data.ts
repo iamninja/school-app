@@ -199,7 +199,7 @@ const NIKOS: StudentDashboardData = {
       notes: "Αργία",
     },
   ],
-  tests: [],
+  assessments: [],
 };
 
 // Canned full answer review for the "Ανασκόπηση" button on the demo's
@@ -630,7 +630,7 @@ const MARIA: ParentDashboardData["kids"][number] = {
       notes: "Προετοιμασία για διαγώνισμα",
     },
   ],
-  tests: [],
+  assessments: [],
 };
 
 const NIKOS_AS_CHILD: ParentDashboardData["kids"][number] = {
@@ -640,7 +640,7 @@ const NIKOS_AS_CHILD: ParentDashboardData["kids"][number] = {
   attendance: NIKOS.attendance,
   quizzes: NIKOS.quizzes,
   calendarEvents: NIKOS.calendarEvents,
-  tests: NIKOS.tests,
+  assessments: NIKOS.assessments,
 };
 
 export const DEMO_STUDENT_DASHBOARD: StudentDashboardData = NIKOS;

@@ -1,16 +1,16 @@
 import { describe, it, expect } from "vitest";
 import {
   computeDueAt,
-  isTestAssignmentLate,
-  upsertTestAssignment,
-} from "@/lib/test-status";
-import type { TeacherTestAssignmentRow } from "@/lib/types/database";
+  isAssessmentAssignmentLate,
+  upsertAssessmentAssignment,
+} from "@/lib/assessment-status";
+import type { TeacherAssessmentAssignmentRow } from "@/lib/types/database";
 
 describe("computeDueAt", () => {
-  it("returns null for a short_test with no deadline (open)", () => {
+  it("returns null for a short_assessment with no deadline (open)", () => {
     expect(
       computeDueAt({
-        kind: "short_test",
+        kind: "short_assessment",
         effectiveScheduledDate: null,
         effectiveScheduledTime: null,
         effectiveDeadlineAt: null,
@@ -18,9 +18,9 @@ describe("computeDueAt", () => {
     ).toBeNull();
   });
 
-  it("returns the deadline instant for a short_test with a deadline", () => {
+  it("returns the deadline instant for a short_assessment with a deadline", () => {
     const due = computeDueAt({
-      kind: "short_test",
+      kind: "short_assessment",
       effectiveScheduledDate: null,
       effectiveScheduledTime: null,
       effectiveDeadlineAt: "2026-09-10T15:00:00.000Z",
@@ -51,14 +51,14 @@ describe("computeDueAt", () => {
   });
 });
 
-describe("isTestAssignmentLate", () => {
+describe("isAssessmentAssignmentLate", () => {
   const NOW = new Date("2026-09-10T12:00:00.000Z");
 
-  it("is never late when a short_test has no deadline", () => {
+  it("is never late when a short_assessment has no deadline", () => {
     expect(
-      isTestAssignmentLate(
+      isAssessmentAssignmentLate(
         {
-          kind: "short_test",
+          kind: "short_assessment",
           effectiveScheduledDate: null,
           effectiveScheduledTime: null,
           effectiveDeadlineAt: null,
@@ -71,9 +71,9 @@ describe("isTestAssignmentLate", () => {
 
   it("is not late while not yet taken and the deadline hasn't passed", () => {
     expect(
-      isTestAssignmentLate(
+      isAssessmentAssignmentLate(
         {
-          kind: "short_test",
+          kind: "short_assessment",
           effectiveScheduledDate: null,
           effectiveScheduledTime: null,
           effectiveDeadlineAt: "2026-09-15T00:00:00.000Z",
@@ -86,9 +86,9 @@ describe("isTestAssignmentLate", () => {
 
   it("is late (live) when not yet taken and the deadline has passed", () => {
     expect(
-      isTestAssignmentLate(
+      isAssessmentAssignmentLate(
         {
-          kind: "short_test",
+          kind: "short_assessment",
           effectiveScheduledDate: null,
           effectiveScheduledTime: null,
           effectiveDeadlineAt: "2026-09-01T00:00:00.000Z",
@@ -101,9 +101,9 @@ describe("isTestAssignmentLate", () => {
 
   it("is not late when taken before the deadline", () => {
     expect(
-      isTestAssignmentLate(
+      isAssessmentAssignmentLate(
         {
-          kind: "short_test",
+          kind: "short_assessment",
           effectiveScheduledDate: null,
           effectiveScheduledTime: null,
           effectiveDeadlineAt: "2026-09-15T00:00:00.000Z",
@@ -116,20 +116,20 @@ describe("isTestAssignmentLate", () => {
 
   it("is late when taken after the deadline, permanently (independent of now)", () => {
     const input = {
-      kind: "short_test" as const,
+      kind: "short_assessment" as const,
       effectiveScheduledDate: null,
       effectiveScheduledTime: null,
       effectiveDeadlineAt: "2026-09-01T00:00:00.000Z",
       takenAt: "2026-09-05T00:00:00.000Z",
     };
     // Still late a year later - this is the "marked but stays late" case.
-    expect(isTestAssignmentLate(input, new Date("2027-09-01"))).toBe(true);
-    expect(isTestAssignmentLate(input, NOW)).toBe(true);
+    expect(isAssessmentAssignmentLate(input, new Date("2027-09-01"))).toBe(true);
+    expect(isAssessmentAssignmentLate(input, NOW)).toBe(true);
   });
 
   it("applies the same taken-late permanence to a mock_exam", () => {
     expect(
-      isTestAssignmentLate(
+      isAssessmentAssignmentLate(
         {
           kind: "mock_exam",
           effectiveScheduledDate: "2026-09-01",
@@ -143,12 +143,12 @@ describe("isTestAssignmentLate", () => {
   });
 });
 
-describe("upsertTestAssignment", () => {
-  const ROW: TeacherTestAssignmentRow = {
+describe("upsertAssessmentAssignment", () => {
+  const ROW: TeacherAssessmentAssignmentRow = {
     id: "assignment-1",
-    test_id: "test-1",
+    assessment_id: "assessment-1",
     student_id: "student-1",
-    kind: "short_test",
+    kind: "short_assessment",
     effective_scheduled_date: null,
     effective_scheduled_time: null,
     effective_deadline_at: null,
@@ -162,13 +162,13 @@ describe("upsertTestAssignment", () => {
   };
 
   it("adds a new row when none exists with that id", () => {
-    expect(upsertTestAssignment([], ROW)).toEqual([ROW]);
+    expect(upsertAssessmentAssignment([], ROW)).toEqual([ROW]);
   });
 
   it("replaces the existing row with the same id, leaving others untouched", () => {
-    const other: TeacherTestAssignmentRow = { ...ROW, id: "assignment-2" };
-    const updated: TeacherTestAssignmentRow = { ...ROW, status: "taken" };
-    expect(upsertTestAssignment([ROW, other], updated)).toEqual([
+    const other: TeacherAssessmentAssignmentRow = { ...ROW, id: "assignment-2" };
+    const updated: TeacherAssessmentAssignmentRow = { ...ROW, status: "taken" };
+    expect(upsertAssessmentAssignment([ROW, other], updated)).toEqual([
       updated,
       other,
     ]);

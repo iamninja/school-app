@@ -1,18 +1,19 @@
 import { Badge } from "@/components/ui/badge";
-import type { TestAssignmentStatus } from "@/lib/types/database";
+import type { AssessmentAssignmentStatus } from "@/lib/types/database";
 
-// Shared by the Tests tab and the class/student detail tie-ins. "Late" is
-// deliberately a second badge shown ALONGSIDE the status, never a status
-// value itself - see lib/test-status.ts for why: it has to survive a
-// taken -> marked transition, which a single status enum can't express.
-const STATUS_LABELS: Record<TestAssignmentStatus, string> = {
+// Shared by the Assessments tab and the class/student detail tie-ins.
+// "Late" is deliberately a second badge shown ALONGSIDE the status, never
+// a status value itself - see lib/assessment-status.ts for why: it has to
+// survive a taken -> marked transition, which a single status enum can't
+// express.
+const STATUS_LABELS: Record<AssessmentAssignmentStatus, string> = {
   registered: "Registered",
   taken: "Taken",
   marked: "Marked",
 };
 
 const STATUS_VARIANTS: Record<
-  TestAssignmentStatus,
+  AssessmentAssignmentStatus,
   "outline" | "secondary" | "default"
 > = {
   registered: "outline",
@@ -20,11 +21,11 @@ const STATUS_VARIANTS: Record<
   marked: "default",
 };
 
-export function TestStatusBadge({
+export function AssessmentStatusBadge({
   status,
   isLate,
 }: {
-  status: TestAssignmentStatus;
+  status: AssessmentAssignmentStatus;
   isLate: boolean;
 }) {
   return (

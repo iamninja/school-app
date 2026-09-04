@@ -25,16 +25,16 @@ import type {
   PortalCalendarEvent,
   QuizAttemptReview,
   QuizSummary,
-  TestSummary,
+  AssessmentSummary,
 } from "@/lib/types/database";
 import {
   ATTENDANCE_STATUS_LABELS_EL,
   DAY_LABELS_EL,
   formatClassDateRangeEl,
-  TEST_KIND_LABELS_EL,
-  TEST_OVERDUE_LABEL_EL,
-  TEST_STATUS_LABELS_EL,
-  TEST_TAKEN_LATE_LABEL_EL,
+  ASSESSMENT_KIND_LABELS_EL,
+  ASSESSMENT_OVERDUE_LABEL_EL,
+  ASSESSMENT_STATUS_LABELS_EL,
+  ASSESSMENT_TAKEN_LATE_LABEL_EL,
 } from "@/lib/greek-labels";
 import { fromIsoDate } from "@/lib/calendar-projection";
 import { lessonTimeLabel } from "@/lib/schedule-grid";
@@ -76,7 +76,7 @@ type StudentDashboardProps = {
   }>;
   quizzes: QuizSummary[];
   calendarEvents: PortalCalendarEvent[];
-  tests: TestSummary[];
+  assessments: AssessmentSummary[];
   demoMode?: boolean;
   demoReviews?: Record<string, QuizAttemptReview>;
 };
@@ -84,18 +84,19 @@ type StudentDashboardProps = {
 const DAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const RECENT_PREVIEW_COUNT = 5;
 
-// Not shared with parent-dashboard.tsx's TestRow - the two portal files
-// don't share row-rendering components anywhere else (QuizRow/AttendanceRow
-// are each duplicated too), so this follows that existing convention.
-function TestRow({ test }: { test: TestSummary }) {
-  const whenLabel = test.className
-    ? test.className
-    : test.kind === "mock_exam" && test.effectiveScheduledDate
-      ? format(fromIsoDate(test.effectiveScheduledDate), "d MMMM yyyy", {
+// Not shared with parent-dashboard.tsx's AssessmentRow - the two portal
+// files don't share row-rendering components anywhere else (QuizRow/
+// AttendanceRow are each duplicated too), so this follows that existing
+// convention.
+function AssessmentRow({ assessment }: { assessment: AssessmentSummary }) {
+  const whenLabel = assessment.className
+    ? assessment.className
+    : assessment.kind === "mock_exam" && assessment.effectiveScheduledDate
+      ? format(fromIsoDate(assessment.effectiveScheduledDate), "d MMMM yyyy", {
           locale: el,
         })
-      : test.effectiveDeadlineAt
-        ? format(new Date(test.effectiveDeadlineAt), "d MMMM yyyy", {
+      : assessment.effectiveDeadlineAt
+        ? format(new Date(assessment.effectiveDeadlineAt), "d MMMM yyyy", {
             locale: el,
           })
         : "";
@@ -103,32 +104,32 @@ function TestRow({ test }: { test: TestSummary }) {
   return (
     <div className="flex items-center justify-between gap-3 rounded-lg border border-border/70 bg-background/60 px-3 py-2">
       <div className="min-w-0">
-        <p className="truncate text-sm font-medium">{test.title}</p>
+        <p className="truncate text-sm font-medium">{assessment.title}</p>
         <p className="text-xs text-muted-foreground">
-          {TEST_KIND_LABELS_EL[test.kind]}
+          {ASSESSMENT_KIND_LABELS_EL[assessment.kind]}
           {whenLabel ? ` · ${whenLabel}` : ""}
         </p>
-        {test.status === "marked" && test.teacherComment ? (
+        {assessment.status === "marked" && assessment.teacherComment ? (
           <p className="mt-1 text-xs text-muted-foreground">
-            {test.teacherComment}
+            {assessment.teacherComment}
           </p>
         ) : null}
       </div>
-      {test.status === "marked" ? (
+      {assessment.status === "marked" ? (
         <div className="flex flex-wrap items-center justify-end gap-2">
           <Badge variant="outline">
-            Βαθμός: {test.score} / {test.maxScore}
+            Βαθμός: {assessment.score} / {assessment.maxScore}
           </Badge>
-          {test.isLate ? (
-            <Badge variant="destructive">{TEST_TAKEN_LATE_LABEL_EL}</Badge>
+          {assessment.isLate ? (
+            <Badge variant="destructive">{ASSESSMENT_TAKEN_LATE_LABEL_EL}</Badge>
           ) : null}
         </div>
-      ) : test.status === "taken" ? (
-        <Badge variant="outline">{TEST_STATUS_LABELS_EL.taken}</Badge>
-      ) : test.isLate ? (
-        <Badge variant="destructive">{TEST_OVERDUE_LABEL_EL}</Badge>
+      ) : assessment.status === "taken" ? (
+        <Badge variant="outline">{ASSESSMENT_STATUS_LABELS_EL.taken}</Badge>
+      ) : assessment.isLate ? (
+        <Badge variant="destructive">{ASSESSMENT_OVERDUE_LABEL_EL}</Badge>
       ) : (
-        <Badge variant="outline">{TEST_STATUS_LABELS_EL.registered}</Badge>
+        <Badge variant="outline">{ASSESSMENT_STATUS_LABELS_EL.registered}</Badge>
       )}
     </div>
   );
@@ -361,28 +362,28 @@ export function StudentDashboard(props: StudentDashboardProps) {
                     />
                     Τεστ &amp; Διαγωνίσματα
                   </CardTitle>
-                  {props.tests.length > RECENT_PREVIEW_COUNT ? (
+                  {props.assessments.length > RECENT_PREVIEW_COUNT ? (
                     <PortalHistoryDialog
                       triggerLabel="Ιστορικό"
                       title="Τεστ & Διαγωνίσματα"
                     >
-                      {props.tests.map((test) => (
-                        <TestRow key={test.id} test={test} />
+                      {props.assessments.map((assessment) => (
+                        <AssessmentRow key={assessment.id} assessment={assessment} />
                       ))}
                     </PortalHistoryDialog>
                   ) : null}
                 </CardHeader>
                 <CardContent>
-                  {props.tests.length === 0 ? (
+                  {props.assessments.length === 0 ? (
                     <p className="text-sm text-muted-foreground">
                       Δεν έχουν προγραμματιστεί τεστ ακόμα.
                     </p>
                   ) : (
                     <div className="space-y-2">
-                      {props.tests
+                      {props.assessments
                         .slice(0, RECENT_PREVIEW_COUNT)
-                        .map((test) => (
-                          <TestRow key={test.id} test={test} />
+                        .map((assessment) => (
+                          <AssessmentRow key={assessment.id} assessment={assessment} />
                         ))}
                     </div>
                   )}
