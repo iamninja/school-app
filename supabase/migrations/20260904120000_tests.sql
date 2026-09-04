@@ -55,8 +55,13 @@ create table public.tests (
       when 'short_test' then scheduled_date is null and scheduled_time is null
     end
   ),
+  -- Only "class_id set -> class_name must be set" is enforced, not the
+  -- reverse - a symmetric check would break the moment `delete from
+  -- classes` fires ON DELETE SET NULL, which nulls class_id but
+  -- deliberately leaves class_name as the surviving historical snapshot
+  -- (same reasoning as calendar_events_shape_check).
   constraint tests_class_snapshot_check check (
-    (class_id is null) = (class_name is null)
+    class_id is null or class_name is not null
   )
 );
 
@@ -66,23 +71,9 @@ create policy "Teachers manage tests" on public.tests
   using ((teacher_id = auth.uid()) and public.is_teacher())
   with check ((teacher_id = auth.uid()) and public.is_teacher());
 
-create policy "Parents view child tests" on public.tests
-  for select using (
-    exists (
-      select 1 from public.test_assignments ta
-      where ta.test_id = tests.id
-        and public.is_parent_of_student(ta.student_id)
-    )
-  );
-
-create policy "Students view own tests" on public.tests
-  for select using (
-    exists (
-      select 1 from public.test_assignments ta
-      join public.students s on s.id = ta.student_id
-      where ta.test_id = tests.id and s.user_id = auth.uid()
-    )
-  );
+-- The parent/student SELECT policies on `tests` live further down, after
+-- test_assignments is created - they EXISTS-join into it, so they can't be
+-- declared until that table exists.
 
 create index tests_teacher_idx on public.tests (teacher_id, created_at desc);
 create index tests_class_idx on public.tests (class_id) where class_id is not null;
@@ -144,7 +135,12 @@ create table public.test_assignments (
   -- score <= max_score is a cross-table invariant (tests.max_score) and is
   -- enforced in the server action, not here - Postgres CHECK can't
   -- reference another table.
-  constraint test_assignments_status_check check (
+  --
+  -- Explicitly NOT named test_assignments_status_check - Postgres
+  -- auto-names the inline `status ... check (status in (...))` column
+  -- check exactly that (<table>_<column>_check), and a same-name explicit
+  -- constraint on the same table collides with it.
+  constraint test_assignments_status_fields_check check (
     (status = 'registered' and taken_at is null and score is null)
     or (status = 'taken' and taken_at is not null and score is null)
     or (status = 'marked' and taken_at is not null and score is not null)
@@ -174,3 +170,23 @@ create policy "Students view own test assignments" on public.test_assignments
 create index test_assignments_test_idx on public.test_assignments (test_id);
 create index test_assignments_student_idx on public.test_assignments (student_id);
 create index test_assignments_teacher_idx on public.test_assignments (teacher_id);
+
+-- Deferred from the `tests` table's own RLS block above - needs
+-- test_assignments to exist first.
+create policy "Parents view child tests" on public.tests
+  for select using (
+    exists (
+      select 1 from public.test_assignments ta
+      where ta.test_id = tests.id
+        and public.is_parent_of_student(ta.student_id)
+    )
+  );
+
+create policy "Students view own tests" on public.tests
+  for select using (
+    exists (
+      select 1 from public.test_assignments ta
+      join public.students s on s.id = ta.student_id
+      where ta.test_id = tests.id and s.user_id = auth.uid()
+    )
+  );
