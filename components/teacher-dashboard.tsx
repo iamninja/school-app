@@ -18,6 +18,7 @@ import {
   CalendarDaysIcon,
   CalendarRangeIcon,
   ClipboardCheckIcon,
+  ClipboardListIcon,
   EuroIcon,
   FileTextIcon,
   LayersIcon,
@@ -83,6 +84,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LogoutButton } from "@/components/logout-button";
 import { TeacherClassDetail } from "@/components/teacher-class-detail";
 import { TeacherQuizBuilder } from "@/components/teacher-quiz-builder";
+import { TeacherTests } from "@/components/teacher-tests";
 import {
   TeacherBusinessSettings,
   type CredentialStatusView,
@@ -120,6 +122,8 @@ import type {
   Receipt,
   ReceiptPrefill,
   TeacherQuizListItem,
+  TeacherTestAssignmentRow,
+  TeacherTestListItem,
 } from "@/lib/types/database";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
@@ -159,6 +163,12 @@ const SECTIONS = [
     label: "Quizzes",
     description: "Build and assign quizzes",
     icon: FileTextIcon,
+  },
+  {
+    value: "tests",
+    label: "Tests",
+    description: "Register, schedule, and mark in-person tests",
+    icon: ClipboardListIcon,
   },
   {
     value: "billing",
@@ -258,6 +268,8 @@ type TeacherDashboardProps = {
   initialFamilies?: FamilyItem[];
   initialAttendance: AttendanceRecord[];
   initialQuizzes?: TeacherQuizListItem[];
+  initialTests?: TeacherTestListItem[];
+  initialTestAssignments?: TeacherTestAssignmentRow[];
   businessProfile?: BusinessProfile | null;
   integrationSettings?: IntegrationSettings[];
   credentialStatuses?: Record<string, CredentialStatusView>;
@@ -490,6 +502,8 @@ export function TeacherDashboard({
   initialFamilies = [],
   initialAttendance,
   initialQuizzes = [],
+  initialTests = [],
+  initialTestAssignments = [],
   businessProfile = null,
   integrationSettings = [],
   credentialStatuses = {},
@@ -649,6 +663,17 @@ export function TeacherDashboard({
   // date picker immediately, not after a page reload.
   const [calendarEvents, setCalendarEvents] = React.useState<CalendarEvent[]>(
     initialCalendarEvents,
+  );
+  // Hoisted here (not owned inside <TeacherTests>) for the same reason as
+  // calendarEvents above: the Calendar tab's mock-exam overlay and the
+  // Classes/Students tie-in cards need to read this live, not after a page
+  // reload.
+  const [tests, setTests] = React.useState<TeacherTestListItem[]>(initialTests);
+  const [testAssignments, setTestAssignments] = React.useState<
+    TeacherTestAssignmentRow[]
+  >(initialTestAssignments);
+  const [selectedTestId, setSelectedTestId] = React.useState<string | null>(
+    null,
   );
 
   const scheduledCounts = React.useMemo(() => {
@@ -3614,6 +3639,21 @@ export function TeacherDashboard({
           <TeacherQuizBuilder
             classes={activeClasses.map(({ id, name }) => ({ id, name }))}
             initialQuizzes={initialQuizzes}
+          />
+        </TabsContent>
+
+        <TabsContent value="tests" className="mt-0">
+          <TeacherTests
+            classes={activeClasses.map(({ id, name }) => ({ id, name }))}
+            students={students
+              .filter((student) => !student.withdrawnAt)
+              .map(({ id, firstName, lastName }) => ({ id, firstName, lastName }))}
+            tests={tests}
+            testAssignments={testAssignments}
+            onTestsChange={setTests}
+            onTestAssignmentsChange={setTestAssignments}
+            selectedTestId={selectedTestId}
+            onSelectedTestIdChange={setSelectedTestId}
           />
         </TabsContent>
 

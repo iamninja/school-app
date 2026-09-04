@@ -9,6 +9,10 @@ import {
   listChargeRunsAction,
   listFamilyBalancesAction,
 } from "@/app/protected/teacher/billing-actions";
+import {
+  listTestsAction,
+  listTestAssignmentsAction,
+} from "@/app/protected/teacher/tests-actions";
 
 // The Supabase client has no Database generic here, so its select-string
 // parser can't determine embed cardinality and infers every embed as an
@@ -255,6 +259,8 @@ export default async function TeacherPage() {
   const initialExpenses = await listExpensesAction();
   const initialFamilyBalances = await listFamilyBalancesAction();
   const initialChargeRuns = await listChargeRunsAction();
+  const initialTests = await listTestsAction();
+  const initialTestAssignments = await listTestAssignmentsAction();
 
   return (
     <TeacherDashboard
@@ -264,6 +270,8 @@ export default async function TeacherPage() {
       initialFamilies={initialFamilies}
       initialAttendance={initialAttendance}
       initialQuizzes={initialQuizzes}
+      initialTests={initialTests}
+      initialTestAssignments={initialTestAssignments}
       businessProfile={businessSettings.profile}
       integrationSettings={businessSettings.integrations}
       credentialStatuses={businessSettings.credentialStatuses}
