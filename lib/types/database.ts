@@ -443,6 +443,7 @@ export interface StudentDashboardData {
   }>;
   quizzes: QuizSummary[];
   calendarEvents: PortalCalendarEvent[];
+  tests: TestSummary[];
 }
 
 export interface ParentDashboardChild {
@@ -477,6 +478,7 @@ export interface ParentDashboardChild {
   }>;
   quizzes: QuizSummary[];
   calendarEvents: PortalCalendarEvent[];
+  tests: TestSummary[];
 }
 
 export interface ParentDashboardData {
@@ -751,6 +753,97 @@ export interface PortalCalendarEvent {
   class_id: string | null;
   class_name: string | null;
   notes: string | null;
+}
+
+// Tests: in-person tests/mock exams, graded with one manually-entered mark.
+// Not built on the quizzes tables - see supabase/migrations/*_tests.sql for
+// why. `tests` is the template; `test_assignments` is the per-student
+// roster/schedule/grade row.
+export type TestKind = "short_test" | "mock_exam";
+export type TestAssignmentStatus = "registered" | "taken" | "marked";
+
+export interface Test {
+  id: string;
+  kind: TestKind;
+  title: string;
+  description: string | null;
+  max_score: number;
+  duration_minutes: number;
+  scheduled_date: string | null;
+  scheduled_time: string | null;
+  deadline_at: string | null;
+  class_id: string | null;
+  class_name: string | null;
+  created_at: string;
+}
+
+// class_name is server-resolved from a trusted classId fetch, never taken
+// from client input - same convention as CalendarEventInput.
+export interface TestInput {
+  kind: TestKind;
+  title: string;
+  description?: string;
+  maxScore: number;
+  durationMinutes: number;
+  scheduledDate?: string | null; // mock_exam
+  scheduledTime?: string | null; // mock_exam
+  deadlineAt?: string | null; // short_test, null/absent = open
+  classId?: string | null; // exactly one of classId/studentIds on create
+  studentIds?: string[];
+}
+
+export interface TestAssignment {
+  id: string;
+  test_id: string;
+  student_id: string;
+  kind: TestKind;
+  effective_scheduled_date: string | null;
+  effective_scheduled_time: string | null;
+  effective_deadline_at: string | null;
+  taken_at: string | null;
+  status: TestAssignmentStatus;
+  score: number | null;
+  teacher_comment: string | null;
+  created_at: string;
+}
+
+// Shape of a test_assignments row embedded-joined to its parent tests row -
+// what the parent/student dashboard fetches (scoped by student_id) look
+// like straight off the wire, before being mapped down to TestSummary.
+export interface TestAssignmentWithTest extends TestAssignment {
+  tests: Pick<Test, "title" | "max_score" | "class_id" | "class_name">;
+}
+
+// Teacher-side roster row: assignment + joined student display name +
+// isLate computed server-side by lib/test-status.ts before returning, so
+// every caller (teacher UI, calendar overlay, class/student detail) reads
+// the same derivation.
+export interface TeacherTestAssignmentRow extends TestAssignment {
+  studentName: string;
+  isLate: boolean;
+}
+
+export interface TeacherTestListItem extends Test {
+  assignmentCount: number;
+  markedCount: number;
+}
+
+// Portal-facing summary shown on student/parent dashboards - shaped like
+// QuizSummary above (same field-naming convention).
+export interface TestSummary {
+  id: string; // test_assignments.id
+  testId: string;
+  kind: TestKind;
+  title: string;
+  className: string | null;
+  maxScore: number;
+  effectiveScheduledDate: string | null;
+  effectiveScheduledTime: string | null;
+  effectiveDeadlineAt: string | null;
+  status: TestAssignmentStatus;
+  score: number | null;
+  teacherComment: string | null;
+  isLate: boolean;
 }
 
 // Monthly tuition balance ledger. amount is SIGNED: positive = family

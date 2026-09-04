@@ -204,6 +204,7 @@ const ALEX: StudentDashboardData = {
       notes: "Public holiday",
     },
   ],
+  tests: [],
 };
 
 // Canned full answer review for the "Review" button on the demo's
@@ -631,6 +632,7 @@ const SOPHIE: ParentDashboardData["kids"][number] = {
       notes: "Getting ready for the test",
     },
   ],
+  tests: [],
 };
 
 const ALEX_AS_CHILD: ParentDashboardData["kids"][number] = {
@@ -640,6 +642,7 @@ const ALEX_AS_CHILD: ParentDashboardData["kids"][number] = {
   attendance: ALEX.attendance,
   quizzes: ALEX.quizzes,
   calendarEvents: ALEX.calendarEvents,
+  tests: ALEX.tests,
 };
 
 export const DEMO_EN_STUDENT_DASHBOARD: StudentDashboardData = ALEX;

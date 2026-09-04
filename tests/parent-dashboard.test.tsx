@@ -69,6 +69,7 @@ function makeChild(overrides: Partial<ParentDashboardChild> = {}): ParentDashboa
     attendance: [],
     quizzes: [],
     calendarEvents: [],
+    tests: [],
     ...overrides,
   };
 }
