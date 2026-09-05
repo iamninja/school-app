@@ -150,6 +150,57 @@ describe("RLS: family_balance_transactions", () => {
       });
       expect(error).not.toBeNull();
     });
+
+    // Opus security audit finding H1, 2026-09-05: these three
+    // SECURITY DEFINER functions were reachable by any authenticated
+    // student/parent with no authorization check at all (RLS never even
+    // gets consulted for a SECURITY DEFINER call), including against
+    // another family's data via a guessed/leaked family_id. Guarded in
+    // 20260905190000_guard-billing-rpcs.sql.
+    it("refuses a parent calling recompute_family_balance directly (own family)", async () => {
+      const { error } = await parentA1.rpc("recompute_family_balance", {
+        p_family_id: fixtures.familyA.id,
+      });
+      expect(error).not.toBeNull();
+    });
+
+    it("refuses a parent calling recompute_family_balance against another family", async () => {
+      const { error } = await parentA1.rpc("recompute_family_balance", {
+        p_family_id: fixtures.familyB.id,
+      });
+      expect(error).not.toBeNull();
+    });
+
+    it("refuses a parent calling family_monthly_amount directly", async () => {
+      const { error } = await parentA1.rpc("family_monthly_amount", {
+        p_family_id: fixtures.familyA.id,
+      });
+      expect(error).not.toBeNull();
+    });
+
+    it("refuses a parent calling preview_family_prepayment against another family", async () => {
+      const { error } = await parentA1.rpc("preview_family_prepayment", {
+        p_family_id: fixtures.familyB.id,
+        p_months: 1,
+      });
+      expect(error).not.toBeNull();
+    });
+
+    it("still lets teacher A preview their own family's prepayment", async () => {
+      const { error } = await teacherA.rpc("preview_family_prepayment", {
+        p_family_id: fixtures.familyA.id,
+        p_months: 1,
+      });
+      expect(error).toBeNull();
+    });
+
+    it("rejects an out-of-range p_months even from a teacher (audit finding M3)", async () => {
+      const { error } = await teacherA.rpc("preview_family_prepayment", {
+        p_family_id: fixtures.familyA.id,
+        p_months: 25,
+      });
+      expect(error).not.toBeNull();
+    });
   });
 
   describe("idempotency", () => {
