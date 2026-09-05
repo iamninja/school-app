@@ -77,6 +77,20 @@ describe("createAssessmentAction", () => {
     ).rejects.toThrow(ExpectedError);
   });
 
+  // Audit finding L5, 2026-09-05: no cap existed before this fed a bulk
+  // .in() lookup and a bulk insert.
+  it("rejects more than 200 studentIds at once", async () => {
+    const client = createMockSupabaseClient({});
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await expect(
+      createAssessmentAction({
+        ...SHORT_ASSESSMENT_INPUT,
+        studentIds: Array.from({ length: 201 }, (_, i) => `student-${i}`),
+      }),
+    ).rejects.toThrow(ExpectedError);
+  });
+
   it("rejects a mock_exam with no scheduled date", async () => {
     const client = createMockSupabaseClient({});
     vi.mocked(createClient).mockResolvedValue(client as never);
