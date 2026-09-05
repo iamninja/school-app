@@ -820,7 +820,10 @@ export interface AssessmentAssignment {
 // student_id) look like straight off the wire, before being mapped down
 // to AssessmentSummary.
 export interface AssessmentAssignmentWithAssessment extends AssessmentAssignment {
-  assessments: Pick<Assessment, "title" | "max_score" | "class_id" | "class_name">;
+  assessments: Pick<
+    Assessment,
+    "title" | "max_score" | "class_id" | "class_name" | "description"
+  >;
 }
 
 // Teacher-side roster row: assignment + joined student display name +
@@ -844,6 +847,11 @@ export interface AssessmentSummary {
   assessmentId: string;
   kind: AssessmentKind;
   title: string;
+  // Set by the teacher at creation time (usually "covers chapters 3-5" -
+  // style notes), same for every student assigned to it - distinct from
+  // teacherComment below, which is per-student grading feedback set at
+  // marking time.
+  description: string | null;
   className: string | null;
   maxScore: number;
   effectiveScheduledDate: string | null;

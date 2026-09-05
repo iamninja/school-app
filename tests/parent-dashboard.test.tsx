@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { addDays, format } from "date-fns";
 import { ParentDashboard } from "@/components/parent-dashboard";
 import type {
+  AssessmentSummary,
   ParentDashboardChild,
   ParentDashboardData,
   Receipt,
@@ -598,6 +599,121 @@ describe("ParentDashboard", () => {
     expect(screen.getByText("Απόδειξη Α1")).toBeInTheDocument();
     expect(
       screen.queryByText(/δεν επηρεάζει το υπόλοιπο/i),
+    ).not.toBeInTheDocument();
+  });
+});
+
+function makeAssessment(
+  overrides: Partial<AssessmentSummary> = {},
+): AssessmentSummary {
+  return {
+    id: "assignment-1",
+    assessmentId: "assessment-1",
+    kind: "short_assessment",
+    title: "Pop Quiz",
+    description: null,
+    className: null,
+    maxScore: 20,
+    effectiveScheduledDate: null,
+    effectiveScheduledTime: null,
+    effectiveDeadlineAt: null,
+    status: "registered",
+    score: null,
+    teacherComment: null,
+    isLate: false,
+    ...overrides,
+  };
+}
+
+describe("ParentDashboard assessments", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("renames the online-quiz section, leaving the assessments card title alone", () => {
+    render(<ParentDashboard {...baseProps} />);
+
+    expect(screen.getByText("Αποτελέσματα Online Τεστ")).toBeInTheDocument();
+    expect(screen.getByText("Τεστ & Διαγωνίσματα")).toBeInTheDocument();
+  });
+
+  it("shows a short assessment's deadline as a 'μέχρι <weekday>' due date, not a plain date", () => {
+    render(
+      <ParentDashboard
+        {...baseProps}
+        kids={[
+          makeChild({
+            assessments: [
+              makeAssessment({
+                // Noon UTC, not midnight - stays on the same calendar day
+                // (a Friday) in every real-world timezone the test runner
+                // might use.
+                effectiveDeadlineAt: "2026-09-11T12:00:00.000Z",
+              }),
+            ],
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText(/μέχρι Παρασκευή/i)).toBeInTheDocument();
+  });
+
+  it("shows a mock exam's date without the 'μέχρι' due-date prefix", () => {
+    render(
+      <ParentDashboard
+        {...baseProps}
+        kids={[
+          makeChild({
+            assessments: [
+              makeAssessment({
+                kind: "mock_exam",
+                effectiveScheduledDate: "2026-09-20",
+              }),
+            ],
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.queryByText(/μέχρι/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/20 Σεπτεμβρίου 2026/i)).toBeInTheDocument();
+  });
+
+  it("hides the description/comment until the row is clicked to expand it", async () => {
+    const user = userEvent.setup();
+    render(
+      <ParentDashboard
+        {...baseProps}
+        kids={[
+          makeChild({
+            assessments: [
+              makeAssessment({
+                description: "Καλύπτει κεφάλαια 3-5",
+              }),
+            ],
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.queryByText(/κεφάλαια 3-5/i)).not.toBeInTheDocument();
+
+    await user.click(screen.getByText("Pop Quiz"));
+
+    expect(screen.getByText(/κεφάλαια 3-5/i)).toBeInTheDocument();
+  });
+
+  it("does not make a row clickable when it has no description or comment", () => {
+    render(
+      <ParentDashboard
+        {...baseProps}
+        kids={[makeChild({ assessments: [makeAssessment()] })]}
+      />,
+    );
+
+    expect(
+      screen.getByText("Pop Quiz").closest("button"),
     ).not.toBeInTheDocument();
   });
 });

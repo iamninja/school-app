@@ -1,9 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import { format } from "date-fns";
 import { el } from "date-fns/locale";
 import {
   CalendarDays,
+  ChevronDownIcon,
   ClipboardCheck,
   ClipboardListIcon,
   ClockIcon,
@@ -88,49 +90,107 @@ const RECENT_PREVIEW_COUNT = 5;
 // files don't share row-rendering components anywhere else (QuizRow/
 // AttendanceRow are each duplicated too), so this follows that existing
 // convention.
-function AssessmentRow({ assessment }: { assessment: AssessmentSummary }) {
-  const whenLabel = assessment.className
-    ? assessment.className
-    : assessment.kind === "mock_exam" && assessment.effectiveScheduledDate
-      ? format(fromIsoDate(assessment.effectiveScheduledDate), "d MMMM yyyy", {
-          locale: el,
-        })
-      : assessment.effectiveDeadlineAt
-        ? format(new Date(assessment.effectiveDeadlineAt), "d MMMM yyyy", {
+// A short_assessment's date is a deadline ("come take it any time before
+// this"), not a fixed appointment like a mock_exam's - prefixed with
+// "μέχρι" and the weekday so it reads as a due date at a glance, not an
+// exam day. className (when class-wide) is shown alongside the date, not
+// instead of it - the date is what actually matters for "am I late".
+function formatAssessmentWhenLabel(assessment: AssessmentSummary): string {
+  const dateLabel =
+    assessment.kind === "mock_exam"
+      ? assessment.effectiveScheduledDate
+        ? format(fromIsoDate(assessment.effectiveScheduledDate), "d MMMM yyyy", {
             locale: el,
           })
+        : ""
+      : assessment.effectiveDeadlineAt
+        ? `μέχρι ${format(new Date(assessment.effectiveDeadlineAt), "EEEE d MMMM yyyy", { locale: el })}`
         : "";
+  return [assessment.className, dateLabel].filter(Boolean).join(" · ");
+}
 
-  return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-border/70 bg-background/60 px-3 py-2">
+function AssessmentRow({ assessment }: { assessment: AssessmentSummary }) {
+  const [expanded, setExpanded] = useState(false);
+  const whenLabel = formatAssessmentWhenLabel(assessment);
+  const hasDetails = Boolean(
+    assessment.description ||
+      (assessment.status === "marked" && assessment.teacherComment),
+  );
+
+  const summary = (
+    <>
       <div className="min-w-0">
         <p className="truncate text-sm font-medium">{assessment.title}</p>
         <p className="text-xs text-muted-foreground">
           {ASSESSMENT_KIND_LABELS_EL[assessment.kind]}
           {whenLabel ? ` · ${whenLabel}` : ""}
         </p>
-        {assessment.status === "marked" && assessment.teacherComment ? (
-          <p className="mt-1 text-xs text-muted-foreground">
-            {assessment.teacherComment}
-          </p>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        {assessment.status === "marked" ? (
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Badge variant="outline">
+              Βαθμός: {assessment.score} / {assessment.maxScore}
+            </Badge>
+            {assessment.isLate ? (
+              <Badge variant="destructive">
+                {ASSESSMENT_TAKEN_LATE_LABEL_EL}
+              </Badge>
+            ) : null}
+          </div>
+        ) : assessment.status === "taken" ? (
+          <Badge variant="outline">{ASSESSMENT_STATUS_LABELS_EL.taken}</Badge>
+        ) : assessment.isLate ? (
+          <Badge variant="destructive">{ASSESSMENT_OVERDUE_LABEL_EL}</Badge>
+        ) : (
+          <Badge variant="outline">
+            {ASSESSMENT_STATUS_LABELS_EL.registered}
+          </Badge>
+        )}
+        {hasDetails ? (
+          <ChevronDownIcon
+            className={`size-4 text-muted-foreground transition-transform ${expanded ? "rotate-180" : ""}`}
+            aria-hidden="true"
+          />
         ) : null}
       </div>
-      {assessment.status === "marked" ? (
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <Badge variant="outline">
-            Βαθμός: {assessment.score} / {assessment.maxScore}
-          </Badge>
-          {assessment.isLate ? (
-            <Badge variant="destructive">{ASSESSMENT_TAKEN_LATE_LABEL_EL}</Badge>
+    </>
+  );
+
+  if (!hasDetails) {
+    return (
+      <div className="flex items-center justify-between gap-3 rounded-lg border border-border/70 bg-background/60 px-3 py-2">
+        {summary}
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-border/70 bg-background/60">
+      <button
+        type="button"
+        onClick={() => setExpanded((prev) => !prev)}
+        className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left"
+        aria-expanded={expanded}
+      >
+        {summary}
+      </button>
+      {expanded ? (
+        <div className="space-y-1 border-t border-border/70 px-3 py-2 text-xs text-muted-foreground">
+          {assessment.description ? (
+            <p>
+              <span className="font-medium text-foreground/80">Ύλη: </span>
+              {assessment.description}
+            </p>
+          ) : null}
+          {assessment.status === "marked" && assessment.teacherComment ? (
+            <p>
+              <span className="font-medium text-foreground/80">Σχόλιο: </span>
+              {assessment.teacherComment}
+            </p>
           ) : null}
         </div>
-      ) : assessment.status === "taken" ? (
-        <Badge variant="outline">{ASSESSMENT_STATUS_LABELS_EL.taken}</Badge>
-      ) : assessment.isLate ? (
-        <Badge variant="destructive">{ASSESSMENT_OVERDUE_LABEL_EL}</Badge>
-      ) : (
-        <Badge variant="outline">{ASSESSMENT_STATUS_LABELS_EL.registered}</Badge>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -344,7 +404,7 @@ export function StudentDashboard(props: StudentDashboardProps) {
             </div>
 
             <div className="space-y-3">
-              <SectionLabel>Διαγωνίσματα</SectionLabel>
+              <SectionLabel>Online Τεστ</SectionLabel>
               <StudentQuizPanel
                 quizzes={props.quizzes}
                 demoReviews={props.demoReviews}
