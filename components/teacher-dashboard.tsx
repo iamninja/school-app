@@ -3754,10 +3754,19 @@ export function TeacherDashboard({
 
         <TabsContent value="assessments" className="mt-0">
           <TeacherAssessments
-            classes={activeClasses.map(({ id, name }) => ({ id, name }))}
+            classes={activeClasses.map(({ id, name, grade }) => ({
+              id,
+              name,
+              grade,
+            }))}
             students={students
               .filter((student) => !student.withdrawnAt)
-              .map(({ id, firstName, lastName }) => ({ id, firstName, lastName }))}
+              .map(({ id, firstName, lastName, assignedClassIds }) => ({
+                id,
+                firstName,
+                lastName,
+                assignedClassIds,
+              }))}
             assessments={assessments}
             assessmentAssignments={assessmentAssignments}
             onAssessmentsChange={setAssessments}

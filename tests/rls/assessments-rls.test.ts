@@ -256,6 +256,38 @@ describe("RLS: assessments / assessment_assignments", () => {
     expect(error).not.toBeNull();
   });
 
+  it("rejects a grade value outside the fixed code list", async () => {
+    const admin = serviceClient();
+    const { error } = await admin.from("assessments").insert({
+      teacher_id: fixtures.teacherA.id,
+      kind: "short_assessment",
+      title: "Bad grade",
+      max_score: 20,
+      duration_minutes: 30,
+      grade: "not-a-real-grade",
+    });
+    expect(error).not.toBeNull();
+  });
+
+  it("accepts a null grade and a valid grade code", async () => {
+    const admin = serviceClient();
+    const { assessmentId } = await insertAssessmentAndAssignment(admin, {
+      title: "No grade set",
+    });
+    const { data: noGrade } = await admin
+      .from("assessments")
+      .select("grade")
+      .eq("id", assessmentId)
+      .single();
+    expect(noGrade?.grade).toBeNull();
+
+    const { error } = await admin
+      .from("assessments")
+      .update({ grade: "lyk_b" })
+      .eq("id", assessmentId);
+    expect(error).toBeNull();
+  });
+
   it("rejects an assessment_assignments row claiming 'marked' status without a score", async () => {
     const admin = serviceClient();
     const { assessmentId } = await insertAssessmentAndAssignment(admin, {

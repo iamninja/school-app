@@ -190,6 +190,44 @@ describe("createAssessmentAction", () => {
       }),
     ).rejects.toThrow(ExpectedError);
   });
+
+  it("rejects an invalid grade", async () => {
+    const client = createMockSupabaseClient({});
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await expect(
+      createAssessmentAction({
+        ...SHORT_ASSESSMENT_INPUT,
+        studentIds: ["student-1"],
+        grade: "not-a-real-grade",
+      }),
+    ).rejects.toThrow(ExpectedError);
+  });
+
+  it("passes a valid grade through to the inserted row", async () => {
+    const client = createMockSupabaseClient({
+      students: { data: [{ id: "student-1" }], error: null },
+      assessments: { data: ASSESSMENT_ROW, error: null },
+      assessment_assignments: {
+        data: [
+          { id: "a1", student_id: "student-1", students: { first_name: "Ada", last_name: "L" } },
+        ],
+        error: null,
+      },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await createAssessmentAction({
+      ...SHORT_ASSESSMENT_INPUT,
+      studentIds: ["student-1"],
+      grade: "lyk_b",
+    });
+
+    const insertedRow = client.from.mock.results.find(
+      (r, i) => client.from.mock.calls[i][0] === "assessments",
+    )?.value.insert.mock.calls[0][0];
+    expect(insertedRow.grade).toBe("lyk_b");
+  });
 });
 
 describe("updateAssessmentAction", () => {

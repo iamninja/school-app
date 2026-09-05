@@ -777,6 +777,10 @@ export interface Assessment {
   deadline_at: string | null;
   class_id: string | null;
   class_name: string | null;
+  // Same code list as classes.grade (lib/class-grades.ts) - a tag for
+  // filtering, and (app-layer only) for suggesting which classes/students
+  // to assign the assessment to. Not a foreign key - just a label.
+  grade: string | null;
   created_at: string;
 }
 
@@ -793,6 +797,7 @@ export interface AssessmentInput {
   deadlineAt?: string | null; // short_assessment, null/absent = open
   classId?: string | null; // exactly one of classId/studentIds on create
   studentIds?: string[];
+  grade?: string | null;
 }
 
 export interface AssessmentAssignment {

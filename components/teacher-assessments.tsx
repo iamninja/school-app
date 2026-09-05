@@ -48,6 +48,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { AssessmentStatusBadge } from "@/components/assessment-status-badge";
 import { fromIsoDate } from "@/lib/calendar-projection";
 import { upsertAssessmentAssignment } from "@/lib/assessment-status";
+import { CLASS_GRADES, CLASS_GRADE_LABELS } from "@/lib/class-grades";
 import type {
   TeacherAssessmentAssignmentRow,
   TeacherAssessmentListItem,
@@ -55,8 +56,27 @@ import type {
   AssessmentKind,
 } from "@/lib/types/database";
 
-type ClassOption = { id: string; name: string };
-type StudentOption = { id: string; firstName: string; lastName: string };
+type ClassOption = { id: string; name: string; grade: string | null };
+type StudentOption = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  assignedClassIds: string[];
+};
+
+// A student "has" a grade transitively, through an enrolled class that
+// targets it - students don't carry a structured grade of their own (see
+// students.grade_level, free-text). Used to suggest (not restrict) which
+// classes/students an assessment's optional grade tag is likely meant for.
+function studentMatchesGrade(
+  student: StudentOption,
+  grade: string,
+  classesById: Map<string, ClassOption>,
+): boolean {
+  return student.assignedClassIds.some(
+    (classId) => classesById.get(classId)?.grade === grade,
+  );
+}
 
 const KIND_LABELS: Record<AssessmentKind, string> = {
   short_assessment: "Short assessment",
@@ -98,6 +118,7 @@ type AssessmentFormState = {
   scheduledTime: string;
   hasDeadline: boolean;
   deadlineLocal: string;
+  grade: string; // "" = no grade
   targetType: "class" | "students";
   classId: string;
   studentIds: string[];
@@ -114,6 +135,7 @@ function emptyForm(): AssessmentFormState {
     scheduledTime: "",
     hasDeadline: false,
     deadlineLocal: "",
+    grade: "",
     targetType: "class",
     classId: "",
     studentIds: [],
@@ -135,6 +157,7 @@ function assessmentToForm(
     deadlineLocal: assessment.deadline_at
       ? toDatetimeLocalValue(assessment.deadline_at)
       : "",
+    grade: assessment.grade ?? "",
     targetType: "class",
     classId: assessment.class_id ?? "",
     studentIds: [],
@@ -155,6 +178,7 @@ function formToInput(form: AssessmentFormState): AssessmentInput {
       form.kind === "short_assessment" && form.hasDeadline && form.deadlineLocal
         ? new Date(form.deadlineLocal).toISOString()
         : null,
+    grade: form.grade || null,
     classId: form.targetType === "class" ? form.classId || undefined : undefined,
     studentIds: form.targetType === "students" ? form.studentIds : undefined,
   };
@@ -201,6 +225,16 @@ export function TeacherAssessments({
     assignment: TeacherAssessmentAssignmentRow;
     maxScore: number;
   } | null>(null);
+  const [gradeFilter, setGradeFilter] = React.useState("");
+
+  const classesById = React.useMemo(
+    () => new Map(classes.map((c) => [c.id, c])),
+    [classes],
+  );
+
+  const filteredAssessments = gradeFilter
+    ? assessments.filter((a) => a.grade === gradeFilter)
+    : assessments;
 
   const summaryByAssessment = React.useMemo(() => {
     const map = new Map<
@@ -377,6 +411,7 @@ export function TeacherAssessments({
                   a.student_id === s.id,
               ),
           )}
+          classesById={classesById}
           addStudentId={addStudentId}
           onAddStudentIdChange={setAddStudentId}
           onBack={() => onSelectedAssessmentIdChange(null)}
@@ -396,17 +431,36 @@ export function TeacherAssessments({
         />
       ) : (
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-3">
+          <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
             <CardTitle>Assessments</CardTitle>
-            <Button size="sm" onClick={openCreateDialog}>
-              <PlusIcon className="mr-1.5 h-4 w-4" />
-              New assessment
-            </Button>
+            <div className="flex items-center gap-2">
+              <select
+                value={gradeFilter}
+                onChange={(e) => setGradeFilter(e.target.value)}
+                className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                aria-label="Filter by grade"
+              >
+                <option value="">All grades</option>
+                {CLASS_GRADES.map((g) => (
+                  <option key={g.code} value={g.code}>
+                    {g.label}
+                  </option>
+                ))}
+              </select>
+              <Button size="sm" onClick={openCreateDialog}>
+                <PlusIcon className="mr-1.5 h-4 w-4" />
+                New assessment
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             {assessments.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 No assessments registered yet.
+              </p>
+            ) : filteredAssessments.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No assessments match this grade.
               </p>
             ) : (
               <Table>
@@ -419,7 +473,7 @@ export function TeacherAssessments({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {assessments.map((assessment) => {
+                  {filteredAssessments.map((assessment) => {
                     const summary = summaryByAssessment.get(assessment.id) ?? {
                       count: 0,
                       marked: 0,
@@ -437,6 +491,11 @@ export function TeacherAssessments({
                             <Badge variant="outline" className="mr-1.5">
                               {KIND_LABELS[assessment.kind]}
                             </Badge>
+                            {assessment.grade ? (
+                              <Badge variant="secondary" className="mr-1.5">
+                                {CLASS_GRADE_LABELS[assessment.grade]}
+                              </Badge>
+                            ) : null}
                             out of {assessment.max_score}
                           </div>
                         </TableCell>
@@ -532,6 +591,29 @@ export function TeacherAssessments({
                   setForm((prev) => ({ ...prev, description: e.target.value }))
                 }
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="assessment-grade">Grade (optional)</Label>
+              <select
+                id="assessment-grade"
+                value={form.grade}
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, grade: e.target.value }))
+                }
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="">No grade</option>
+                {CLASS_GRADES.map((g) => (
+                  <option key={g.code} value={g.code}>
+                    {g.label}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">
+                Tags the assessment for filtering, and suggests matching
+                classes/students below.
+              </p>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
@@ -672,28 +754,82 @@ export function TeacherAssessments({
                     className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                   >
                     <option value="">Choose a class</option>
-                    {classes.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
+                    {form.grade &&
+                    classes.some((c) => c.grade === form.grade) ? (
+                      <>
+                        <optgroup label="Suggested (matching grade)">
+                          {classes
+                            .filter((c) => c.grade === form.grade)
+                            .map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.name}
+                              </option>
+                            ))}
+                        </optgroup>
+                        {classes.some((c) => c.grade !== form.grade) ? (
+                          <optgroup label="Other classes">
+                            {classes
+                              .filter((c) => c.grade !== form.grade)
+                              .map((c) => (
+                                <option key={c.id} value={c.id}>
+                                  {c.name}
+                                </option>
+                              ))}
+                          </optgroup>
+                        ) : null}
+                      </>
+                    ) : (
+                      classes.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))
+                    )}
                   </select>
                 ) : (
                   <div className="grid max-h-48 gap-2 overflow-y-auto">
-                    {students.map((student) => (
-                      <label
-                        key={student.id}
-                        className="flex items-center gap-3 rounded-md border p-2 text-sm"
-                      >
-                        <Checkbox
-                          checked={form.studentIds.includes(student.id)}
-                          onCheckedChange={() => toggleStudentId(student.id)}
-                        />
-                        <span className="flex-1">
-                          {student.firstName} {student.lastName}
-                        </span>
-                      </label>
-                    ))}
+                    {(() => {
+                      const renderRow = (student: StudentOption) => (
+                        <label
+                          key={student.id}
+                          className="flex items-center gap-3 rounded-md border p-2 text-sm"
+                        >
+                          <Checkbox
+                            checked={form.studentIds.includes(student.id)}
+                            onCheckedChange={() => toggleStudentId(student.id)}
+                          />
+                          <span className="flex-1">
+                            {student.firstName} {student.lastName}
+                          </span>
+                        </label>
+                      );
+                      if (!form.grade) {
+                        return students.map(renderRow);
+                      }
+                      const suggested = students.filter((s) =>
+                        studentMatchesGrade(s, form.grade, classesById),
+                      );
+                      const other = students.filter(
+                        (s) => !studentMatchesGrade(s, form.grade, classesById),
+                      );
+                      if (suggested.length === 0) {
+                        return other.map(renderRow);
+                      }
+                      return (
+                        <>
+                          <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                            Suggested (matching grade)
+                          </p>
+                          {suggested.map(renderRow)}
+                          {other.length > 0 ? (
+                            <p className="mt-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                              Other students
+                            </p>
+                          ) : null}
+                          {other.map(renderRow)}
+                        </>
+                      );
+                    })()}
                   </div>
                 )}
               </div>
@@ -737,6 +873,7 @@ function AssessmentDetailView({
   assessment,
   assignments,
   studentOptions,
+  classesById,
   addStudentId,
   onAddStudentIdChange,
   onBack,
@@ -752,6 +889,7 @@ function AssessmentDetailView({
   assessment: TeacherAssessmentListItem;
   assignments: TeacherAssessmentAssignmentRow[];
   studentOptions: StudentOption[];
+  classesById: Map<string, ClassOption>;
   addStudentId: string;
   onAddStudentIdChange: (id: string) => void;
   onBack: () => void;
@@ -764,6 +902,21 @@ function AssessmentDetailView({
   onEnterMark: (assignment: TeacherAssessmentAssignmentRow) => void;
   onClearMark: (assignment: TeacherAssessmentAssignmentRow) => void;
 }) {
+  const suggestedStudentIds = assessment.grade
+    ? new Set(
+        studentOptions
+          .filter((s) => studentMatchesGrade(s, assessment.grade!, classesById))
+          .map((s) => s.id),
+      )
+    : null;
+  const sortedStudentOptions = suggestedStudentIds
+    ? [...studentOptions].sort((a, b) => {
+        const aSuggested = suggestedStudentIds.has(a.id);
+        const bSuggested = suggestedStudentIds.has(b.id);
+        if (aSuggested === bSuggested) return 0;
+        return aSuggested ? -1 : 1;
+      })
+    : studentOptions;
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -788,6 +941,11 @@ function AssessmentDetailView({
           <CardTitle className="flex items-center gap-2">
             {assessment.title}
             <Badge variant="outline">{KIND_LABELS[assessment.kind]}</Badge>
+            {assessment.grade ? (
+              <Badge variant="secondary">
+                {CLASS_GRADE_LABELS[assessment.grade]}
+              </Badge>
+            ) : null}
           </CardTitle>
           {assessment.description ? (
             <p className="text-sm text-muted-foreground">
@@ -814,11 +972,36 @@ function AssessmentDetailView({
               className="h-9 rounded-md border border-input bg-background px-3 text-sm"
             >
               <option value="">Add a student…</option>
-              {studentOptions.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.firstName} {s.lastName}
-                </option>
-              ))}
+              {suggestedStudentIds && suggestedStudentIds.size > 0 ? (
+                <>
+                  <optgroup label="Suggested (matching grade)">
+                    {sortedStudentOptions
+                      .filter((s) => suggestedStudentIds.has(s.id))
+                      .map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.firstName} {s.lastName}
+                        </option>
+                      ))}
+                  </optgroup>
+                  {sortedStudentOptions.some((s) => !suggestedStudentIds.has(s.id)) ? (
+                    <optgroup label="Other students">
+                      {sortedStudentOptions
+                        .filter((s) => !suggestedStudentIds.has(s.id))
+                        .map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.firstName} {s.lastName}
+                          </option>
+                        ))}
+                    </optgroup>
+                  ) : null}
+                </>
+              ) : (
+                sortedStudentOptions.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.firstName} {s.lastName}
+                  </option>
+                ))
+              )}
             </select>
             <Button
               size="sm"

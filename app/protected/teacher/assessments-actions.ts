@@ -16,7 +16,17 @@ type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
 const ASSESSMENT_COLUMNS =
   "id, kind, title, description, max_score, duration_minutes, scheduled_date, " +
-  "scheduled_time, deadline_at, class_id, class_name, created_at";
+  "scheduled_time, deadline_at, class_id, class_name, grade, created_at";
+
+// Kept in sync with lib/class-grades.ts's CLASS_GRADES codes (also the
+// DB's own CHECK constraint) - validated here so an invalid value comes
+// back as a readable ExpectedError instead of a raw Postgres error.
+const VALID_GRADES = new Set([
+  "gym_a", "gym_b", "gym_c",
+  "lyk_a", "lyk_b", "lyk_c",
+  "epal_a", "epal_b", "epal_c",
+  "lyk_grad", "epal_grad",
+]);
 
 const ASSIGNMENT_COLUMNS =
   "id, assessment_id, student_id, kind, effective_scheduled_date, effective_scheduled_time, " +
@@ -122,6 +132,10 @@ function validateAssessmentFields(
   if (!(input.maxScore > 0)) {
     throw new ExpectedError("Max score must be greater than 0");
   }
+  if (input.grade && !VALID_GRADES.has(input.grade)) {
+    throw new ExpectedError("Pick a valid grade");
+  }
+  const grade = input.grade || null;
 
   if (input.kind === "short_assessment") {
     if (!(input.durationMinutes > 0 && input.durationMinutes <= 60)) {
@@ -146,6 +160,7 @@ function validateAssessmentFields(
       scheduled_date: null,
       scheduled_time: null,
       deadline_at: input.deadlineAt || null,
+      grade,
     };
   }
 
@@ -171,6 +186,7 @@ function validateAssessmentFields(
     scheduled_date: input.scheduledDate,
     scheduled_time: input.scheduledTime || null,
     deadline_at: null,
+    grade,
   };
 }
 
