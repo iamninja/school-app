@@ -43,9 +43,7 @@ export function StudentSignUpForm({
     setError(null);
 
     try {
-      console.log("Checking email:", email);
       const result = await checkStudentEmailAction(email);
-      console.log("Email check result:", result);
 
       if (result.exists) {
         setEmailVerified(true);
