@@ -113,6 +113,19 @@ const KIND_DOT_CLASSES: Record<OccurrenceKind, string> = {
   block: "bg-sky-500",
 };
 
+// Mock exam dates shown on the grid - a read-only overlay, not an
+// OccurrenceKind (they aren't projected occurrences and don't come from
+// calendar_events), so they get their own dot color rather than a slot in
+// KIND_DOT_CLASSES.
+const ASSESSMENT_DOT_CLASS = "bg-indigo-500";
+
+export type AssessmentDateMarker = {
+  assessmentId: string;
+  date: string;
+  label: string;
+  studentCount: number;
+};
+
 const WEEK_ROW_CLASSES: Record<OccurrenceKind, string> = {
   recurring: "border-border bg-muted/40",
   cancelled:
@@ -423,6 +436,8 @@ export function TeacherCalendar({
   slots,
   attendanceRecords,
   onAttendanceRecordsChange,
+  assessmentMarkers = [],
+  onViewAssessment,
 }: {
   events: CalendarEvent[];
   onEventsChange: React.Dispatch<React.SetStateAction<CalendarEvent[]>>;
@@ -433,6 +448,11 @@ export function TeacherCalendar({
   onAttendanceRecordsChange: React.Dispatch<
     React.SetStateAction<AttendanceRecord[]>
   >;
+  // Read-only overlay of mock exam dates - never written back into
+  // calendar_events, see supabase/migrations/*_assessments.sql and
+  // lib/assessment-status.ts. Purely for visibility on the grid.
+  assessmentMarkers?: AssessmentDateMarker[];
+  onViewAssessment?: (assessmentId: string) => void;
 }) {
   const [month, setMonth] = React.useState(() => new Date());
   const [selectedDate, setSelectedDate] = React.useState(() =>
@@ -485,6 +505,19 @@ export function TeacherCalendar({
     }
     return map;
   }, [monthOccurrences]);
+
+  const assessmentMarkersByDate = React.useMemo(() => {
+    const map = new Map<string, AssessmentDateMarker[]>();
+    for (const marker of assessmentMarkers) {
+      const list = map.get(marker.date) ?? [];
+      list.push(marker);
+      map.set(marker.date, list);
+    }
+    return map;
+  }, [assessmentMarkers]);
+
+  const selectedAssessmentMarkers =
+    assessmentMarkersByDate.get(selectedDate) ?? [];
 
   const selectedOccurrences = React.useMemo(
     () =>
@@ -546,6 +579,8 @@ export function TeacherCalendar({
     (dayButtonProps: React.ComponentProps<typeof CalendarDayButton>) => {
       const iso = toIsoDate(dayButtonProps.day.date);
       const kinds = kindsByDate.get(iso);
+      const hasAssessmentMarker =
+        (assessmentMarkersByDate.get(iso)?.length ?? 0) > 0;
       return (
         <CalendarDayButton
           {...dayButtonProps}
@@ -557,9 +592,9 @@ export function TeacherCalendar({
           )}
         >
           {dayButtonProps.children}
-          {kinds && kinds.size > 0 ? (
+          {(kinds && kinds.size > 0) || hasAssessmentMarker ? (
             <span className="flex gap-0.5">
-              {[...kinds].slice(0, 3).map((kind) => (
+              {[...(kinds ?? [])].slice(0, 3).map((kind) => (
                 <span
                   key={kind}
                   className={cn(
@@ -568,12 +603,17 @@ export function TeacherCalendar({
                   )}
                 />
               ))}
+              {hasAssessmentMarker ? (
+                <span
+                  className={cn("h-1 w-1 rounded-full", ASSESSMENT_DOT_CLASS)}
+                />
+              ) : null}
             </span>
           ) : null}
         </CalendarDayButton>
       );
     },
-    [kindsByDate, todayIso],
+    [kindsByDate, assessmentMarkersByDate, todayIso],
   );
 
   const openCreate = (type: AddableEventType) => {
@@ -997,6 +1037,35 @@ export function TeacherCalendar({
               );
             })
           )}
+
+          {selectedAssessmentMarkers.length > 0 ? (
+            <div className="mt-3 space-y-2 border-t pt-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Assessments
+              </p>
+              {selectedAssessmentMarkers.map((marker) => (
+                <div
+                  key={marker.assessmentId}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-2 text-sm"
+                >
+                  <span>
+                    {marker.label} · {marker.studentCount} student
+                    {marker.studentCount === 1 ? "" : "s"}
+                  </span>
+                  {onViewAssessment ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onViewAssessment(marker.assessmentId)}
+                    >
+                      View in Assessments
+                    </Button>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ) : null}
         </CardContent>
       </Card>
     </div>

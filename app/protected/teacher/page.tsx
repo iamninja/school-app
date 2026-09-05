@@ -9,6 +9,10 @@ import {
   listChargeRunsAction,
   listFamilyBalancesAction,
 } from "@/app/protected/teacher/billing-actions";
+import {
+  listAssessmentsAction,
+  listAssessmentAssignmentsAction,
+} from "@/app/protected/teacher/assessments-actions";
 
 // The Supabase client has no Database generic here, so its select-string
 // parser can't determine embed cardinality and infers every embed as an
@@ -250,11 +254,31 @@ export default async function TeacherPage() {
 
   // Business identity + integration config. Credential *statuses* only -
   // getBusinessSettingsAction never returns a decrypted value.
-  const businessSettings = await getBusinessSettingsAction();
-  const initialReceipts = await listReceiptsAction();
-  const initialExpenses = await listExpensesAction();
-  const initialFamilyBalances = await listFamilyBalancesAction();
-  const initialChargeRuns = await listChargeRunsAction();
+  //
+  // Parallelized - each of these does its own auth handshake (createClient
+  // + getUser + requireTeacher) before its query, so awaiting them one at
+  // a time serially stacks up seven round-trips of latency with no
+  // loading.tsx to show progress in between. That's directly why a slow
+  // connection to the database made this page load feel "stuck" after two
+  // more calls (assessments) were added to the chain - Promise.all bounds
+  // the wait to the slowest single call instead of the sum of all of them.
+  const [
+    businessSettings,
+    initialReceipts,
+    initialExpenses,
+    initialFamilyBalances,
+    initialChargeRuns,
+    initialAssessments,
+    initialAssessmentAssignments,
+  ] = await Promise.all([
+    getBusinessSettingsAction(),
+    listReceiptsAction(),
+    listExpensesAction(),
+    listFamilyBalancesAction(),
+    listChargeRunsAction(),
+    listAssessmentsAction(),
+    listAssessmentAssignmentsAction(),
+  ]);
 
   return (
     <TeacherDashboard
@@ -264,6 +288,8 @@ export default async function TeacherPage() {
       initialFamilies={initialFamilies}
       initialAttendance={initialAttendance}
       initialQuizzes={initialQuizzes}
+      initialAssessments={initialAssessments}
+      initialAssessmentAssignments={initialAssessmentAssignments}
       businessProfile={businessSettings.profile}
       integrationSettings={businessSettings.integrations}
       credentialStatuses={businessSettings.credentialStatuses}

@@ -18,6 +18,7 @@ import {
   CalendarDaysIcon,
   CalendarRangeIcon,
   ClipboardCheckIcon,
+  ClipboardListIcon,
   EuroIcon,
   FileTextIcon,
   LayersIcon,
@@ -83,6 +84,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LogoutButton } from "@/components/logout-button";
 import { TeacherClassDetail } from "@/components/teacher-class-detail";
 import { TeacherQuizBuilder } from "@/components/teacher-quiz-builder";
+import { TeacherAssessments } from "@/components/teacher-assessments";
+import { AssessmentStatusBadge } from "@/components/assessment-status-badge";
 import {
   TeacherBusinessSettings,
   type CredentialStatusView,
@@ -120,6 +123,8 @@ import type {
   Receipt,
   ReceiptPrefill,
   TeacherQuizListItem,
+  TeacherAssessmentAssignmentRow,
+  TeacherAssessmentListItem,
 } from "@/lib/types/database";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
@@ -159,6 +164,12 @@ const SECTIONS = [
     label: "Quizzes",
     description: "Build and assign quizzes",
     icon: FileTextIcon,
+  },
+  {
+    value: "assessments",
+    label: "Assessments",
+    description: "Register, schedule, and mark in-person assessments",
+    icon: ClipboardListIcon,
   },
   {
     value: "billing",
@@ -258,6 +269,8 @@ type TeacherDashboardProps = {
   initialFamilies?: FamilyItem[];
   initialAttendance: AttendanceRecord[];
   initialQuizzes?: TeacherQuizListItem[];
+  initialAssessments?: TeacherAssessmentListItem[];
+  initialAssessmentAssignments?: TeacherAssessmentAssignmentRow[];
   businessProfile?: BusinessProfile | null;
   integrationSettings?: IntegrationSettings[];
   credentialStatuses?: Record<string, CredentialStatusView>;
@@ -490,6 +503,8 @@ export function TeacherDashboard({
   initialFamilies = [],
   initialAttendance,
   initialQuizzes = [],
+  initialAssessments = [],
+  initialAssessmentAssignments = [],
   businessProfile = null,
   integrationSettings = [],
   credentialStatuses = {},
@@ -650,6 +665,19 @@ export function TeacherDashboard({
   const [calendarEvents, setCalendarEvents] = React.useState<CalendarEvent[]>(
     initialCalendarEvents,
   );
+  // Hoisted here (not owned inside <TeacherAssessments>) for the same
+  // reason as calendarEvents above: the Calendar tab's mock-exam overlay
+  // and the Classes/Students tie-in cards need to read this live, not
+  // after a page reload.
+  const [assessments, setAssessments] = React.useState<
+    TeacherAssessmentListItem[]
+  >(initialAssessments);
+  const [assessmentAssignments, setAssessmentAssignments] = React.useState<
+    TeacherAssessmentAssignmentRow[]
+  >(initialAssessmentAssignments);
+  const [selectedAssessmentId, setSelectedAssessmentId] = React.useState<
+    string | null
+  >(null);
 
   const scheduledCounts = React.useMemo(() => {
     const counts = new Map<string, number>();
@@ -676,6 +704,40 @@ export function TeacherDashboard({
     () => classes.filter((item) => !item.archivedAt),
     [classes],
   );
+
+  // Read-only overlay for the Calendar tab (requirement: mock exam dates
+  // visible on the grid, without writing assessments into calendar_events
+  // or touching lib/calendar-projection.ts). One marker per (assessment,
+  // date), counting how many students have that effective date.
+  const assessmentDateMarkers = React.useMemo(() => {
+    const titleByAssessmentId = new Map(
+      assessments.map((assessment) => [assessment.id, assessment.title]),
+    );
+    const byKey = new Map<
+      string,
+      {
+        assessmentId: string;
+        date: string;
+        label: string;
+        studentCount: number;
+      }
+    >();
+    for (const assignment of assessmentAssignments) {
+      if (assignment.kind !== "mock_exam" || !assignment.effective_scheduled_date) {
+        continue;
+      }
+      const key = `${assignment.assessment_id}|${assignment.effective_scheduled_date}`;
+      const entry = byKey.get(key) ?? {
+        assessmentId: assignment.assessment_id,
+        date: assignment.effective_scheduled_date,
+        label: titleByAssessmentId.get(assignment.assessment_id) ?? "Mock exam",
+        studentCount: 0,
+      };
+      entry.studentCount += 1;
+      byKey.set(key, entry);
+    }
+    return [...byKey.values()];
+  }, [assessments, assessmentAssignments]);
 
   const resetClassForm = () => {
     setClassFormName("");
@@ -1902,6 +1964,11 @@ export function TeacherDashboard({
             slots={scheduleSlotList}
             attendanceRecords={attendanceRecords}
             onAttendanceRecordsChange={setAttendanceRecords}
+            assessmentMarkers={assessmentDateMarkers}
+            onViewAssessment={(assessmentId) => {
+              setSection("assessments");
+              setSelectedAssessmentId(assessmentId);
+            }}
           />
         </TabsContent>
 
@@ -1931,6 +1998,9 @@ export function TeacherDashboard({
               const assignedQuizzes = initialQuizzes.filter((quiz) =>
                 quiz.assignedClasses.some((c) => c.id === selectedClassId),
               );
+              const assignedAssessments = assessments.filter(
+                (assessment) => assessment.class_id === selectedClassId,
+              );
               return (
                 <TeacherClassDetail
                   classItem={classItem}
@@ -1940,6 +2010,7 @@ export function TeacherDashboard({
                     (student) => !student.withdrawnAt,
                   )}
                   assignedQuizzes={assignedQuizzes}
+                  assignedAssessments={assignedAssessments}
                   isSavingClass={isSavingClass}
                   isMutatingEnrollment={isMutatingEnrollment}
                   onBack={() => setSelectedClassId(null)}
@@ -1952,6 +2023,10 @@ export function TeacherDashboard({
                     setSelectedStudentId(studentId);
                   }}
                   onGoToQuizzes={() => setSection("quizzes")}
+                  onGoToAssessments={(assessmentId) => {
+                    setSection("assessments");
+                    setSelectedAssessmentId(assessmentId ?? null);
+                  }}
                   onEnrollStudent={(studentId) =>
                     void handleEnrollStudent(studentId, classItem.id)
                   }
@@ -2602,6 +2677,66 @@ export function TeacherDashboard({
                                   })}
                               </div>
                             )}
+                          </div>
+                        </div>
+
+                        <div className="rounded-lg border p-4">
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                            Assessment history
+                          </div>
+                          <div className="mt-3 space-y-2 text-xs">
+                            {(() => {
+                              const studentAssessmentAssignments =
+                                assessmentAssignments
+                                  .filter(
+                                    (assignment) =>
+                                      assignment.student_id === student.id,
+                                  )
+                                  .sort((a, b) =>
+                                    b.created_at.localeCompare(a.created_at),
+                                  );
+                              if (studentAssessmentAssignments.length === 0) {
+                                return (
+                                  <div className="text-muted-foreground">
+                                    No assessments yet.
+                                  </div>
+                                );
+                              }
+                              return (
+                                <div className="divide-y rounded-md border">
+                                  {studentAssessmentAssignments
+                                    .slice(0, 10)
+                                    .map((assignment) => {
+                                      const assessment = assessments.find(
+                                        (a) => a.id === assignment.assessment_id,
+                                      );
+                                      return (
+                                        <div
+                                          key={assignment.id}
+                                          className="flex items-center justify-between gap-2 px-3 py-2"
+                                        >
+                                          <div>
+                                            <div className="font-medium">
+                                              {assessment?.title ??
+                                                "Deleted assessment"}
+                                            </div>
+                                            {assignment.status === "marked" ? (
+                                              <div className="text-muted-foreground">
+                                                {assignment.score}/
+                                                {assessment?.max_score ?? "?"}
+                                              </div>
+                                            ) : null}
+                                          </div>
+                                          <AssessmentStatusBadge
+                                            status={assignment.status}
+                                            isLate={assignment.isLate}
+                                          />
+                                        </div>
+                                      );
+                                    })}
+                                </div>
+                              );
+                            })()}
                           </div>
                         </div>
                       </div>
@@ -3614,6 +3749,30 @@ export function TeacherDashboard({
           <TeacherQuizBuilder
             classes={activeClasses.map(({ id, name }) => ({ id, name }))}
             initialQuizzes={initialQuizzes}
+          />
+        </TabsContent>
+
+        <TabsContent value="assessments" className="mt-0">
+          <TeacherAssessments
+            classes={activeClasses.map(({ id, name, grade }) => ({
+              id,
+              name,
+              grade,
+            }))}
+            students={students
+              .filter((student) => !student.withdrawnAt)
+              .map(({ id, firstName, lastName, assignedClassIds }) => ({
+                id,
+                firstName,
+                lastName,
+                assignedClassIds,
+              }))}
+            assessments={assessments}
+            assessmentAssignments={assessmentAssignments}
+            onAssessmentsChange={setAssessments}
+            onAssessmentAssignmentsChange={setAssessmentAssignments}
+            selectedAssessmentId={selectedAssessmentId}
+            onSelectedAssessmentIdChange={setSelectedAssessmentId}
           />
         </TabsContent>
 

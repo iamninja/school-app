@@ -443,6 +443,7 @@ export interface StudentDashboardData {
   }>;
   quizzes: QuizSummary[];
   calendarEvents: PortalCalendarEvent[];
+  assessments: AssessmentSummary[];
 }
 
 export interface ParentDashboardChild {
@@ -477,6 +478,7 @@ export interface ParentDashboardChild {
   }>;
   quizzes: QuizSummary[];
   calendarEvents: PortalCalendarEvent[];
+  assessments: AssessmentSummary[];
 }
 
 export interface ParentDashboardData {
@@ -751,6 +753,114 @@ export interface PortalCalendarEvent {
   class_id: string | null;
   class_name: string | null;
   notes: string | null;
+}
+
+// Assessments: in-person tests/mock exams, graded with one
+// manually-entered mark. Named "assessments", not "tests" - avoids
+// colliding with this repo's own unit-test vocabulary (tests/, `npm test`,
+// vitest). Not built on the quizzes tables - see
+// supabase/migrations/*_assessments.sql for why. `assessments` is the
+// template; `assessment_assignments` is the per-student
+// roster/schedule/grade row.
+export type AssessmentKind = "short_assessment" | "mock_exam";
+export type AssessmentAssignmentStatus = "registered" | "taken" | "marked";
+
+export interface Assessment {
+  id: string;
+  kind: AssessmentKind;
+  title: string;
+  description: string | null;
+  max_score: number;
+  duration_minutes: number;
+  scheduled_date: string | null;
+  scheduled_time: string | null;
+  deadline_at: string | null;
+  class_id: string | null;
+  class_name: string | null;
+  // Same code list as classes.grade (lib/class-grades.ts) - a tag for
+  // filtering, and (app-layer only) for suggesting which classes/students
+  // to assign the assessment to. Not a foreign key - just a label.
+  grade: string | null;
+  created_at: string;
+}
+
+// class_name is server-resolved from a trusted classId fetch, never taken
+// from client input - same convention as CalendarEventInput.
+export interface AssessmentInput {
+  kind: AssessmentKind;
+  title: string;
+  description?: string;
+  maxScore: number;
+  durationMinutes: number;
+  scheduledDate?: string | null; // mock_exam
+  scheduledTime?: string | null; // mock_exam
+  deadlineAt?: string | null; // short_assessment, null/absent = open
+  classId?: string | null; // exactly one of classId/studentIds on create
+  studentIds?: string[];
+  grade?: string | null;
+}
+
+export interface AssessmentAssignment {
+  id: string;
+  assessment_id: string;
+  student_id: string;
+  kind: AssessmentKind;
+  effective_scheduled_date: string | null;
+  effective_scheduled_time: string | null;
+  effective_deadline_at: string | null;
+  taken_at: string | null;
+  status: AssessmentAssignmentStatus;
+  score: number | null;
+  teacher_comment: string | null;
+  created_at: string;
+}
+
+// Shape of an assessment_assignments row embedded-joined to its parent
+// assessments row - what the parent/student dashboard fetches (scoped by
+// student_id) look like straight off the wire, before being mapped down
+// to AssessmentSummary.
+export interface AssessmentAssignmentWithAssessment extends AssessmentAssignment {
+  assessments: Pick<
+    Assessment,
+    "title" | "max_score" | "class_id" | "class_name" | "description"
+  >;
+}
+
+// Teacher-side roster row: assignment + joined student display name +
+// isLate computed server-side by lib/assessment-status.ts before
+// returning, so every caller (teacher UI, calendar overlay, class/student
+// detail) reads the same derivation.
+export interface TeacherAssessmentAssignmentRow extends AssessmentAssignment {
+  studentName: string;
+  isLate: boolean;
+}
+
+export interface TeacherAssessmentListItem extends Assessment {
+  assignmentCount: number;
+  markedCount: number;
+}
+
+// Portal-facing summary shown on student/parent dashboards - shaped like
+// QuizSummary above (same field-naming convention).
+export interface AssessmentSummary {
+  id: string; // assessment_assignments.id
+  assessmentId: string;
+  kind: AssessmentKind;
+  title: string;
+  // Set by the teacher at creation time (usually "covers chapters 3-5" -
+  // style notes), same for every student assigned to it - distinct from
+  // teacherComment below, which is per-student grading feedback set at
+  // marking time.
+  description: string | null;
+  className: string | null;
+  maxScore: number;
+  effectiveScheduledDate: string | null;
+  effectiveScheduledTime: string | null;
+  effectiveDeadlineAt: string | null;
+  status: AssessmentAssignmentStatus;
+  score: number | null;
+  teacherComment: string | null;
+  isLate: boolean;
 }
 
 // Monthly tuition balance ledger. amount is SIGNED: positive = family

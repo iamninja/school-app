@@ -70,3 +70,25 @@ export const CALENDAR_EVENT_TYPE_LABELS_EL: Record<string, string> = {
   trial_lesson: "Δοκιμαστικό μάθημα",
   block: "Προσωπικό",
 };
+
+export const ASSESSMENT_KIND_LABELS_EL: Record<string, string> = {
+  short_assessment: "Τεστ",
+  mock_exam: "Διαγώνισμα",
+};
+
+// "registered"/"taken" cover the not-yet-graded states; "marked" is
+// deliberately absent here - the portal shows the score badge instead of a
+// status badge once an assessment is marked (see AssessmentRow/TestRow in
+// parent-dashboard.tsx / student-dashboard.tsx).
+export const ASSESSMENT_STATUS_LABELS_EL: Record<string, string> = {
+  registered: "Προγραμματισμένο",
+  taken: "Σε βαθμολόγηση",
+};
+
+// Two distinct late sub-cases (lib/assessment-status.ts): an assessment
+// whose deadline passed and still hasn't been taken, vs. one that WAS
+// taken/marked but after its deadline - the latter must stay visible even
+// once graded, which is the whole point of deriving "late" from a
+// permanent taken_at rather than storing it as a status.
+export const ASSESSMENT_OVERDUE_LABEL_EL = "Εκπρόθεσμο";
+export const ASSESSMENT_TAKEN_LATE_LABEL_EL = "Έγινε εκπρόθεσμα";

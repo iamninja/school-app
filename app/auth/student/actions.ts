@@ -7,6 +7,7 @@ import {
   lookupRoleEmail,
   signInAsRole,
 } from "@/lib/auth/role-account-actions";
+import { isAssessmentAssignmentLate } from "@/lib/assessment-status";
 import type {
   StudentEmailCheckResult,
   StudentDashboardData,
@@ -16,6 +17,8 @@ import type {
   ActionResult,
   QuizSummary,
   PortalCalendarEvent,
+  AssessmentSummary,
+  AssessmentAssignmentWithAssessment,
 } from "@/lib/types/database";
 
 /**
@@ -328,6 +331,44 @@ export async function getStudentDashboardDataAction(): Promise<
       notes: event.notes,
     }));
 
+  // Assessments: student_id is a direct column on assessment_assignments,
+  // so this needs no classIds indirection the way the quizzes block above
+  // does.
+  const { data: assessmentAssignmentRows } = await supabase
+    .from("assessment_assignments")
+    .select(
+      "id, assessment_id, kind, effective_scheduled_date, effective_scheduled_time, effective_deadline_at, taken_at, status, score, teacher_comment, assessments(title, max_score, class_id, class_name, description)",
+    )
+    .eq("student_id", student.id)
+    .order("created_at", { ascending: false });
+
+  const assessments: AssessmentSummary[] = (
+    (assessmentAssignmentRows as unknown as
+      | AssessmentAssignmentWithAssessment[]
+      | null) ?? []
+  ).map((row) => ({
+    id: row.id,
+    assessmentId: row.assessment_id,
+    kind: row.kind,
+    title: row.assessments.title,
+    description: row.assessments.description,
+    className: row.assessments.class_name,
+    maxScore: row.assessments.max_score,
+    effectiveScheduledDate: row.effective_scheduled_date,
+    effectiveScheduledTime: row.effective_scheduled_time,
+    effectiveDeadlineAt: row.effective_deadline_at,
+    status: row.status,
+    score: row.score,
+    teacherComment: row.teacher_comment,
+    isLate: isAssessmentAssignmentLate({
+      kind: row.kind,
+      effectiveScheduledDate: row.effective_scheduled_date,
+      effectiveScheduledTime: row.effective_scheduled_time,
+      effectiveDeadlineAt: row.effective_deadline_at,
+      takenAt: row.taken_at,
+    }),
+  }));
+
   return {
     student: {
       id: student.id,
@@ -353,5 +394,6 @@ export async function getStudentDashboardDataAction(): Promise<
     attendance: (attendance as AttendanceRecord[] | null) || [],
     quizzes,
     calendarEvents,
+    assessments,
   };
 }
