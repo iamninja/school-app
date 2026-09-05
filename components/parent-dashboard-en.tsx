@@ -5,7 +5,9 @@ import { format } from "date-fns";
 import { enUS } from "date-fns/locale";
 import {
   CalendarDays,
+  ChevronDownIcon,
   ClipboardCheck,
+  ClipboardListIcon,
   ClockIcon,
   EuroIcon,
   FileTextIcon,
@@ -30,6 +32,7 @@ import { PortalHistoryDialog } from "@/components/portal-history-dialog";
 import { PortalUpcomingCard } from "@/components/portal-upcoming-card";
 import { ReceiptDocument } from "@/components/receipt-document";
 import type {
+  AssessmentSummary,
   ParentDashboardChild,
   ParentDashboardData,
   QuizSummary,
@@ -37,11 +40,16 @@ import type {
 } from "@/lib/types/database";
 import { formatEuro } from "@/lib/format-currency";
 import {
+  ASSESSMENT_KIND_LABELS_EN,
+  ASSESSMENT_OVERDUE_LABEL_EN,
+  ASSESSMENT_STATUS_LABELS_EN,
+  ASSESSMENT_TAKEN_LATE_LABEL_EN,
   ATTENDANCE_STATUS_LABELS_EN,
   BALANCE_TRANSACTION_TYPE_LABELS_EN,
   DAY_LABELS_EN,
   formatClassDateRangeEn,
 } from "@/lib/portal-labels-en";
+import { fromIsoDate } from "@/lib/calendar-projection";
 import { lessonTimeLabel } from "@/lib/schedule-grid";
 
 /**
@@ -109,6 +117,108 @@ function QuizRow({ quiz }: { quiz: QuizSummary }) {
       ) : (
         <Badge variant="outline">Not taken yet</Badge>
       )}
+    </div>
+  );
+}
+
+// Mirrors parent-dashboard.tsx's formatAssessmentWhenLabel/AssessmentRow -
+// see student-dashboard-en.tsx's comment for why this isn't shared.
+function formatAssessmentWhenLabel(assessment: AssessmentSummary): string {
+  const dateLabel =
+    assessment.kind === "mock_exam"
+      ? assessment.effectiveScheduledDate
+        ? format(fromIsoDate(assessment.effectiveScheduledDate), "MMMM d, yyyy", {
+            locale: enUS,
+          })
+        : ""
+      : assessment.effectiveDeadlineAt
+        ? `due ${format(new Date(assessment.effectiveDeadlineAt), "EEEE, MMMM d, yyyy", { locale: enUS })}`
+        : "";
+  return [assessment.className, dateLabel].filter(Boolean).join(" · ");
+}
+
+function AssessmentRow({ assessment }: { assessment: AssessmentSummary }) {
+  const [expanded, setExpanded] = React.useState(false);
+  const whenLabel = formatAssessmentWhenLabel(assessment);
+  const hasDetails = Boolean(
+    assessment.description ||
+      (assessment.status === "marked" && assessment.teacherComment),
+  );
+
+  const summary = (
+    <>
+      <div className="min-w-0">
+        <p className="truncate text-sm font-medium">{assessment.title}</p>
+        <p className="text-xs text-muted-foreground">
+          {ASSESSMENT_KIND_LABELS_EN[assessment.kind]}
+          {whenLabel ? ` · ${whenLabel}` : ""}
+        </p>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        {assessment.status === "marked" ? (
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Badge variant="outline">
+              Score: {assessment.score} / {assessment.maxScore}
+            </Badge>
+            {assessment.isLate ? (
+              <Badge variant="destructive">
+                {ASSESSMENT_TAKEN_LATE_LABEL_EN}
+              </Badge>
+            ) : null}
+          </div>
+        ) : assessment.status === "taken" ? (
+          <Badge variant="outline">{ASSESSMENT_STATUS_LABELS_EN.taken}</Badge>
+        ) : assessment.isLate ? (
+          <Badge variant="destructive">{ASSESSMENT_OVERDUE_LABEL_EN}</Badge>
+        ) : (
+          <Badge variant="outline">
+            {ASSESSMENT_STATUS_LABELS_EN.registered}
+          </Badge>
+        )}
+        {hasDetails ? (
+          <ChevronDownIcon
+            className={`size-4 text-muted-foreground transition-transform ${expanded ? "rotate-180" : ""}`}
+            aria-hidden="true"
+          />
+        ) : null}
+      </div>
+    </>
+  );
+
+  if (!hasDetails) {
+    return (
+      <div className="flex items-center justify-between gap-3 rounded-lg border border-border/70 bg-background/60 px-3 py-2">
+        {summary}
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-border/70 bg-background/60">
+      <button
+        type="button"
+        onClick={() => setExpanded((prev) => !prev)}
+        className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left"
+        aria-expanded={expanded}
+      >
+        {summary}
+      </button>
+      {expanded ? (
+        <div className="space-y-1 border-t border-border/70 px-3 py-2 text-xs text-muted-foreground">
+          {assessment.description ? (
+            <p>
+              <span className="font-medium text-foreground/80">Covers: </span>
+              {assessment.description}
+            </p>
+          ) : null}
+          {assessment.status === "marked" && assessment.teacherComment ? (
+            <p>
+              <span className="font-medium text-foreground/80">Comment: </span>
+              {assessment.teacherComment}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -303,6 +413,7 @@ function ChildSection({
   attendance,
   quizzes,
   calendarEvents,
+  assessments,
 }: ParentDashboardChild) {
   const schedulesByClass = schedules.reduce(
     (acc, schedule) => {
@@ -500,6 +611,41 @@ function ChildSection({
                 <div className="space-y-2">
                   {quizzes.slice(0, RECENT_PREVIEW_COUNT).map((quiz) => (
                     <QuizRow key={quiz.id} quiz={quiz} />
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-4">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <ClipboardListIcon
+                  className="size-4 text-brand"
+                  aria-hidden="true"
+                />
+                Tests &amp; Assessments
+              </CardTitle>
+              {assessments.length > RECENT_PREVIEW_COUNT ? (
+                <PortalHistoryDialog
+                  triggerLabel="History"
+                  title="Tests & Assessments"
+                >
+                  {assessments.map((assessment) => (
+                    <AssessmentRow key={assessment.id} assessment={assessment} />
+                  ))}
+                </PortalHistoryDialog>
+              ) : null}
+            </CardHeader>
+            <CardContent>
+              {assessments.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No tests scheduled yet.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {assessments.slice(0, RECENT_PREVIEW_COUNT).map((assessment) => (
+                    <AssessmentRow key={assessment.id} assessment={assessment} />
                   ))}
                 </div>
               )}

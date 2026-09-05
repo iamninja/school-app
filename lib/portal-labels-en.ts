@@ -40,6 +40,22 @@ export const CALENDAR_EVENT_TYPE_LABELS_EN: Record<string, string> = {
   block: "Personal",
 };
 
+export const ASSESSMENT_KIND_LABELS_EN: Record<string, string> = {
+  short_assessment: "Test",
+  mock_exam: "Mock exam",
+};
+
+// "registered"/"taken" cover the not-yet-graded states; "marked" is
+// deliberately absent here - the portal shows the score badge instead of a
+// status badge once a mark exists (mirrors greek-labels.ts).
+export const ASSESSMENT_STATUS_LABELS_EN: Record<string, string> = {
+  registered: "Scheduled",
+  taken: "Grading in progress",
+};
+
+export const ASSESSMENT_OVERDUE_LABEL_EN = "Overdue";
+export const ASSESSMENT_TAKEN_LATE_LABEL_EN = "Taken late";
+
 export function formatClassDateRangeEn(
   startDate: string | null | undefined,
   finishDate: string | null | undefined,
