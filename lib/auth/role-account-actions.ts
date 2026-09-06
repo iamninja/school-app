@@ -20,6 +20,17 @@ const ROLE_LABELS_EL: Record<"student" | "parent", string> = {
   parent: "γονέας",
 };
 
+// `%`/`_` are valid characters in an email local-part but are also
+// Postgres ILIKE wildcards, and `\` is ILIKE's default escape character -
+// left unescaped, a caller could pass e.g. "a%" and pattern-match/enumerate
+// the whole roster by prefix instead of looking up one specific address.
+// Escaping them (Postgres' default ILIKE escape char is backslash) keeps
+// the intentional case-insensitive match while forcing every character in
+// the input to be treated as a literal.
+export function escapeIlikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, (match) => `\\${match}`);
+}
+
 type EmailLookupResult<TExtra extends object> =
   | ({ exists: true } & TExtra)
   | { exists: false; error: string };
@@ -51,7 +62,7 @@ export async function lookupRoleEmail<
   const { data: row, error } = await supabase
     .from(params.table)
     .select(params.columns)
-    .ilike("email", normalizedEmail)
+    .ilike("email", escapeIlikePattern(normalizedEmail))
     .single<TRow>();
 
   if (error || !row) {

@@ -16,6 +16,7 @@ export default defineConfig({
     environment: "node",
     include: [
       "tests/teacher-actions.test.ts",
+      "tests/role-account-actions.test.ts",
       "tests/teacher-quiz-actions.test.ts",
       "tests/student-dashboard-quiz-actions.test.ts",
       "tests/parent-actions.test.ts",
@@ -30,6 +31,7 @@ export default defineConfig({
       "tests/billing-actions.test.ts",
       "tests/cron-monthly-charges-route.test.ts",
       "tests/auth-confirm-route.test.ts",
+      "tests/proxy.test.ts",
     ],
   },
   resolve: {

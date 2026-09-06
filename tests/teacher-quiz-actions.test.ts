@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { requireTeacher } from "@/lib/auth/require-teacher";
 import { ExpectedError } from "@/lib/expected-error";
 import { gradeShortAnswerWithAI } from "@/lib/ai-grading";
@@ -17,6 +17,7 @@ import { createMockSupabaseClient } from "./support/mock-supabase";
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(),
+  createServiceRoleClient: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/require-teacher", () => ({
@@ -591,6 +592,7 @@ describe("teacher quiz actions - regradeShortAnswerWithAiAction", () => {
       },
     });
     vi.mocked(createClient).mockResolvedValue(client as never);
+    vi.mocked(createServiceRoleClient).mockReturnValue(client as never);
 
     await expect(
       regradeShortAnswerWithAiAction("answer-1"),
@@ -628,6 +630,7 @@ describe("teacher quiz actions - regradeShortAnswerWithAiAction", () => {
       },
     });
     vi.mocked(createClient).mockResolvedValue(client as never);
+    vi.mocked(createServiceRoleClient).mockReturnValue(client as never);
 
     await expect(
       regradeShortAnswerWithAiAction("answer-1"),

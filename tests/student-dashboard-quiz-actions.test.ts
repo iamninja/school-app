@@ -72,6 +72,7 @@ describe("getQuizForTakingAction - question shuffle", () => {
       { data: false, error: null }, // is_quiz_shuffled_for_student
     );
     vi.mocked(createClient).mockResolvedValue(client as never);
+    vi.mocked(createServiceRoleClient).mockReturnValue(client as never);
 
     const quiz = await getQuizForTakingAction("quiz-1");
 
@@ -99,6 +100,7 @@ describe("getQuizForTakingAction - question shuffle", () => {
       { data: true, error: null }, // is_quiz_shuffled_for_student
     );
     vi.mocked(createClient).mockResolvedValue(client as never);
+    vi.mocked(createServiceRoleClient).mockReturnValue(client as never);
 
     // Forces the Fisher-Yates swap on a 2-item array to reverse it deterministically.
     vi.spyOn(Math, "random").mockReturnValue(0);
@@ -141,6 +143,7 @@ describe("getQuizForTakingAction - question shuffle", () => {
       { data: true, error: null }, // is_quiz_shuffled_for_student
     );
     vi.mocked(createClient).mockResolvedValue(client as never);
+    vi.mocked(createServiceRoleClient).mockReturnValue(client as never);
 
     const quiz = await getQuizForTakingAction("quiz-1");
 
@@ -163,6 +166,7 @@ describe("getQuizForTakingAction - retake limit", () => {
       { data: 3, error: null }, // quiz_max_attempts_for_student
     );
     vi.mocked(createClient).mockResolvedValue(client as never);
+    vi.mocked(createServiceRoleClient).mockReturnValue(client as never);
 
     await expect(getQuizForTakingAction("quiz-1")).rejects.toThrow(
       "You have used all your attempts for this quiz",
@@ -190,6 +194,7 @@ describe("getQuizForTakingAction - retake limit", () => {
       { data: 3, error: null }, // quiz_max_attempts_for_student
     );
     vi.mocked(createClient).mockResolvedValue(client as never);
+    vi.mocked(createServiceRoleClient).mockReturnValue(client as never);
 
     const quiz = await getQuizForTakingAction("quiz-1");
 
@@ -235,6 +240,7 @@ describe("submitQuizAttemptAction - retake best-tracking", () => {
       { data: 3, error: null }, // quiz_max_attempts_for_student
     );
     vi.mocked(createClient).mockResolvedValue(client as never);
+    vi.mocked(createServiceRoleClient).mockReturnValue(client as never);
 
     const review = await submitQuizAttemptAction("quiz-1", [
       { questionId: "q1", selectedOptionId: "opt-1" },
@@ -291,6 +297,7 @@ describe("submitQuizAttemptAction - retake best-tracking", () => {
       { data: 3, error: null },
     );
     vi.mocked(createClient).mockResolvedValue(client as never);
+    vi.mocked(createServiceRoleClient).mockReturnValue(client as never);
 
     // This retry answers wrong (selects the incorrect option), so it scores
     // 0 - well below the existing best of 5.
@@ -328,6 +335,7 @@ describe("submitQuizAttemptAction - retake best-tracking", () => {
       { data: 3, error: null },
     );
     vi.mocked(createClient).mockResolvedValue(client as never);
+    vi.mocked(createServiceRoleClient).mockReturnValue(client as never);
 
     await expect(
       submitQuizAttemptAction("quiz-1", [
@@ -390,6 +398,12 @@ describe("submitQuizAttemptAction - AI grading on submit", () => {
       { data: null, error: null }, // quiz_max_attempts_for_student
     );
     vi.mocked(createClient).mockResolvedValue(client as never);
+    // submitQuizAttemptAction's own service-role read (quiz_questions/
+    // quiz_question_options, for the answer key - audit finding M1) is
+    // one synchronous call, consumed via mockReturnValueOnce so the
+    // persistent mockReturnValue below (for the separate, later
+    // after()-scheduled AI-grading writeback call) isn't shadowed by it.
+    vi.mocked(createServiceRoleClient).mockReturnValueOnce(client as never);
 
     const serviceClient = createMockSupabaseClient({
       quiz_attempt_answers: [
@@ -473,6 +487,7 @@ describe("submitQuizAttemptAction - AI grading on submit", () => {
       { data: null, error: null },
     );
     vi.mocked(createClient).mockResolvedValue(client as never);
+    vi.mocked(createServiceRoleClient).mockReturnValueOnce(client as never);
 
     const serviceClient = createMockSupabaseClient({});
     vi.mocked(createServiceRoleClient).mockReturnValue(serviceClient as never);
@@ -524,6 +539,7 @@ describe("submitQuizAttemptAction - AI grading on submit", () => {
       { data: null, error: null },
     );
     vi.mocked(createClient).mockResolvedValue(client as never);
+    vi.mocked(createServiceRoleClient).mockReturnValue(client as never);
     vi.mocked(gradeShortAnswerWithAI).mockResolvedValue({
       isCorrect: true,
       reasoning: "Σωστό.",
@@ -578,6 +594,7 @@ describe("submitQuizAttemptAction - AI grading on submit", () => {
       { data: null, error: null },
     );
     vi.mocked(createClient).mockResolvedValue(client as never);
+    vi.mocked(createServiceRoleClient).mockReturnValue(client as never);
 
     const review = await submitQuizAttemptAction("quiz-1", [
       { questionId: "q1", textAnswer: "four" },
@@ -637,6 +654,7 @@ describe("submitQuizAttemptAction - AI wrong-answer explanations", () => {
       { data: null, error: null },
     );
     vi.mocked(createClient).mockResolvedValue(client as never);
+    vi.mocked(createServiceRoleClient).mockReturnValueOnce(client as never);
 
     const serviceClient = createMockSupabaseClient({
       quiz_attempt_answers: { data: null, error: null },
@@ -703,6 +721,7 @@ describe("submitQuizAttemptAction - AI wrong-answer explanations", () => {
       { data: null, error: null },
     );
     vi.mocked(createClient).mockResolvedValue(client as never);
+    vi.mocked(createServiceRoleClient).mockReturnValue(client as never);
 
     await submitQuizAttemptAction("quiz-1", [
       { questionId: "q1", selectedOptionId: "opt-1" },
@@ -752,6 +771,7 @@ describe("submitQuizAttemptAction - snapshot columns", () => {
       quiz_attempt_best_answers: { data: null, error: null },
     }, { id: "user-1" });
     vi.mocked(createClient).mockResolvedValue(client as never);
+    vi.mocked(createServiceRoleClient).mockReturnValue(client as never);
 
     const review = await submitQuizAttemptAction("quiz-1", [
       { questionId: "q1", selectedOptionId: "opt-1" },
@@ -813,6 +833,7 @@ describe("submitQuizAttemptAction - snapshot columns", () => {
       quiz_attempt_best_answers: { data: null, error: null },
     }, { id: "user-1" });
     vi.mocked(createClient).mockResolvedValue(client as never);
+    vi.mocked(createServiceRoleClient).mockReturnValue(client as never);
 
     // Only answers q1 - q2 is left blank.
     await submitQuizAttemptAction("quiz-1", [
@@ -882,6 +903,7 @@ describe("submitQuizAttemptAction - question images", () => {
       })),
     };
     vi.mocked(createClient).mockResolvedValue(client as never);
+    vi.mocked(createServiceRoleClient).mockReturnValue(client as never);
 
     const review = await submitQuizAttemptAction("quiz-1", [
       { questionId: "q1", selectedOptionId: "opt-1" },
@@ -935,6 +957,7 @@ describe("submitQuizAttemptAction - question images", () => {
     const storageFrom = vi.fn();
     client.storage = { from: storageFrom };
     vi.mocked(createClient).mockResolvedValue(client as never);
+    vi.mocked(createServiceRoleClient).mockReturnValue(client as never);
 
     const review = await submitQuizAttemptAction("quiz-1", [
       { questionId: "q1", selectedOptionId: "opt-1" },
