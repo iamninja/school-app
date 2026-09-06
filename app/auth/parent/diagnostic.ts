@@ -1,6 +1,7 @@
 "use server";
 
 import { createServiceRoleClient } from "@/lib/supabase/server";
+import { escapeIlikePattern } from "@/lib/auth/role-account-actions";
 
 type DiagnosticStatus =
   | "error"
@@ -35,7 +36,7 @@ export async function diagnoseParentAccountAction(
   const { data: parentRecords, error: parentError } = await supabase
     .from("family_parents")
     .select("id, user_id")
-    .ilike("email", normalizedEmail);
+    .ilike("email", escapeIlikePattern(normalizedEmail));
 
   if (parentError) {
     console.error("Error querying family_parents:", parentError);
