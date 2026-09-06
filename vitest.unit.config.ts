@@ -30,6 +30,7 @@ export default defineConfig({
       "tests/assessments-actions.test.ts",
       "tests/billing-actions.test.ts",
       "tests/cron-monthly-charges-route.test.ts",
+      "tests/proxy.test.ts",
     ],
   },
   resolve: {
