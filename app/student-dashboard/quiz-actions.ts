@@ -424,7 +424,16 @@ export async function submitQuizAttemptAction(
     throw new Error("Quiz not found");
   }
 
-  const { data: questions, error: questionsError } = await supabase
+  // The quiz select above already went through "Students view assigned
+  // quizzes" RLS (is_quiz_assigned_to_student), so this student is
+  // confirmed assigned to quizId - safe to read the answer-key columns
+  // (model_answer/is_correct) via service-role, since `authenticated` has
+  // no column-level access to either (grading must happen against the
+  // real key, not a client-submitted correctness claim - see this
+  // function's own doc comment above).
+  const serviceRole = createServiceRoleClient();
+
+  const { data: questions, error: questionsError } = await serviceRole
     .from("quiz_questions")
     .select("id, question_text, question_type, points, image_path, model_answer")
     .eq("quiz_id", quizId);
@@ -441,7 +450,7 @@ export async function submitQuizAttemptAction(
     supabase,
     submitImagePaths,
   );
-  const { data: options, error: optionsError } = await supabase
+  const { data: options, error: optionsError } = await serviceRole
     .from("quiz_question_options")
     .select("id, question_id, option_text, is_correct")
     .in("question_id", questionIds);
@@ -1005,6 +1014,13 @@ export async function getQuizReviewAction(
   // consistent with getQuizForTakingAction/submitQuizAttemptAction, which
   // both fetch quiz_questions directly rather than relying on PostgREST's
   // embed cardinality inference.
+  //
+  // The attempt select above already confirmed this attempt belongs to
+  // this student, so it's safe to read is_correct via service-role here -
+  // `authenticated` has no column-level access to it (this is precisely
+  // the "reveal it after submission" case that a static column grant can't
+  // express - see 20260906120000_hide-quiz-answer-key-columns.sql).
+  const serviceRole = createServiceRoleClient();
   const [{ data: questionRows }, { data: options }] = await Promise.all([
     questionIds.length > 0
       ? supabase
@@ -1013,7 +1029,7 @@ export async function getQuizReviewAction(
           .in("id", questionIds)
       : Promise.resolve({ data: [] as never[] }),
     questionIds.length > 0
-      ? supabase
+      ? serviceRole
           .from("quiz_question_options")
           .select("id, question_id, option_text, is_correct")
           .in("question_id", questionIds)

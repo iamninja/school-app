@@ -1,6 +1,6 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { requireTeacher } from "@/lib/auth/require-teacher";
 import { ExpectedError } from "@/lib/expected-error";
 import {
@@ -346,9 +346,17 @@ export async function getQuizForEditingAction(
 
   const quiz = await requireOwnedQuiz(supabase, quizId, user.id);
 
+  // Ownership of quizId is already established above via requireOwnedQuiz's
+  // explicit teacher_id check, so it's safe to read the answer-key columns
+  // (model_answer/is_correct) via a service-role client here - `authenticated`
+  // has no column-level access to either (20260906120000_hide-quiz-answer-
+  // key-columns.sql), since the same rows must also hide is_correct from a
+  // student who hasn't submitted yet.
+  const serviceRole = createServiceRoleClient();
+
   const [{ data: questionRows }, { data: assignments }, attemptCount] =
     await Promise.all([
-      supabase
+      serviceRole
         .from("quiz_questions")
         .select(
           "id, question_text, question_type, points, order_index, image_path, model_answer",
@@ -366,7 +374,7 @@ export async function getQuizForEditingAction(
 
   const { data: options } =
     questionIds.length > 0
-      ? await supabase
+      ? await serviceRole
           .from("quiz_question_options")
           .select("id, question_id, option_text, is_correct, order_index")
           .in("question_id", questionIds)
@@ -795,6 +803,10 @@ export async function getStudentQuizAttemptAction(
 
   const questionIds = (answers ?? []).map((answer) => answer.question_id);
 
+  // teacher_id ownership of quizId was already checked above; safe to read
+  // is_correct via service-role - see getQuizForEditingAction's comment.
+  const serviceRole = createServiceRoleClient();
+
   const [{ data: questionRows }, { data: options }] = await Promise.all([
     questionIds.length > 0
       ? supabase
@@ -803,7 +815,7 @@ export async function getStudentQuizAttemptAction(
           .in("id", questionIds)
       : Promise.resolve({ data: [] as never[] }),
     questionIds.length > 0
-      ? supabase
+      ? serviceRole
           .from("quiz_question_options")
           .select("id, question_id, option_text, is_correct")
           .in("question_id", questionIds)
@@ -985,9 +997,11 @@ export async function getQuizQuestionBreakdownAction(
     breakdownImagePaths,
   );
 
+  // teacher_id ownership of quizId was already checked above; safe to read
+  // is_correct via service-role - see getQuizForEditingAction's comment.
   const { data: options } =
     questionIds.length > 0
-      ? await supabase
+      ? await createServiceRoleClient()
           .from("quiz_question_options")
           .select("id, question_id, option_text, is_correct, order_index")
           .in("question_id", questionIds)
@@ -1392,7 +1406,9 @@ export async function regradeShortAnswerWithAiAction(
 
   await requireOwnedQuiz(supabase, attempt.quiz_id, user.id);
 
-  const { data: question, error: questionError } = await supabase
+  // Ownership just checked above; safe to read model_answer via
+  // service-role - see getQuizForEditingAction's comment.
+  const { data: question, error: questionError } = await createServiceRoleClient()
     .from("quiz_questions")
     .select("question_text, model_answer, points")
     .eq("id", answer.question_id)
