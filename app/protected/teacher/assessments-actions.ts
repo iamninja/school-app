@@ -266,6 +266,13 @@ export async function createAssessmentAction(input: AssessmentInput): Promise<{
       "Assign the assessment to either a class or specific students",
     );
   }
+  // Audit finding L5, 2026-09-05: no bound existed before this fed a bulk
+  // .in() lookup and a bulk insert. Teacher-only path (self-inflicted blast
+  // radius), but cheap defense-in-depth - 200 is far beyond any real class
+  // or individual-student assignment size.
+  if (input.studentIds && input.studentIds.length > 200) {
+    throw new ExpectedError("Can't assign an assessment to more than 200 students at once");
+  }
 
   const row = validateAssessmentFields(input);
   row.teacher_id = userId;

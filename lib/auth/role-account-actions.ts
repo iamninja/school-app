@@ -59,8 +59,6 @@ export async function lookupRoleEmail<
   const supabase = createServiceRoleClient();
   const normalizedEmail = email.trim().toLowerCase();
 
-  console.log(`Checking ${params.role} email (normalized):`, normalizedEmail);
-
   const { data: row, error } = await supabase
     .from(params.table)
     .select(params.columns)
@@ -70,14 +68,11 @@ export async function lookupRoleEmail<
   if (error || !row) {
     if (error) {
       console.error(`Database error checking ${params.role} email:`, error);
-    } else {
-      console.log(`No ${params.role} found with email:`, normalizedEmail);
     }
     return { exists: false, error: params.notFoundError };
   }
 
   if (row.user_id) {
-    console.log(`${params.role} email already has user_id:`, row.user_id);
     return { exists: false, error: ALREADY_REGISTERED_ERROR };
   }
 
