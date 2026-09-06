@@ -16,6 +16,7 @@ export default defineConfig({
     environment: "node",
     include: [
       "tests/teacher-actions.test.ts",
+      "tests/role-account-actions.test.ts",
       "tests/teacher-quiz-actions.test.ts",
       "tests/student-dashboard-quiz-actions.test.ts",
       "tests/parent-actions.test.ts",

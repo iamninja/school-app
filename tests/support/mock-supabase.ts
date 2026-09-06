@@ -27,6 +27,7 @@ const CHAIN_METHODS = [
   "delete",
   "upsert",
   "eq",
+  "ilike",
   "is",
   "not",
   "match",
