@@ -55,6 +55,7 @@ const TRANSACTION_TYPE_LABELS: Record<
   string
 > = {
   monthly_charge: "Monthly charge",
+  lesson_charge: "Lesson charge",
   payment: "Payment",
   receipt: "Receipt",
   prepayment: "Prepayment",
@@ -235,6 +236,7 @@ export function TeacherBilling({
                     const status = deriveTuitionStatus({
                       balance: family.balance,
                       monthlyAmount: family.monthlyAmount,
+                      billsPerLesson: family.billsPerLesson,
                     });
                     return (
                       <TableRow key={family.id}>
@@ -383,6 +385,13 @@ function FamilyBillingDetail({
   );
   const [adjustmentDescription, setAdjustmentDescription] = React.useState("");
   const [isAdjusting, setIsAdjusting] = React.useState(false);
+
+  const lessonChargeTotalThisMonth = React.useMemo(() => {
+    const period = currentPeriod();
+    return (ledger?.transactions ?? [])
+      .filter((t) => t.type === "lesson_charge" && t.period === period)
+      .reduce((sum, t) => sum + t.amount, 0);
+  }, [ledger]);
 
   const loadLedger = React.useCallback(async () => {
     setIsLoading(true);
@@ -548,6 +557,12 @@ function FamilyBillingDetail({
             : "no active students"}{" "}
           — {formatEuro(family.monthlyAmount)}/month
         </p>
+        {family.billsPerLesson && (
+          <p className="text-sm text-muted-foreground">
+            Per-lesson charges this month:{" "}
+            {formatEuro(lessonChargeTotalThisMonth)}
+          </p>
+        )}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -745,11 +760,16 @@ function FamilyBillingDetail({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    disabled={transaction.type === "receipt"}
+                    disabled={
+                      transaction.type === "receipt" ||
+                      transaction.type === "lesson_charge"
+                    }
                     title={
                       transaction.type === "receipt"
                         ? "Delete the receipt instead"
-                        : undefined
+                        : transaction.type === "lesson_charge"
+                          ? "Change that day's attendance instead"
+                          : undefined
                     }
                     onClick={() => void handleDeleteTransaction(transaction)}
                   >

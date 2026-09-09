@@ -220,6 +220,7 @@ describe("TeacherDashboard student form", () => {
       parentTwoPhone: "",
       tuitionAmount: "420",
       assignedClassIds: [],
+      billingWarning: null,
     });
 
     render(<TeacherDashboard {...baseProps} />);
@@ -265,6 +266,7 @@ describe("TeacherDashboard student form", () => {
       parentTwoPhone: "",
       tuitionAmount: "420",
       assignedClassIds: [],
+      billingWarning: null,
     });
 
     render(<TeacherDashboard {...baseProps} />);
@@ -500,6 +502,7 @@ describe("TeacherDashboard student form", () => {
       parentTwoPhone: "",
       tuitionAmount: "420",
       assignedClassIds: [],
+      billingWarning: null,
     });
 
     render(<TeacherDashboard {...baseProps} />);
@@ -587,6 +590,7 @@ describe("TeacherDashboard student form", () => {
       parentTwoPhone: undefined,
       tuitionAmount: "",
       assignedClassIds: [],
+      billingWarning: null,
     });
 
     render(

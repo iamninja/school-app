@@ -214,6 +214,8 @@ type ClassItem = {
   archivedAt: string | null;
   startDate: string | null;
   finishDate: string | null;
+  billingType: "monthly" | "per_lesson";
+  lessonRate: number | null;
 };
 
 type ScheduleSlotValue = { classId: string; isTwoHour: boolean };
@@ -258,6 +260,8 @@ type TeacherDashboardProps = {
     archivedAt: string | null;
     startDate?: string | null;
     finishDate?: string | null;
+    billingType?: "monthly" | "per_lesson";
+    lessonRate?: number | null;
   }>;
   initialSlots: Array<{
     day: string;
@@ -534,6 +538,7 @@ export function TeacherDashboard({
       return deriveTuitionStatus({
         balance: family.balance,
         monthlyAmount: family.monthlyAmount,
+        billsPerLesson: family.billsPerLesson,
       });
     },
     [familyBalanceById],
@@ -562,6 +567,10 @@ export function TeacherDashboard({
   const [classFormGrade, setClassFormGrade] = React.useState("");
   const [classFormStartDate, setClassFormStartDate] = React.useState("");
   const [classFormFinishDate, setClassFormFinishDate] = React.useState("");
+  const [classFormBillingType, setClassFormBillingType] = React.useState<
+    "monthly" | "per_lesson"
+  >("monthly");
+  const [classFormLessonRate, setClassFormLessonRate] = React.useState("");
   const [isSavingClass, setIsSavingClass] = React.useState(false);
   const [isMutatingEnrollment, setIsMutatingEnrollment] = React.useState(false);
   const [showArchivedClasses, setShowArchivedClasses] = React.useState(false);
@@ -574,6 +583,8 @@ export function TeacherDashboard({
       grade: item.grade ?? null,
       startDate: item.startDate ?? null,
       finishDate: item.finishDate ?? null,
+      billingType: item.billingType ?? "monthly",
+      lessonRate: item.lessonRate ?? null,
       color: COLOR_CLASSES[index % COLOR_CLASSES.length],
     })),
   );
@@ -745,6 +756,8 @@ export function TeacherDashboard({
     setClassFormGrade("");
     setClassFormStartDate("");
     setClassFormFinishDate("");
+    setClassFormBillingType("monthly");
+    setClassFormLessonRate("");
   };
 
   const handleCreateClass = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -767,6 +780,14 @@ export function TeacherDashboard({
       toast.error("Finish date can't be before the start date");
       return;
     }
+    const lessonRate = Number.parseFloat(classFormLessonRate);
+    if (
+      classFormBillingType === "per_lesson" &&
+      (!Number.isFinite(lessonRate) || lessonRate <= 0)
+    ) {
+      toast.error("Set a rate per lesson for a per-lesson class");
+      return;
+    }
     setIsSavingClass(true);
     try {
       const nextColor = COLOR_CLASSES[classes.length % COLOR_CLASSES.length];
@@ -776,6 +797,8 @@ export function TeacherDashboard({
         grade: classFormGrade || null,
         startDate: classFormStartDate || null,
         finishDate: classFormFinishDate || null,
+        billingType: classFormBillingType,
+        lessonRate: classFormBillingType === "per_lesson" ? lessonRate : null,
       });
       setClasses((prev) => [
         ...prev,
@@ -788,6 +811,8 @@ export function TeacherDashboard({
           archivedAt: null,
           startDate: created.startDate,
           finishDate: created.finishDate,
+          billingType: created.billingType,
+          lessonRate: created.lessonRate,
         },
       ]);
       toast.success("Class created");
@@ -812,6 +837,10 @@ export function TeacherDashboard({
     setClassFormGrade(classItem.grade ?? "");
     setClassFormStartDate(classItem.startDate ?? "");
     setClassFormFinishDate(classItem.finishDate ?? "");
+    setClassFormBillingType(classItem.billingType);
+    setClassFormLessonRate(
+      classItem.lessonRate === null ? "" : String(classItem.lessonRate),
+    );
     setEditClassId(classId);
   };
 
@@ -842,6 +871,14 @@ export function TeacherDashboard({
       toast.error("Finish date can't be before the start date");
       return;
     }
+    const lessonRate = Number.parseFloat(classFormLessonRate);
+    if (
+      classFormBillingType === "per_lesson" &&
+      (!Number.isFinite(lessonRate) || lessonRate <= 0)
+    ) {
+      toast.error("Set a rate per lesson for a per-lesson class");
+      return;
+    }
     setIsSavingClass(true);
     try {
       const updated = await updateClassAction({
@@ -851,6 +888,8 @@ export function TeacherDashboard({
         grade: classFormGrade || null,
         startDate: classFormStartDate || null,
         finishDate: classFormFinishDate || null,
+        billingType: classFormBillingType,
+        lessonRate: classFormBillingType === "per_lesson" ? lessonRate : null,
       });
       setClasses((prev) =>
         prev.map((item) =>
@@ -862,11 +901,16 @@ export function TeacherDashboard({
                 grade: updated.grade,
                 startDate: updated.startDate,
                 finishDate: updated.finishDate,
+                billingType: updated.billingType,
+                lessonRate: updated.lessonRate,
               }
             : item,
         ),
       );
       toast.success("Class updated");
+      if (updated.billingWarning) {
+        toast.warning(updated.billingWarning);
+      }
       closeEditClassDialog();
     } catch (error: unknown) {
       toast.error(
@@ -954,7 +998,10 @@ export function TeacherDashboard({
   const handleEnrollStudent = async (studentId: string, classId: string) => {
     setIsMutatingEnrollment(true);
     try {
-      await enrollStudentInClassAction(studentId, classId);
+      const { billingWarning } = await enrollStudentInClassAction(
+        studentId,
+        classId,
+      );
       setStudents((prev) =>
         prev.map((student) =>
           student.id === studentId
@@ -967,6 +1014,9 @@ export function TeacherDashboard({
             : student,
         ),
       );
+      if (billingWarning) {
+        toast.warning(billingWarning);
+      }
     } catch (error: unknown) {
       toast.error(
         error instanceof Error ? error.message : "Failed to enroll student",
@@ -1246,7 +1296,11 @@ export function TeacherDashboard({
       return;
     }
 
-    setStudents((prev) => [created, ...prev]);
+    const { billingWarning, ...createdStudent } = created;
+    setStudents((prev) => [createdStudent, ...prev]);
+    if (billingWarning) {
+      toast.warning(billingWarning);
+    }
     setFamilies((prev) => {
       if (studentForm.familyMode === "existing") {
         return prev.map((family) =>
@@ -1546,6 +1600,9 @@ export function TeacherDashboard({
     );
 
     toast.success("Student updated");
+    if (updated.billingWarning) {
+      toast.warning(updated.billingWarning);
+    }
     setIsSavingStudent(false);
     closeEditStudentDialog();
   };
@@ -1554,6 +1611,23 @@ export function TeacherDashboard({
     () => classes.find((item) => item.id === attendanceClassId)?.name ?? "",
     [attendanceClassId, classes],
   );
+
+  const attendanceClassLessonRate = React.useMemo(() => {
+    const classItem = classes.find((item) => item.id === attendanceClassId);
+    return classItem?.billingType === "per_lesson"
+      ? classItem.lessonRate
+      : null;
+  }, [attendanceClassId, classes]);
+
+  const lessonRateByClassId = React.useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const item of classes) {
+      if (item.billingType === "per_lesson" && item.lessonRate !== null) {
+        map[item.id] = item.lessonRate;
+      }
+    }
+    return map;
+  }, [classes]);
 
   const attendanceRoster = React.useMemo(() => {
     if (!attendanceClassId) {
@@ -1969,6 +2043,7 @@ export function TeacherDashboard({
               setSection("assessments");
               setSelectedAssessmentId(assessmentId);
             }}
+            lessonRateByClassId={lessonRateByClassId}
           />
         </TabsContent>
 
@@ -2106,7 +2181,14 @@ export function TeacherDashboard({
                               aria-hidden="true"
                             />
                             <div>
-                              <span className="font-medium">{item.name}</span>
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-medium">{item.name}</span>
+                                {item.billingType === "per_lesson" && (
+                                  <Badge variant="outline" className="text-[10px]">
+                                    Per lesson · {formatEuro(item.lessonRate ?? 0)}
+                                  </Badge>
+                                )}
+                              </div>
                               {item.grade && (
                                 <p className="text-xs text-muted-foreground">
                                   {CLASS_GRADE_LABELS[item.grade] ?? item.grade}
@@ -2271,6 +2353,57 @@ export function TeacherDashboard({
                     />
                   </div>
                 </div>
+                <div className="space-y-2">
+                  <Label>Billing</Label>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={
+                        classFormBillingType === "monthly" ? "default" : "outline"
+                      }
+                      onClick={() => setClassFormBillingType("monthly")}
+                    >
+                      Monthly tuition
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={
+                        classFormBillingType === "per_lesson"
+                          ? "default"
+                          : "outline"
+                      }
+                      onClick={() => setClassFormBillingType("per_lesson")}
+                    >
+                      Per lesson
+                    </Button>
+                  </div>
+                  {classFormBillingType === "per_lesson" && (
+                    <>
+                      <Input
+                        id="class-lesson-rate"
+                        type="number"
+                        min={0.01}
+                        step="0.01"
+                        placeholder="Rate per lesson (€)"
+                        value={classFormLessonRate}
+                        onChange={(event) =>
+                          setClassFormLessonRate(event.target.value)
+                        }
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Charged automatically each time you mark this lesson
+                        Present or Late. A no-show marked Absent isn&apos;t
+                        charged, and a cancelled lesson never gets marked at
+                        all. For a 2-hour lesson enter the whole lesson&apos;s
+                        price — marking 1+1 charges half. Students billed only
+                        per lesson should have their monthly tuition left
+                        blank.
+                      </p>
+                    </>
+                  )}
+                </div>
                 <Button
                   type="submit"
                   className="w-full"
@@ -2353,6 +2486,58 @@ export function TeacherDashboard({
                       }
                     />
                   </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Billing</Label>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={
+                        classFormBillingType === "monthly" ? "default" : "outline"
+                      }
+                      onClick={() => setClassFormBillingType("monthly")}
+                    >
+                      Monthly tuition
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={
+                        classFormBillingType === "per_lesson"
+                          ? "default"
+                          : "outline"
+                      }
+                      onClick={() => setClassFormBillingType("per_lesson")}
+                    >
+                      Per lesson
+                    </Button>
+                  </div>
+                  {classFormBillingType === "per_lesson" && (
+                    <>
+                      <Input
+                        id="edit-class-lesson-rate"
+                        type="number"
+                        min={0.01}
+                        step="0.01"
+                        placeholder="Rate per lesson (€)"
+                        value={classFormLessonRate}
+                        onChange={(event) =>
+                          setClassFormLessonRate(event.target.value)
+                        }
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Charged automatically each time you mark this lesson
+                        Present or Late. A no-show marked Absent isn&apos;t
+                        charged, and a cancelled lesson never gets marked at
+                        all. For a 2-hour lesson enter the whole lesson&apos;s
+                        price — marking 1+1 charges half. Changing this rate
+                        only affects lessons marked from now on. Students
+                        billed only per lesson should have their monthly
+                        tuition left blank.
+                      </p>
+                    </>
+                  )}
                 </div>
               </div>
               <DialogFooter>
@@ -3730,6 +3915,7 @@ export function TeacherDashboard({
                     className={attendanceClassName}
                     dateKey={attendanceDateKey}
                     isTwoHour={isTwoHourAttendanceDate}
+                    lessonRate={attendanceClassLessonRate}
                     getStatus={(studentId) =>
                       attendanceStatusByStudent[studentId] ?? ""
                     }

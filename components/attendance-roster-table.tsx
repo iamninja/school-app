@@ -10,6 +10,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { formatEuro } from "@/lib/format-currency";
 import type { AttendanceStatus } from "@/lib/attendance-records";
 
 type RosterStudent = {
@@ -19,6 +20,17 @@ type RosterStudent = {
   gradeLevel: string;
   email: string;
 };
+
+// Mirrors the amount post_lesson_charge_row() actually posts, for the
+// "€X charged" hint below - present/late = the full rate, split = half.
+function lessonChargeAmount(
+  status: AttendanceStatus | "",
+  rate: number,
+): number | null {
+  if (status === "present" || status === "late") return rate;
+  if (status === "split") return Math.round((rate / 2) * 100) / 100;
+  return null;
+}
 
 /**
  * Present/Late/Absent/1+1 roster, shared by the Attendance tab (its own
@@ -34,6 +46,7 @@ export function AttendanceRosterTable({
   className,
   dateKey,
   isTwoHour,
+  lessonRate,
   getStatus,
   onOptimisticChange,
   onCommitted,
@@ -43,6 +56,9 @@ export function AttendanceRosterTable({
   className: string;
   dateKey: string;
   isTwoHour: boolean;
+  // Set only for a per_lesson-billed class - renders the "€X charged" hint
+  // so the teacher sees the billing consequence of the status they set.
+  lessonRate?: number | null;
   getStatus: (studentId: string) => AttendanceStatus | "";
   onOptimisticChange: (
     studentId: string,
@@ -100,6 +116,7 @@ export function AttendanceRosterTable({
                 {student.gradeLevel || "N/A"}
               </TableCell>
               <TableCell>
+                <div className="flex flex-col items-end gap-1">
                 <div className="flex flex-wrap justify-end gap-2">
                   <Button
                     type="button"
@@ -153,6 +170,16 @@ export function AttendanceRosterTable({
                       1+1
                     </Button>
                   ) : null}
+                </div>
+                {typeof lessonRate === "number" && (
+                  <p className="text-xs text-muted-foreground">
+                    {status === "absent"
+                      ? "Not charged"
+                      : status === ""
+                        ? null
+                        : `${formatEuro(lessonChargeAmount(status, lessonRate) ?? 0)} charged${status === "split" ? " (1+1)" : ""}`}
+                  </p>
+                )}
                 </div>
               </TableCell>
             </TableRow>

@@ -53,6 +53,7 @@ export const ATTENDANCE_STATUS_LABELS_EL: Record<string, string> = {
 // (deriveTuitionStatus) for the English teacher-facing equivalent.
 export const BALANCE_TRANSACTION_TYPE_LABELS_EL: Record<string, string> = {
   monthly_charge: "Χρέωση μήνα",
+  lesson_charge: "Χρέωση μαθήματος",
   payment: "Πληρωμή",
   receipt: "Απόδειξη",
   prepayment: "Προκαταβολή",

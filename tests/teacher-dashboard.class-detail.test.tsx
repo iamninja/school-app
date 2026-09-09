@@ -144,7 +144,7 @@ describe("TeacherDashboard class detail - enrollment", () => {
     const unenrollStudentFromClassAction = vi.mocked(
       actions.unenrollStudentFromClassAction,
     );
-    enrollStudentInClassAction.mockResolvedValue(undefined);
+    enrollStudentInClassAction.mockResolvedValue({ billingWarning: null });
     unenrollStudentFromClassAction.mockResolvedValue(undefined);
 
     await openAlgebraDetail(user);
@@ -561,6 +561,9 @@ describe("TeacherDashboard class detail - rendering and navigation", () => {
       grade: null,
       startDate: null,
       finishDate: null,
+      billingType: "monthly",
+      lessonRate: null,
+      billingWarning: null,
     });
     archiveClassAction.mockResolvedValue({
       id: "class-1",

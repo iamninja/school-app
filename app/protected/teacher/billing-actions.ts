@@ -13,7 +13,7 @@ import type {
 } from "@/lib/types/database";
 
 const TRANSACTION_COLUMNS =
-  "id, family_id, type, amount, period, period_end, covers_months, description, receipt_id, payment_method, source, created_by, created_at";
+  "id, family_id, type, amount, period, period_end, covers_months, description, receipt_id, attendance_record_id, payment_method, source, created_by, created_at";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -49,6 +49,7 @@ function toTransaction(row: Record<string, unknown>): FamilyBalanceTransaction {
     covers_months: row.covers_months === null ? null : Number(row.covers_months),
     description: row.description as string,
     receipt_id: (row.receipt_id as string | null) ?? null,
+    attendance_record_id: (row.attendance_record_id as string | null) ?? null,
     payment_method:
       row.payment_method === null ? null : Number(row.payment_method),
     source: row.source as FamilyBalanceTransaction["source"],
@@ -84,25 +85,46 @@ export async function listFamilyBalancesAction(): Promise<
 
   const { data: students, error: studentsError } = await supabase
     .from("students")
-    .select("family_id, first_name, last_name, tuition_amount, withdrawn_at")
+    .select("id, family_id, first_name, last_name, tuition_amount, withdrawn_at")
     .eq("teacher_id", userId);
 
   if (studentsError) {
     throw studentsError;
   }
 
+  // Families whose (active) students have any class billed per-lesson -
+  // for these, a flat 0 monthlyAmount doesn't mean "scholarship", see
+  // deriveTuitionStatus's billsPerLesson param.
+  const { data: perLessonAssignments, error: perLessonError } = await supabase
+    .from("student_class_assignments")
+    .select("student_id, classes!inner(billing_type, teacher_id)")
+    .eq("classes.teacher_id", userId)
+    .eq("classes.billing_type", "per_lesson");
+
+  if (perLessonError) {
+    throw perLessonError;
+  }
+
+  const perLessonStudentIds = new Set(
+    (perLessonAssignments ?? []).map((row) => row.student_id as string),
+  );
+
   const activeStudentsByFamily = new Map<
     string,
-    { names: string[]; monthlyAmount: number }
+    { names: string[]; monthlyAmount: number; billsPerLesson: boolean }
   >();
   for (const student of students ?? []) {
     if (student.withdrawn_at) continue;
     const entry = activeStudentsByFamily.get(student.family_id) ?? {
       names: [],
       monthlyAmount: 0,
+      billsPerLesson: false,
     };
     entry.names.push(`${student.first_name} ${student.last_name}`);
     entry.monthlyAmount += Number(student.tuition_amount ?? 0);
+    if (perLessonStudentIds.has(student.id)) {
+      entry.billsPerLesson = true;
+    }
     activeStudentsByFamily.set(student.family_id, entry);
   }
 
@@ -112,6 +134,7 @@ export async function listFamilyBalancesAction(): Promise<
     const active = activeStudentsByFamily.get(family.id) ?? {
       names: [],
       monthlyAmount: 0,
+      billsPerLesson: false,
     };
 
     return {
@@ -122,6 +145,7 @@ export async function listFamilyBalancesAction(): Promise<
       studentNames: active.names,
       activeStudentCount: active.names.length,
       monthlyAmount: active.monthlyAmount,
+      billsPerLesson: active.billsPerLesson,
       balance: Number(family.balance),
       balanceUpdatedAt: family.balance_updated_at,
     };
@@ -430,6 +454,11 @@ export async function deleteFamilyBalanceTransactionAction(
   if (row.type === "receipt") {
     throw new ExpectedError(
       "This credit comes from a receipt — delete the receipt itself and this will go with it.",
+    );
+  }
+  if (row.type === "lesson_charge") {
+    throw new ExpectedError(
+      "This charge comes from a marked lesson — change that day's attendance to Absent (or clear it) and this will go with it.",
     );
   }
 

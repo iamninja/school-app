@@ -3,6 +3,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
+import { toast } from "sonner";
 
 import { TeacherDashboard } from "@/components/teacher-dashboard";
 import * as actions from "@/app/protected/teacher/actions";
@@ -27,6 +28,7 @@ vi.mock("sonner", () => ({
   toast: {
     error: vi.fn(),
     success: vi.fn(),
+    warning: vi.fn(),
   },
 }));
 
@@ -65,6 +67,8 @@ describe("TeacherDashboard class start/finish dates", () => {
       grade: null,
       startDate: "2026-10-01",
       finishDate: "2027-05-30",
+      billingType: "monthly",
+      lessonRate: null,
     });
 
     render(<TeacherDashboard {...baseProps} initialClasses={[]} />);
@@ -97,6 +101,8 @@ describe("TeacherDashboard class start/finish dates", () => {
       grade: null,
       startDate: null,
       finishDate: null,
+      billingType: "monthly",
+      lessonRate: null,
     });
 
     render(<TeacherDashboard {...baseProps} initialClasses={[]} />);
@@ -123,6 +129,9 @@ describe("TeacherDashboard class start/finish dates", () => {
       grade: null,
       startDate: "2026-09-15",
       finishDate: "2027-06-15",
+      billingType: "monthly",
+      lessonRate: null,
+      billingWarning: null,
     });
 
     render(<TeacherDashboard {...baseProps} />);
@@ -146,6 +155,60 @@ describe("TeacherDashboard class start/finish dates", () => {
         }),
       );
     });
+  });
+
+  it("shows a warning toast when the server flags a billing mismatch after saving", async () => {
+    const user = userEvent.setup();
+    vi.mocked(actions.updateClassAction).mockResolvedValue({
+      id: "class-1",
+      name: "Algebra II",
+      hoursPerWeek: 3,
+      grade: null,
+      startDate: "2026-09-01",
+      finishDate: "2027-06-15",
+      billingType: "per_lesson",
+      lessonRate: 20,
+      billingWarning:
+        "Still has a monthly tuition set — clear it to avoid double-charging: Giannis Verify",
+    });
+
+    render(<TeacherDashboard {...baseProps} />);
+    await user.click(screen.getByRole("tab", { name: /classes/i }));
+    await user.click(screen.getByRole("button", { name: /^edit$/i }));
+    await screen.findByRole("dialog");
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => {
+      expect(toast.warning).toHaveBeenCalledWith(
+        "Still has a monthly tuition set — clear it to avoid double-charging: Giannis Verify",
+      );
+    });
+  });
+
+  it("does not show a warning toast when there's no billing mismatch", async () => {
+    const user = userEvent.setup();
+    vi.mocked(actions.updateClassAction).mockResolvedValue({
+      id: "class-1",
+      name: "Algebra II",
+      hoursPerWeek: 3,
+      grade: null,
+      startDate: "2026-09-01",
+      finishDate: "2027-06-15",
+      billingType: "monthly",
+      lessonRate: null,
+      billingWarning: null,
+    });
+
+    render(<TeacherDashboard {...baseProps} />);
+    await user.click(screen.getByRole("tab", { name: /classes/i }));
+    await user.click(screen.getByRole("button", { name: /^edit$/i }));
+    await screen.findByRole("dialog");
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => {
+      expect(actions.updateClassAction).toHaveBeenCalled();
+    });
+    expect(toast.warning).not.toHaveBeenCalled();
   });
 
   it("blocks saving when the finish date is before the start date", async () => {

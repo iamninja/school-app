@@ -190,6 +190,7 @@ describe("TeacherDashboard student detail - edit", () => {
       parentTwoEmail: "",
       parentTwoPhone: "",
       tuitionAmount: "500",
+      billingWarning: null,
     });
 
     await openMayaDetail(user);
@@ -232,6 +233,7 @@ describe("TeacherDashboard student detail - edit", () => {
       parentTwoEmail: "",
       parentTwoPhone: "",
       tuitionAmount: "420",
+      billingWarning: null,
     });
 
     await openMayaDetail(user);
@@ -273,6 +275,7 @@ describe("TeacherDashboard student detail - edit", () => {
       parentTwoEmail: "jamie@example.com",
       parentTwoPhone: "(555) 999-1111",
       tuitionAmount: "450",
+      billingWarning: null,
     });
 
     await openMayaDetail(user);
@@ -334,6 +337,7 @@ describe("TeacherDashboard student detail - edit", () => {
       parentTwoEmail: "",
       parentTwoPhone: "",
       tuitionAmount: "420",
+      billingWarning: null,
     });
 
     await openMayaDetail(user);
@@ -369,7 +373,7 @@ describe("TeacherDashboard student detail - edit", () => {
     const unenrollStudentFromClassAction = vi.mocked(
       actions.unenrollStudentFromClassAction,
     );
-    enrollStudentInClassAction.mockResolvedValue(undefined);
+    enrollStudentInClassAction.mockResolvedValue({ billingWarning: null });
     unenrollStudentFromClassAction.mockResolvedValue(undefined);
 
     await openMayaDetail(user);

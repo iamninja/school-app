@@ -65,7 +65,7 @@ export default async function TeacherPage() {
     supabase
       .from("classes")
       .select(
-        "id, name, hours_per_week, grade, archived_at, created_at, start_date, finish_date",
+        "id, name, hours_per_week, grade, archived_at, created_at, start_date, finish_date, billing_type, lesson_rate",
       )
       .eq("teacher_id", user.id)
       .order("created_at", { ascending: true }),
@@ -119,6 +119,8 @@ export default async function TeacherPage() {
     archivedAt: item.archived_at,
     startDate: item.start_date,
     finishDate: item.finish_date,
+    billingType: item.billing_type as "monthly" | "per_lesson",
+    lessonRate: item.lesson_rate === null ? null : Number(item.lesson_rate),
   }));
 
   const initialSlots = (scheduleSlots ?? []).map((slot) => ({

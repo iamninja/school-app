@@ -26,6 +26,7 @@ export const ATTENDANCE_STATUS_LABELS_EN: Record<string, string> = {
 
 export const BALANCE_TRANSACTION_TYPE_LABELS_EN: Record<string, string> = {
   monthly_charge: "Monthly charge",
+  lesson_charge: "Lesson charge",
   payment: "Payment",
   receipt: "Receipt",
   prepayment: "Prepayment",

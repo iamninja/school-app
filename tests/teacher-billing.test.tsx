@@ -28,6 +28,7 @@ const owingFamily = {
   studentNames: ["Ελένη Παπαδοπούλου"],
   activeStudentCount: 1,
   monthlyAmount: 120,
+  billsPerLesson: false,
   balance: 100,
   balanceUpdatedAt: "2026-08-25T00:00:00Z",
 };
@@ -66,6 +67,26 @@ describe("TeacherBilling", () => {
 
     const creditCell = screen.getByText("-50,00 €");
     expect(creditCell).toHaveClass("text-emerald-600");
+  });
+
+  it("badges a per-lesson family as Due, not Scholarship, when it owes money", () => {
+    const perLessonFamily = {
+      ...owingFamily,
+      id: "family-per-lesson",
+      monthlyAmount: 0,
+      billsPerLesson: true,
+      balance: 120,
+    };
+    render(
+      <TeacherBilling
+        initialFamilyBalances={[perLessonFamily]}
+        initialChargeRuns={[]}
+        onIssueReceipt={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Due")).toBeInTheDocument();
+    expect(screen.queryByText("Scholarship")).not.toBeInTheDocument();
   });
 
   it("hides zero-balance families by default toggle state, and can reveal them", async () => {
@@ -184,6 +205,7 @@ describe("TeacherBilling", () => {
           covers_months: null,
           description: "Απόδειξη Α1",
           receipt_id: "receipt-1",
+          attendance_record_id: null,
           payment_method: 3,
           source: "receipt",
           created_by: null,
@@ -216,6 +238,56 @@ describe("TeacherBilling", () => {
     );
   });
 
+  it("disables deleting a lesson_charge-typed ledger row, with an explanation", async () => {
+    const user = userEvent.setup();
+    vi.mocked(billingActions.getFamilyLedgerAction).mockResolvedValue({
+      familyId: "family-1",
+      balance: 20,
+      monthlyAmount: 0,
+      transactions: [
+        {
+          id: "txn-1",
+          family_id: "family-1",
+          type: "lesson_charge",
+          amount: 20,
+          period: "2026-09-01",
+          period_end: null,
+          covers_months: null,
+          description: "Μάθημα Private tutoring 08/09/2026",
+          receipt_id: null,
+          attendance_record_id: "attendance-1",
+          payment_method: null,
+          source: "attendance",
+          created_by: null,
+          created_at: "2026-09-08T00:00:00Z",
+          runningBalance: 20,
+        },
+      ],
+    });
+
+    render(
+      <TeacherBilling
+        initialFamilyBalances={[{ ...owingFamily, billsPerLesson: true }]}
+        initialChargeRuns={[]}
+        onIssueReceipt={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /manage/i }));
+    await screen.findByRole("dialog");
+    await screen.findByText(/Μάθημα Private tutoring/);
+
+    const deleteButtons = screen
+      .getAllByRole("button")
+      .filter((button) => button.querySelector("svg.lucide-trash-2"));
+    expect(deleteButtons).toHaveLength(1);
+    expect(deleteButtons[0]).toBeDisabled();
+    expect(deleteButtons[0]).toHaveAttribute(
+      "title",
+      "Change that day's attendance instead",
+    );
+  });
+
   it("offers to issue a receipt right after logging a payment, with the right prefill", async () => {
     const user = userEvent.setup();
     vi.mocked(billingActions.listFamilyBalancesAction).mockResolvedValue([owingFamily]);
@@ -235,6 +307,7 @@ describe("TeacherBilling", () => {
       covers_months: null,
       description: "Πληρωμή",
       receipt_id: null,
+      attendance_record_id: null,
       payment_method: 7,
       source: "manual",
       created_by: "teacher-1",
@@ -285,6 +358,7 @@ describe("TeacherBilling", () => {
       covers_months: null,
       description: "Πληρωμή",
       receipt_id: null,
+      attendance_record_id: null,
       payment_method: 3,
       source: "manual",
       created_by: "teacher-1",

@@ -438,6 +438,7 @@ export function TeacherCalendar({
   onAttendanceRecordsChange,
   assessmentMarkers = [],
   onViewAssessment,
+  lessonRateByClassId,
 }: {
   events: CalendarEvent[];
   onEventsChange: React.Dispatch<React.SetStateAction<CalendarEvent[]>>;
@@ -453,6 +454,10 @@ export function TeacherCalendar({
   // lib/assessment-status.ts. Purely for visibility on the grid.
   assessmentMarkers?: AssessmentDateMarker[];
   onViewAssessment?: (assessmentId: string) => void;
+  // ProjectionClass deliberately carries no billing fields (wrong altitude
+  // for a calendar projection) - keyed by class id instead, for the
+  // attendance roster's "€X charged" hint.
+  lessonRateByClassId?: Record<string, number>;
 }) {
   const [month, setMonth] = React.useState(() => new Date());
   const [selectedDate, setSelectedDate] = React.useState(() =>
@@ -1118,6 +1123,7 @@ export function TeacherCalendar({
                     className={occurrence.className ?? ""}
                     dateKey={selectedDate}
                     isTwoHour={occurrence.isTwoHour}
+                    lessonRate={lessonRateByClassId?.[classId] ?? null}
                     getStatus={(studentId) =>
                       attendanceRecords.find(
                         (record) =>

@@ -16,12 +16,159 @@ function nextScheduleRowTime(day: string, time: string): string | null {
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
+// Shared by create/update: 'per_lesson' requires a positive rate, and
+// switching back to 'monthly' clears any stale rate rather than leaving it
+// dangling (the DB CHECK would allow a stale rate to survive, which is a
+// footgun if the class is ever switched back).
+function resolveBilling(data: {
+  billingType?: "monthly" | "per_lesson";
+  lessonRate?: number | null;
+}): { billing_type: "monthly" | "per_lesson"; lesson_rate: number | null } {
+  const billingType = data.billingType ?? "monthly";
+  if (billingType === "per_lesson") {
+    if (!Number.isFinite(data.lessonRate) || (data.lessonRate ?? 0) <= 0) {
+      throw new ExpectedError("Set a rate per lesson for a per-lesson class");
+    }
+    return { billing_type: "per_lesson", lesson_rate: data.lessonRate! };
+  }
+  return { billing_type: "monthly", lesson_rate: null };
+}
+
+// Advisory only - the class update itself has already succeeded by the
+// time this runs, so a mismatch here is a heads-up, never a save blocker.
+// Guards the two ways switching a class's billing mode silently costs the
+// teacher money: an active student left with a stale tuition_amount after
+// the class goes per-lesson (double-charged via both paths), or left with
+// none after the class goes back to monthly (not charged at all).
+async function computeBillingMismatchWarning(
+  supabase: SupabaseServerClient,
+  classId: string,
+  billingType: "monthly" | "per_lesson",
+): Promise<string | null> {
+  const { data: rows, error } = await supabase
+    .from("student_class_assignments")
+    .select("students!inner(first_name, last_name, tuition_amount, withdrawn_at)")
+    .eq("class_id", classId)
+    .is("students.withdrawn_at", null);
+
+  if (error) {
+    return null;
+  }
+
+  const students = (rows ?? []).map(
+    (row) =>
+      row.students as unknown as {
+        first_name: string;
+        last_name: string;
+        tuition_amount: string | number | null;
+      },
+  );
+
+  const mismatched =
+    billingType === "per_lesson"
+      ? students.filter((s) => Number(s.tuition_amount ?? 0) > 0)
+      : students.filter((s) => s.tuition_amount === null);
+
+  if (mismatched.length === 0) {
+    return null;
+  }
+
+  const names = mismatched
+    .map((s) => `${s.first_name} ${s.last_name}`)
+    .join(", ");
+
+  return billingType === "per_lesson"
+    ? `Still has a monthly tuition set — clear it to avoid double-charging: ${names}`
+    : `No monthly tuition set — won't be billed until you set one: ${names}`;
+}
+
+// Mirror of computeBillingMismatchWarning from the student's side: this is
+// the more common way a mismatch actually arises - assigning an existing
+// student (who may already have a monthly tuition) into a per-lesson
+// class, or vice versa - rather than flipping a class's mode after the
+// fact. Advisory only, same reasoning as the class-side check. Skipped
+// entirely for a withdrawn student - they're not being billed either way.
+async function computeStudentBillingMismatchWarning(
+  supabase: SupabaseServerClient,
+  studentId: string,
+): Promise<string | null> {
+  const { data: student } = await supabase
+    .from("students")
+    .select("tuition_amount, withdrawn_at")
+    .eq("id", studentId)
+    .maybeSingle();
+
+  if (!student || student.withdrawn_at) {
+    return null;
+  }
+
+  const { data: rows, error } = await supabase
+    .from("student_class_assignments")
+    .select("classes!inner(name, billing_type)")
+    .eq("student_id", studentId);
+
+  if (error) {
+    return null;
+  }
+
+  const classes = (rows ?? []).map(
+    (row) =>
+      row.classes as unknown as { name: string; billing_type: string },
+  );
+
+  const hasTuition = Number(student.tuition_amount ?? 0) > 0;
+  const perLessonClasses = classes.filter((c) => c.billing_type === "per_lesson");
+  const monthlyClasses = classes.filter((c) => c.billing_type === "monthly");
+
+  const warnings: string[] = [];
+
+  if (hasTuition && perLessonClasses.length > 0) {
+    warnings.push(
+      `also billed per lesson in ${perLessonClasses.map((c) => c.name).join(", ")} — clear their monthly tuition to avoid double-charging`,
+    );
+  }
+  if (!hasTuition && monthlyClasses.length > 0) {
+    warnings.push(
+      `enrolled in ${monthlyClasses.map((c) => c.name).join(", ")} (monthly billing) with no monthly tuition set — won't be charged for it`,
+    );
+  }
+
+  return warnings.length > 0 ? warnings.join("; also ") : null;
+}
+
+const CLASS_COLUMNS =
+  "id, name, hours_per_week, grade, start_date, finish_date, billing_type, lesson_rate";
+
+function toClassResult(row: {
+  id: string;
+  name: string;
+  hours_per_week: number;
+  grade: string | null;
+  start_date: string | null;
+  finish_date: string | null;
+  billing_type: string;
+  lesson_rate: string | number | null;
+}) {
+  return {
+    id: row.id,
+    name: row.name,
+    hoursPerWeek: row.hours_per_week,
+    grade: row.grade,
+    startDate: row.start_date,
+    finishDate: row.finish_date,
+    billingType: row.billing_type as "monthly" | "per_lesson",
+    lessonRate: row.lesson_rate === null ? null : Number(row.lesson_rate),
+  };
+}
+
 export async function createClassAction(data: {
   name: string;
   hoursPerWeek: number;
   grade?: string | null;
   startDate?: string | null;
   finishDate?: string | null;
+  billingType?: "monthly" | "per_lesson";
+  lessonRate?: number | null;
 }) {
   const supabase = await createClient();
   const {
@@ -33,6 +180,8 @@ export async function createClassAction(data: {
   }
 
   await requireTeacher(supabase, user.id);
+
+  const billing = resolveBilling(data);
 
   const { data: row, error } = await supabase
     .from("classes")
@@ -43,22 +192,16 @@ export async function createClassAction(data: {
       grade: data.grade ?? null,
       start_date: data.startDate ?? null,
       finish_date: data.finishDate ?? null,
+      ...billing,
     })
-    .select("id, name, hours_per_week, grade, start_date, finish_date")
+    .select(CLASS_COLUMNS)
     .single();
 
   if (error) {
     throw error;
   }
 
-  return {
-    id: row.id,
-    name: row.name,
-    hoursPerWeek: row.hours_per_week,
-    grade: row.grade,
-    startDate: row.start_date,
-    finishDate: row.finish_date,
-  };
+  return toClassResult(row);
 }
 
 export async function updateClassAction(data: {
@@ -68,6 +211,8 @@ export async function updateClassAction(data: {
   grade?: string | null;
   startDate?: string | null;
   finishDate?: string | null;
+  billingType?: "monthly" | "per_lesson";
+  lessonRate?: number | null;
 }) {
   const supabase = await createClient();
   const {
@@ -80,6 +225,8 @@ export async function updateClassAction(data: {
 
   await requireTeacher(supabase, user.id);
 
+  const billing = resolveBilling(data);
+
   const { data: row, error } = await supabase
     .from("classes")
     .update({
@@ -88,24 +235,24 @@ export async function updateClassAction(data: {
       grade: data.grade ?? null,
       start_date: data.startDate ?? null,
       finish_date: data.finishDate ?? null,
+      ...billing,
     })
     .eq("id", data.classId)
     .eq("teacher_id", user.id)
-    .select("id, name, hours_per_week, grade, start_date, finish_date")
+    .select(CLASS_COLUMNS)
     .single();
 
   if (error) {
     throw error;
   }
 
-  return {
-    id: row.id,
-    name: row.name,
-    hoursPerWeek: row.hours_per_week,
-    grade: row.grade,
-    startDate: row.start_date,
-    finishDate: row.finish_date,
-  };
+  const billingWarning = await computeBillingMismatchWarning(
+    supabase,
+    data.classId,
+    billing.billing_type,
+  );
+
+  return { ...toClassResult(row), billingWarning };
 }
 
 export async function archiveClassAction(classId: string) {
@@ -426,6 +573,11 @@ export async function createStudentAction(data: CreateStudentInput) {
     }
   }
 
+  const billingWarning = await computeStudentBillingMismatchWarning(
+    supabase,
+    student.id,
+  );
+
   return {
     id: student.id,
     familyId,
@@ -443,6 +595,7 @@ export async function createStudentAction(data: CreateStudentInput) {
     parentTwoPhone: data.familyMode === "new" ? data.parentTwoPhone : undefined,
     tuitionAmount: data.tuitionAmount,
     assignedClassIds: data.assignedClassIds,
+    billingWarning,
   };
 }
 
@@ -584,6 +737,11 @@ export async function updateStudentAction(data: UpdateStudentInput) {
     }
   }
 
+  const billingWarning = await computeStudentBillingMismatchWarning(
+    supabase,
+    data.studentId,
+  );
+
   return {
     id: data.studentId,
     familyId,
@@ -599,6 +757,7 @@ export async function updateStudentAction(data: UpdateStudentInput) {
     parentTwoEmail: data.parentTwoEmail,
     parentTwoPhone: data.parentTwoPhone,
     tuitionAmount: data.tuitionAmount,
+    billingWarning,
   };
 }
 
@@ -817,7 +976,7 @@ async function requireOwnedClass(
 export async function enrollStudentInClassAction(
   studentId: string,
   classId: string,
-): Promise<void> {
+): Promise<{ billingWarning: string | null }> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -841,6 +1000,13 @@ export async function enrollStudentInClassAction(
   if (error) {
     throw error;
   }
+
+  const billingWarning = await computeStudentBillingMismatchWarning(
+    supabase,
+    studentId,
+  );
+
+  return { billingWarning };
 }
 
 export async function unenrollStudentFromClassAction(
