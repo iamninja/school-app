@@ -1083,6 +1083,15 @@ export async function setAttendanceAction(data: {
   }
 
   await requireTeacher(supabase, user.id);
+  // Belt-and-braces alongside the trigger's own teacher_id check
+  // (post_lesson_charge_row(), see the per-lesson-billing-tenant-fix
+  // migration): attendance_records RLS only checks the row's own
+  // teacher_id, never that class_id/student_id actually belong to that
+  // teacher, so this is the one place that gap could otherwise be
+  // exploited to write an attendance row - and now a billing charge -
+  // against another teacher's class/student.
+  await requireOwnedClass(supabase, data.classId, user.id);
+  await requireOwnedStudent(supabase, data.studentId, user.id);
 
   if (!data.status) {
     const { error } = await supabase

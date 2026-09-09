@@ -434,6 +434,32 @@ describe("RLS: per-lesson billing (attendance -> family_balance_transactions)", 
       expect(data ?? []).toHaveLength(0);
     });
 
+    it("never charges another teacher's family when attendance references their class/student (cross-tenant trigger guard)", async () => {
+      // attendance_records RLS only checks the row's own teacher_id
+      // (using (teacher_id = auth.uid())), never that class_id/student_id
+      // actually belong to that teacher - a pre-existing gap, harmless on
+      // its own, that this test documents rather than closes. What must
+      // hold is the trigger: post_lesson_charge_row() has to refuse to
+      // resolve teacher A's per-lesson class/family under a row teacher B
+      // wrote naming them, even though the insert itself is allowed.
+      const before = await familyBalance(fixtures.familyA.id);
+
+      const { data: record, error } = await markAttendance(
+        {
+          classId: fixtures.classA.id, // belongs to teacher A
+          studentId: fixtures.studentA.id, // belongs to teacher A
+          teacherId: fixtures.teacherB.id, // the row's own teacher_id
+          date: "2026-09-22",
+          status: "present",
+        },
+        teacherB,
+      );
+
+      expect(error).toBeNull();
+      expect(await lessonChargeFor(record!.id)).toBeNull();
+      expect(await familyBalance(fixtures.familyA.id)).toBe(before);
+    });
+
     it("lets parent A1 read the lesson charge but not insert one directly", async () => {
       const { data: record } = await markAttendance({
         classId: fixtures.classA.id,

@@ -309,6 +309,8 @@ describe("teacher actions - setAttendanceAction", () => {
 
   it("deletes the record when status is cleared", async () => {
     const client = createMockSupabaseClient({
+      classes: { data: { id: "class-1" }, error: null },
+      students: { data: { id: "student-1" }, error: null },
       attendance_records: { data: null, error: null },
     });
     vi.mocked(createClient).mockResolvedValue(client as never);
@@ -322,13 +324,15 @@ describe("teacher actions - setAttendanceAction", () => {
     });
 
     expect(result).toEqual({ studentId: "student-1", status: "" });
-    const chain = client.from.mock.results[0].value;
+    const chain = client.from.mock.results[2].value;
     expect(chain.delete).toHaveBeenCalled();
     expect(chain.upsert).not.toHaveBeenCalled();
   });
 
   it("upserts the record when a status is set", async () => {
     const client = createMockSupabaseClient({
+      classes: { data: { id: "class-1" }, error: null },
+      students: { data: { id: "student-1" }, error: null },
       attendance_records: { data: null, error: null },
     });
     vi.mocked(createClient).mockResolvedValue(client as never);
@@ -342,7 +346,7 @@ describe("teacher actions - setAttendanceAction", () => {
     });
 
     expect(result).toEqual({ studentId: "student-1", status: "present" });
-    const chain = client.from.mock.results[0].value;
+    const chain = client.from.mock.results[2].value;
     expect(chain.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         status: "present",
@@ -362,6 +366,8 @@ describe("teacher actions - setAttendanceAction", () => {
 
   it("upserts a 'split' (1+1) status the same as any other status", async () => {
     const client = createMockSupabaseClient({
+      classes: { data: { id: "class-1" }, error: null },
+      students: { data: { id: "student-1" }, error: null },
       attendance_records: { data: null, error: null },
     });
     vi.mocked(createClient).mockResolvedValue(client as never);
@@ -375,11 +381,47 @@ describe("teacher actions - setAttendanceAction", () => {
     });
 
     expect(result).toEqual({ studentId: "student-1", status: "split" });
-    const chain = client.from.mock.results[0].value;
+    const chain = client.from.mock.results[2].value;
     expect(chain.upsert).toHaveBeenCalledWith(
       expect.objectContaining({ status: "split" }),
       expect.anything(),
     );
+  });
+
+  it("refuses to write attendance for a class this teacher doesn't own", async () => {
+    const client = createMockSupabaseClient({
+      classes: { data: null, error: null },
+      students: { data: { id: "student-1" }, error: null },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await expect(
+      setAttendanceAction({
+        classId: "someone-elses-class",
+        className: "Algebra II",
+        studentId: "student-1",
+        attendanceDate: "2026-08-16",
+        status: "present",
+      }),
+    ).rejects.toThrow("Class not found");
+  });
+
+  it("refuses to write attendance for a student this teacher doesn't own", async () => {
+    const client = createMockSupabaseClient({
+      classes: { data: { id: "class-1" }, error: null },
+      students: { data: null, error: null },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await expect(
+      setAttendanceAction({
+        classId: "class-1",
+        className: "Algebra II",
+        studentId: "someone-elses-student",
+        attendanceDate: "2026-08-16",
+        status: "present",
+      }),
+    ).rejects.toThrow("Student not found");
   });
 });
 
