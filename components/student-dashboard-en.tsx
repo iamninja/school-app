@@ -4,6 +4,7 @@ import { useState } from "react";
 import { format } from "date-fns";
 import { enUS } from "date-fns/locale";
 import {
+  BookOpenIcon,
   CalendarDays,
   ChevronDownIcon,
   ClipboardCheck,
@@ -28,6 +29,7 @@ import type {
   QuizAttemptReview,
   QuizSummary,
   AssessmentSummary,
+  HomeworkSummary,
 } from "@/lib/types/database";
 import {
   ASSESSMENT_KIND_LABELS_EN,
@@ -86,6 +88,7 @@ type StudentDashboardEnProps = {
   quizzes: QuizSummary[];
   calendarEvents: PortalCalendarEvent[];
   assessments: AssessmentSummary[];
+  homework: HomeworkSummary[];
   demoMode?: boolean;
   demoReviews?: Record<string, QuizAttemptReview>;
 };
@@ -191,6 +194,20 @@ function AssessmentRow({ assessment }: { assessment: AssessmentSummary }) {
           ) : null}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function HomeworkRow({ item }: { item: HomeworkSummary }) {
+  const whenLabel = item.dueDate
+    ? `due ${format(fromIsoDate(item.dueDate), "EEEE, MMMM d, yyyy", { locale: enUS })}`
+    : "no due date";
+  return (
+    <div className="rounded-lg border border-border/70 bg-background/60 px-3 py-2">
+      <p className="text-sm font-medium">{item.note}</p>
+      <p className="text-xs text-muted-foreground">
+        {item.className} · {whenLabel}
+      </p>
     </div>
   );
 }
@@ -439,6 +456,40 @@ export function StudentDashboardEn(props: StudentDashboardEnProps) {
                         .slice(0, RECENT_PREVIEW_COUNT)
                         .map((assessment) => (
                           <AssessmentRow key={assessment.id} assessment={assessment} />
+                        ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="space-y-3">
+              <SectionLabel>Homework</SectionLabel>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between gap-4">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <BookOpenIcon className="size-4 text-brand" aria-hidden="true" />
+                    Homework
+                  </CardTitle>
+                  {props.homework.length > RECENT_PREVIEW_COUNT ? (
+                    <PortalHistoryDialog triggerLabel="History" title="Homework">
+                      {props.homework.map((item) => (
+                        <HomeworkRow key={item.id} item={item} />
+                      ))}
+                    </PortalHistoryDialog>
+                  ) : null}
+                </CardHeader>
+                <CardContent>
+                  {props.homework.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      No homework assigned yet.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {props.homework
+                        .slice(0, RECENT_PREVIEW_COUNT)
+                        .map((item) => (
+                          <HomeworkRow key={item.id} item={item} />
                         ))}
                     </div>
                   )}

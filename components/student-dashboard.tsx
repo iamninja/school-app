@@ -4,6 +4,7 @@ import { useState } from "react";
 import { format } from "date-fns";
 import { el } from "date-fns/locale";
 import {
+  BookOpenIcon,
   CalendarDays,
   ChevronDownIcon,
   ClipboardCheck,
@@ -28,6 +29,7 @@ import type {
   QuizAttemptReview,
   QuizSummary,
   AssessmentSummary,
+  HomeworkSummary,
 } from "@/lib/types/database";
 import {
   ATTENDANCE_STATUS_LABELS_EL,
@@ -79,6 +81,7 @@ type StudentDashboardProps = {
   quizzes: QuizSummary[];
   calendarEvents: PortalCalendarEvent[];
   assessments: AssessmentSummary[];
+  homework: HomeworkSummary[];
   demoMode?: boolean;
   demoReviews?: Record<string, QuizAttemptReview>;
 };
@@ -191,6 +194,20 @@ function AssessmentRow({ assessment }: { assessment: AssessmentSummary }) {
           ) : null}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function HomeworkRow({ item }: { item: HomeworkSummary }) {
+  const whenLabel = item.dueDate
+    ? `μέχρι ${format(fromIsoDate(item.dueDate), "EEEE d MMMM yyyy", { locale: el })}`
+    : "χωρίς προθεσμία";
+  return (
+    <div className="rounded-lg border border-border/70 bg-background/60 px-3 py-2">
+      <p className="text-sm font-medium">{item.note}</p>
+      <p className="text-xs text-muted-foreground">
+        {item.className} · {whenLabel}
+      </p>
     </div>
   );
 }
@@ -444,6 +461,43 @@ export function StudentDashboard(props: StudentDashboardProps) {
                         .slice(0, RECENT_PREVIEW_COUNT)
                         .map((assessment) => (
                           <AssessmentRow key={assessment.id} assessment={assessment} />
+                        ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="space-y-3">
+              <SectionLabel>Εργασίες για το σπίτι</SectionLabel>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between gap-4">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <BookOpenIcon className="size-4 text-brand" aria-hidden="true" />
+                    Εργασίες για το σπίτι
+                  </CardTitle>
+                  {props.homework.length > RECENT_PREVIEW_COUNT ? (
+                    <PortalHistoryDialog
+                      triggerLabel="Ιστορικό"
+                      title="Εργασίες για το σπίτι"
+                    >
+                      {props.homework.map((item) => (
+                        <HomeworkRow key={item.id} item={item} />
+                      ))}
+                    </PortalHistoryDialog>
+                  ) : null}
+                </CardHeader>
+                <CardContent>
+                  {props.homework.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Δεν υπάρχουν εργασίες ακόμα.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {props.homework
+                        .slice(0, RECENT_PREVIEW_COUNT)
+                        .map((item) => (
+                          <HomeworkRow key={item.id} item={item} />
                         ))}
                     </div>
                   )}

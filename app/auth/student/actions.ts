@@ -19,6 +19,7 @@ import type {
   PortalCalendarEvent,
   AssessmentSummary,
   AssessmentAssignmentWithAssessment,
+  HomeworkSummary,
 } from "@/lib/types/database";
 
 /**
@@ -165,15 +166,15 @@ export async function getStudentDashboardDataAction(): Promise<
     .order("attendance_date", { ascending: false })
     .limit(300);
 
+  const classNameById = new Map(
+    (classAssignments as StudentClassAssignmentWithClass[] | null ?? []).map(
+      (a) => [a.class_id, a.classes.name],
+    ),
+  );
+
   // Get quizzes assigned to this student's classes, plus their own attempts
   let quizzes: QuizSummary[] = [];
   if (classIds.length > 0) {
-    const classNameById = new Map(
-      (classAssignments as StudentClassAssignmentWithClass[] | null ?? []).map(
-        (a) => [a.class_id, a.classes.name],
-      ),
-    );
-
     const { data: assignmentRows } = await supabase
       .from("quiz_assignments")
       .select("quiz_id, class_id, max_attempts")
@@ -266,6 +267,23 @@ export async function getStudentDashboardDataAction(): Promise<
         };
       });
     }
+  }
+
+  // Get homework assigned to this student's classes
+  let homework: HomeworkSummary[] = [];
+  if (classIds.length > 0) {
+    const { data: homeworkRows } = await supabase
+      .from("homework")
+      .select("id, class_id, note, due_date")
+      .in("class_id", classIds)
+      .order("due_date", { ascending: true, nullsFirst: false });
+
+    homework = (homeworkRows ?? []).map((row) => ({
+      id: row.id,
+      className: classNameById.get(row.class_id) ?? "",
+      note: row.note,
+      dueDate: row.due_date,
+    }));
   }
 
   // Attempts whose quiz has since been deleted (quiz_id is SET NULL on
@@ -395,5 +413,6 @@ export async function getStudentDashboardDataAction(): Promise<
     quizzes,
     calendarEvents,
     assessments,
+    homework,
   };
 }
