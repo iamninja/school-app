@@ -285,6 +285,20 @@ const NIKOS: StudentDashboardData = {
       isLate: false,
     },
   ],
+  homework: [
+    {
+      id: "demo-homework-algebra-1",
+      className: "Άλγεβρα Β Λυκείου",
+      note: "σελ. 42, ασκήσεις 1-10",
+      dueDate: isoDate(3),
+    },
+    {
+      id: "demo-homework-katefthynsis-1",
+      className: "Μαθηματικά Κατεύθυνσης Β Λυκείου",
+      note: "Επανάληψη διανυσμάτων, φύλλο εργασίας 2",
+      dueDate: null,
+    },
+  ],
 };
 
 // Canned full answer review for the "Ανασκόπηση" button on the demo's
@@ -749,6 +763,14 @@ const MARIA: ParentDashboardData["kids"][number] = {
       isLate: false,
     },
   ],
+  homework: [
+    {
+      id: "demo-homework-maria-gym-a",
+      className: "Μαθηματικά Α Γυμνασίου",
+      note: "Φύλλο εργασίας 4, ασκήσεις 1-8",
+      dueDate: isoDate(2),
+    },
+  ],
 };
 
 const NIKOS_AS_CHILD: ParentDashboardData["kids"][number] = {
@@ -759,6 +781,7 @@ const NIKOS_AS_CHILD: ParentDashboardData["kids"][number] = {
   quizzes: NIKOS.quizzes,
   calendarEvents: NIKOS.calendarEvents,
   assessments: NIKOS.assessments,
+  homework: NIKOS.homework,
 };
 
 export const DEMO_STUDENT_DASHBOARD: StudentDashboardData = NIKOS;

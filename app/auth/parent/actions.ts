@@ -16,6 +16,7 @@ import type {
   Receipt,
   AssessmentSummary,
   AssessmentAssignmentWithAssessment,
+  HomeworkSummary,
 } from "@/lib/types/database";
 import {
   createRoleAuthUser,
@@ -258,15 +259,15 @@ export async function getParentDashboardDataAction(): Promise<
         .order("attendance_date", { ascending: false })
         .limit(300);
 
+      const classNameById = new Map(
+        (
+          classAssignments as StudentClassAssignmentWithClass[] | null ?? []
+        ).map((a) => [a.class_id, a.classes.name]),
+      );
+
       // Quizzes + this child's attempts.
       let quizzes: QuizSummary[] = [];
       if (classIds.length > 0) {
-        const classNameById = new Map(
-          (
-            classAssignments as StudentClassAssignmentWithClass[] | null ?? []
-          ).map((a) => [a.class_id, a.classes.name]),
-        );
-
         const { data: assignmentRows } = await supabase
           .from("quiz_assignments")
           .select("quiz_id, class_id, max_attempts")
@@ -431,6 +432,24 @@ export async function getParentDashboardDataAction(): Promise<
         }),
       }));
 
+      // Homework: class-scoped like quizzes, so it needs the same classIds
+      // indirection (unlike assessments, which key directly off student_id).
+      let homework: HomeworkSummary[] = [];
+      if (classIds.length > 0) {
+        const { data: homeworkRows } = await supabase
+          .from("homework")
+          .select("id, class_id, note, due_date")
+          .in("class_id", classIds)
+          .order("due_date", { ascending: true, nullsFirst: false });
+
+        homework = (homeworkRows ?? []).map((row) => ({
+          id: row.id,
+          className: classNameById.get(row.class_id) ?? "",
+          note: row.note,
+          dueDate: row.due_date,
+        }));
+      }
+
       return {
         student: {
           id: student.id,
@@ -457,6 +476,7 @@ export async function getParentDashboardDataAction(): Promise<
         quizzes,
         calendarEvents,
         assessments,
+        homework,
       };
     }),
   );

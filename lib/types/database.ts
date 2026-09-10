@@ -448,6 +448,7 @@ export interface StudentDashboardData {
   quizzes: QuizSummary[];
   calendarEvents: PortalCalendarEvent[];
   assessments: AssessmentSummary[];
+  homework: HomeworkSummary[];
 }
 
 export interface ParentDashboardChild {
@@ -483,6 +484,7 @@ export interface ParentDashboardChild {
   quizzes: QuizSummary[];
   calendarEvents: PortalCalendarEvent[];
   assessments: AssessmentSummary[];
+  homework: HomeworkSummary[];
 }
 
 export interface ParentDashboardData {
@@ -865,6 +867,36 @@ export interface AssessmentSummary {
   score: number | null;
   teacherComment: string | null;
   isLate: boolean;
+}
+
+// Whole-class homework note (usually just exercise numbers), optionally
+// with a due date. One row per (class, item) - see
+// supabase/migrations/*_homework.sql for why this isn't split into a
+// template + per-student assignment table the way assessments are.
+export interface Homework {
+  id: string;
+  class_id: string;
+  note: string;
+  due_date: string | null;
+  created_at: string;
+}
+
+export interface HomeworkInput {
+  classId: string;
+  note: string;
+  dueDate?: string | null;
+}
+
+export interface TeacherHomeworkListItem extends Homework {
+  className: string;
+}
+
+// Portal-facing summary shown on student/parent dashboards.
+export interface HomeworkSummary {
+  id: string;
+  className: string;
+  note: string;
+  dueDate: string | null;
 }
 
 // Monthly tuition balance ledger. amount is SIGNED: positive = family

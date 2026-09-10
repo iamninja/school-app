@@ -126,6 +126,7 @@ import type {
   TeacherQuizListItem,
   TeacherAssessmentAssignmentRow,
   TeacherAssessmentListItem,
+  TeacherHomeworkListItem,
 } from "@/lib/types/database";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
@@ -276,6 +277,7 @@ type TeacherDashboardProps = {
   initialQuizzes?: TeacherQuizListItem[];
   initialAssessments?: TeacherAssessmentListItem[];
   initialAssessmentAssignments?: TeacherAssessmentAssignmentRow[];
+  initialHomework?: TeacherHomeworkListItem[];
   businessProfile?: BusinessProfile | null;
   integrationSettings?: IntegrationSettings[];
   credentialStatuses?: Record<string, CredentialStatusView>;
@@ -510,6 +512,7 @@ export function TeacherDashboard({
   initialQuizzes = [],
   initialAssessments = [],
   initialAssessmentAssignments = [],
+  initialHomework = [],
   businessProfile = null,
   integrationSettings = [],
   credentialStatuses = {},
@@ -696,6 +699,12 @@ export function TeacherDashboard({
   const [selectedAssessmentId, setSelectedAssessmentId] = React.useState<
     string | null
   >(null);
+  // Owned here rather than inside <TeacherClassDetail> since that
+  // component only ever sees one class's homework at a time (already
+  // filtered below) but needs to write back into the full list.
+  const [homework, setHomework] = React.useState<TeacherHomeworkListItem[]>(
+    initialHomework,
+  );
 
   const scheduledCounts = React.useMemo(() => {
     const counts = new Map<string, number>();
@@ -2088,6 +2097,9 @@ export function TeacherDashboard({
               const assignedAssessments = assessments.filter(
                 (assessment) => assessment.class_id === selectedClassId,
               );
+              const assignedHomework = homework.filter(
+                (item) => item.class_id === selectedClassId,
+              );
               return (
                 <TeacherClassDetail
                   classItem={classItem}
@@ -2098,6 +2110,8 @@ export function TeacherDashboard({
                   )}
                   assignedQuizzes={assignedQuizzes}
                   assignedAssessments={assignedAssessments}
+                  assignedHomework={assignedHomework}
+                  onHomeworkChange={setHomework}
                   isSavingClass={isSavingClass}
                   isMutatingEnrollment={isMutatingEnrollment}
                   onBack={() => setSelectedClassId(null)}

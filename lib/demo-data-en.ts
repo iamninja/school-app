@@ -290,6 +290,14 @@ const ALEX: StudentDashboardData = {
       isLate: false,
     },
   ],
+  homework: [
+    {
+      id: "demo-en-homework-algebra-1",
+      className: "Algebra II",
+      note: "p. 42, exercises 1-10",
+      dueDate: isoDate(3),
+    },
+  ],
 };
 
 // Canned full answer review for the "Review" button on the demo's
@@ -751,6 +759,14 @@ const SOPHIE: ParentDashboardData["kids"][number] = {
       isLate: false,
     },
   ],
+  homework: [
+    {
+      id: "demo-en-homework-sophie-math",
+      className: "6th Grade Math",
+      note: "Worksheet 4, problems 1-8",
+      dueDate: isoDate(2),
+    },
+  ],
 };
 
 const ALEX_AS_CHILD: ParentDashboardData["kids"][number] = {
@@ -761,6 +777,7 @@ const ALEX_AS_CHILD: ParentDashboardData["kids"][number] = {
   quizzes: ALEX.quizzes,
   calendarEvents: ALEX.calendarEvents,
   assessments: ALEX.assessments,
+  homework: ALEX.homework,
 };
 
 export const DEMO_EN_STUDENT_DASHBOARD: StudentDashboardData = ALEX;

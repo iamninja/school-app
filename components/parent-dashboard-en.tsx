@@ -4,6 +4,7 @@ import * as React from "react";
 import { format } from "date-fns";
 import { enUS } from "date-fns/locale";
 import {
+  BookOpenIcon,
   CalendarDays,
   ChevronDownIcon,
   ClipboardCheck,
@@ -33,6 +34,7 @@ import { PortalUpcomingCard } from "@/components/portal-upcoming-card";
 import { ReceiptDocument } from "@/components/receipt-document";
 import type {
   AssessmentSummary,
+  HomeworkSummary,
   ParentDashboardChild,
   ParentDashboardData,
   QuizSummary,
@@ -219,6 +221,20 @@ function AssessmentRow({ assessment }: { assessment: AssessmentSummary }) {
           ) : null}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function HomeworkRow({ item }: { item: HomeworkSummary }) {
+  const whenLabel = item.dueDate
+    ? `due ${format(fromIsoDate(item.dueDate), "EEEE, MMMM d, yyyy", { locale: enUS })}`
+    : "no due date";
+  return (
+    <div className="rounded-lg border border-border/70 bg-background/60 px-3 py-2">
+      <p className="text-sm font-medium">{item.note}</p>
+      <p className="text-xs text-muted-foreground">
+        {item.className} · {whenLabel}
+      </p>
     </div>
   );
 }
@@ -414,6 +430,7 @@ function ChildSection({
   quizzes,
   calendarEvents,
   assessments,
+  homework,
 }: ParentDashboardChild) {
   const schedulesByClass = schedules.reduce(
     (acc, schedule) => {
@@ -646,6 +663,35 @@ function ChildSection({
                 <div className="space-y-2">
                   {assessments.slice(0, RECENT_PREVIEW_COUNT).map((assessment) => (
                     <AssessmentRow key={assessment.id} assessment={assessment} />
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-4">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <BookOpenIcon className="size-4 text-brand" aria-hidden="true" />
+                Homework
+              </CardTitle>
+              {homework.length > RECENT_PREVIEW_COUNT ? (
+                <PortalHistoryDialog triggerLabel="History" title="Homework">
+                  {homework.map((item) => (
+                    <HomeworkRow key={item.id} item={item} />
+                  ))}
+                </PortalHistoryDialog>
+              ) : null}
+            </CardHeader>
+            <CardContent>
+              {homework.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No homework assigned yet.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {homework.slice(0, RECENT_PREVIEW_COUNT).map((item) => (
+                    <HomeworkRow key={item.id} item={item} />
                   ))}
                 </div>
               )}

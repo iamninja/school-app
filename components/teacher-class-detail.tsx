@@ -21,6 +21,10 @@ import {
   regradeShortAnswerWithAiAction,
   setAnswerCommentAction,
 } from "@/app/protected/teacher/quiz-actions";
+import {
+  createHomeworkAction,
+  deleteHomeworkAction,
+} from "@/app/protected/teacher/homework-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,10 +37,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { EDITABLE_COMMENT_LABELS, EditableComment } from "@/components/editable-comment";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { MathText } from "@/components/math-text";
 import { QuizQuestionImage } from "@/components/quiz-question-image";
 import { QuizReviewAnswers } from "@/components/quiz-review-answers";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import { CLASS_GRADE_LABELS } from "@/lib/class-grades";
 import { fromIsoDate } from "@/lib/calendar-projection";
 import { lessonTimeLabel } from "@/lib/schedule-grid";
@@ -48,6 +55,7 @@ import type {
   QuizResultRow,
   TeacherQuizListItem,
   TeacherAssessmentListItem,
+  TeacherHomeworkListItem,
 } from "@/lib/types/database";
 
 // Small standalone summary, deliberately not shared with
@@ -95,6 +103,8 @@ type TeacherClassDetailProps = {
   allStudents: StudentItem[];
   assignedQuizzes: TeacherQuizListItem[];
   assignedAssessments: TeacherAssessmentListItem[];
+  assignedHomework: TeacherHomeworkListItem[];
+  onHomeworkChange: React.Dispatch<React.SetStateAction<TeacherHomeworkListItem[]>>;
   isSavingClass: boolean;
   isMutatingEnrollment: boolean;
   onBack: () => void;
@@ -116,6 +126,8 @@ export function TeacherClassDetail({
   allStudents,
   assignedQuizzes,
   assignedAssessments,
+  assignedHomework,
+  onHomeworkChange,
   isSavingClass,
   isMutatingEnrollment,
   onBack,
@@ -163,6 +175,50 @@ export function TeacherClassDetail({
   const [gradingAnswerId, setGradingAnswerId] = React.useState<string | null>(
     null,
   );
+
+  const [isAddHomeworkOpen, setIsAddHomeworkOpen] = React.useState(false);
+  const [homeworkNote, setHomeworkNote] = React.useState("");
+  const [homeworkDueDate, setHomeworkDueDate] = React.useState("");
+  const [isSavingHomework, setIsSavingHomework] = React.useState(false);
+  const [deletingHomeworkId, setDeletingHomeworkId] = React.useState<
+    string | null
+  >(null);
+
+  const handleCreateHomework = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setIsSavingHomework(true);
+    try {
+      const created = await createHomeworkAction({
+        classId: classItem.id,
+        note: homeworkNote,
+        dueDate: homeworkDueDate || null,
+      });
+      onHomeworkChange((prev) => [created, ...prev]);
+      setIsAddHomeworkOpen(false);
+      setHomeworkNote("");
+      setHomeworkDueDate("");
+    } catch (error: unknown) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to add homework",
+      );
+    } finally {
+      setIsSavingHomework(false);
+    }
+  };
+
+  const handleDeleteHomework = async (homeworkId: string) => {
+    setDeletingHomeworkId(homeworkId);
+    try {
+      await deleteHomeworkAction(homeworkId);
+      onHomeworkChange((prev) => prev.filter((h) => h.id !== homeworkId));
+    } catch (error: unknown) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to delete homework",
+      );
+    } finally {
+      setDeletingHomeworkId(null);
+    }
+  };
 
   const enrolledIds = new Set(enrolledStudents.map((student) => student.id));
 
@@ -637,9 +693,94 @@ export function TeacherClassDetail({
                 </Button>
               </div>
             </div>
+
+            <div className="rounded-lg border p-4">
+              <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                Homework
+              </div>
+              <div className="mt-3 space-y-2">
+                {assignedHomework.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    No homework assigned to this class.
+                  </p>
+                ) : (
+                  assignedHomework.map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex items-start justify-between gap-2 rounded-md border px-3 py-2 text-sm"
+                    >
+                      <div>
+                        <p>{item.note}</p>
+                        {item.due_date ? (
+                          <Badge variant="outline" className="mt-1">
+                            Due {format(fromIsoDate(item.due_date), "d MMM yyyy")}
+                          </Badge>
+                        ) : null}
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 shrink-0 p-0"
+                        disabled={deletingHomeworkId === item.id}
+                        onClick={() => void handleDeleteHomework(item.id)}
+                        aria-label="Delete this homework item"
+                      >
+                        <XIcon className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  ))
+                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => setIsAddHomeworkOpen(true)}
+                >
+                  Add homework
+                </Button>
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={isAddHomeworkOpen} onOpenChange={setIsAddHomeworkOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add homework</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleCreateHomework} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="homework-note">Note</Label>
+              <Textarea
+                id="homework-note"
+                value={homeworkNote}
+                onChange={(event) => setHomeworkNote(event.target.value)}
+                placeholder="e.g. p. 42, exercises 1-10"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="homework-due-date">
+                Due date <span className="text-muted-foreground">(optional)</span>
+              </Label>
+              <Input
+                id="homework-due-date"
+                type="date"
+                value={homeworkDueDate}
+                onChange={(event) => setHomeworkDueDate(event.target.value)}
+              />
+            </div>
+            <DialogFooter>
+              <Button type="submit" disabled={isSavingHomework}>
+                {isSavingHomework ? "Adding..." : "Add homework"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={isManageStudentsOpen}
