@@ -115,7 +115,7 @@ export function TeacherBilling({
   const alreadyPostedThisPeriod =
     latestRun?.period === period && latestRun.families_charged > 0;
 
-  const refreshLists = async () => {
+  const refreshLists = React.useCallback(async () => {
     try {
       const [nextFamilies, nextRuns] = await Promise.all([
         listFamilyBalancesAction(),
@@ -127,7 +127,19 @@ export function TeacherBilling({
       // Local state already reflects the action that just ran; a failed
       // background refresh isn't worth surfacing as its own error.
     }
-  };
+  }, []);
+
+  // initialFamilyBalances is a static snapshot from when the dashboard
+  // itself first loaded - this tab unmounts/remounts on every visit (the
+  // Tabs primitive doesn't forceMount inactive content), so re-fetching
+  // on mount picks up anything that changed elsewhere since then (most
+  // notably: attendance marked present/late on a per-lesson class in a
+  // completely different tab, which posts a charge with no other way to
+  // notify this component).
+  React.useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void refreshLists();
+  }, [refreshLists]);
 
   const handleRunCharges = async () => {
     setIsRunning(true);

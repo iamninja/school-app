@@ -54,6 +54,10 @@ describe("TeacherBilling", () => {
   });
 
   it("colors a positive balance as owing and a negative balance as credit", () => {
+    vi.mocked(billingActions.listFamilyBalancesAction).mockResolvedValue([
+      owingFamily,
+      creditFamily,
+    ]);
     render(
       <TeacherBilling
         initialFamilyBalances={[owingFamily, creditFamily]}
@@ -77,6 +81,9 @@ describe("TeacherBilling", () => {
       billsPerLesson: true,
       balance: 120,
     };
+    vi.mocked(billingActions.listFamilyBalancesAction).mockResolvedValue([
+      perLessonFamily,
+    ]);
     render(
       <TeacherBilling
         initialFamilyBalances={[perLessonFamily]}
@@ -91,6 +98,10 @@ describe("TeacherBilling", () => {
 
   it("hides zero-balance families by default toggle state, and can reveal them", async () => {
     const user = userEvent.setup();
+    vi.mocked(billingActions.listFamilyBalancesAction).mockResolvedValue([
+      owingFamily,
+      zeroFamily,
+    ]);
     render(
       <TeacherBilling
         initialFamilyBalances={[owingFamily, zeroFamily]}
@@ -169,6 +180,9 @@ describe("TeacherBilling", () => {
       monthlyAmount: 100,
       total: 300,
     });
+    vi.mocked(billingActions.listFamilyBalancesAction).mockResolvedValue([
+      owingFamily,
+    ]);
 
     render(
       <TeacherBilling
@@ -214,6 +228,9 @@ describe("TeacherBilling", () => {
         },
       ],
     });
+    vi.mocked(billingActions.listFamilyBalancesAction).mockResolvedValue([
+      owingFamily,
+    ]);
 
     render(
       <TeacherBilling
@@ -264,6 +281,9 @@ describe("TeacherBilling", () => {
         },
       ],
     });
+    vi.mocked(billingActions.listFamilyBalancesAction).mockResolvedValue([
+      { ...owingFamily, billsPerLesson: true },
+    ]);
 
     render(
       <TeacherBilling
