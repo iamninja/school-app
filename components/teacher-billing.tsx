@@ -55,6 +55,7 @@ const TRANSACTION_TYPE_LABELS: Record<
   string
 > = {
   monthly_charge: "Monthly charge",
+  lesson_charge: "Lesson charge",
   payment: "Payment",
   receipt: "Receipt",
   prepayment: "Prepayment",
@@ -114,7 +115,7 @@ export function TeacherBilling({
   const alreadyPostedThisPeriod =
     latestRun?.period === period && latestRun.families_charged > 0;
 
-  const refreshLists = async () => {
+  const refreshLists = React.useCallback(async () => {
     try {
       const [nextFamilies, nextRuns] = await Promise.all([
         listFamilyBalancesAction(),
@@ -126,7 +127,19 @@ export function TeacherBilling({
       // Local state already reflects the action that just ran; a failed
       // background refresh isn't worth surfacing as its own error.
     }
-  };
+  }, []);
+
+  // initialFamilyBalances is a static snapshot from when the dashboard
+  // itself first loaded - this tab unmounts/remounts on every visit (the
+  // Tabs primitive doesn't forceMount inactive content), so re-fetching
+  // on mount picks up anything that changed elsewhere since then (most
+  // notably: attendance marked present/late on a per-lesson class in a
+  // completely different tab, which posts a charge with no other way to
+  // notify this component).
+  React.useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void refreshLists();
+  }, [refreshLists]);
 
   const handleRunCharges = async () => {
     setIsRunning(true);
@@ -235,6 +248,7 @@ export function TeacherBilling({
                     const status = deriveTuitionStatus({
                       balance: family.balance,
                       monthlyAmount: family.monthlyAmount,
+                      billsPerLesson: family.billsPerLesson,
                     });
                     return (
                       <TableRow key={family.id}>
@@ -245,7 +259,9 @@ export function TeacherBilling({
                           {family.studentNames.join(", ") || "—"}
                         </TableCell>
                         <TableCell className="text-right">
-                          {formatEuro(family.monthlyAmount)}
+                          {family.monthlyAmount === 0 && family.billsPerLesson
+                            ? "Per lesson"
+                            : formatEuro(family.monthlyAmount)}
                         </TableCell>
                         <TableCell
                           className={`text-right ${balanceClassName(family.balance)}`}
@@ -383,6 +399,13 @@ function FamilyBillingDetail({
   );
   const [adjustmentDescription, setAdjustmentDescription] = React.useState("");
   const [isAdjusting, setIsAdjusting] = React.useState(false);
+
+  const lessonChargeTotalThisMonth = React.useMemo(() => {
+    const period = currentPeriod();
+    return (ledger?.transactions ?? [])
+      .filter((t) => t.type === "lesson_charge" && t.period === period)
+      .reduce((sum, t) => sum + t.amount, 0);
+  }, [ledger]);
 
   const loadLedger = React.useCallback(async () => {
     setIsLoading(true);
@@ -546,8 +569,17 @@ function FamilyBillingDetail({
           {family.studentNames.length > 0
             ? family.studentNames.join(", ")
             : "no active students"}{" "}
-          — {formatEuro(family.monthlyAmount)}/month
+          —{" "}
+          {family.monthlyAmount === 0 && family.billsPerLesson
+            ? "no monthly tuition"
+            : `${formatEuro(family.monthlyAmount)}/month`}
         </p>
+        {family.billsPerLesson && (
+          <p className="text-sm text-muted-foreground">
+            Per-lesson charges this month:{" "}
+            {formatEuro(lessonChargeTotalThisMonth)}
+          </p>
+        )}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -745,11 +777,16 @@ function FamilyBillingDetail({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    disabled={transaction.type === "receipt"}
+                    disabled={
+                      transaction.type === "receipt" ||
+                      transaction.type === "lesson_charge"
+                    }
                     title={
                       transaction.type === "receipt"
                         ? "Delete the receipt instead"
-                        : undefined
+                        : transaction.type === "lesson_charge"
+                          ? "Change that day's attendance instead"
+                          : undefined
                     }
                     onClick={() => void handleDeleteTransaction(transaction)}
                   >

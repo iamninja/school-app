@@ -12,7 +12,9 @@ vi.mock("@/app/protected/teacher/actions", () => ({
   createClassAction: vi.fn(),
   createStudentAction: vi.fn(),
   getAttendanceAction: vi.fn().mockResolvedValue([]),
-  setAttendanceAction: vi.fn(),
+  setAttendanceAction: vi
+    .fn()
+    .mockResolvedValue({ studentId: "", status: "", chargedAmount: null }),
   setScheduleSlotAction: vi.fn(),
   withdrawStudentAction: vi.fn(),
   restoreStudentAction: vi.fn(),
@@ -220,6 +222,7 @@ describe("TeacherDashboard student form", () => {
       parentTwoPhone: "",
       tuitionAmount: "420",
       assignedClassIds: [],
+      billingWarning: null,
     });
 
     render(<TeacherDashboard {...baseProps} />);
@@ -265,6 +268,7 @@ describe("TeacherDashboard student form", () => {
       parentTwoPhone: "",
       tuitionAmount: "420",
       assignedClassIds: [],
+      billingWarning: null,
     });
 
     render(<TeacherDashboard {...baseProps} />);
@@ -500,6 +504,7 @@ describe("TeacherDashboard student form", () => {
       parentTwoPhone: "",
       tuitionAmount: "420",
       assignedClassIds: [],
+      billingWarning: null,
     });
 
     render(<TeacherDashboard {...baseProps} />);
@@ -587,6 +592,7 @@ describe("TeacherDashboard student form", () => {
       parentTwoPhone: undefined,
       tuitionAmount: "",
       assignedClassIds: [],
+      billingWarning: null,
     });
 
     render(

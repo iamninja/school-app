@@ -17,7 +17,9 @@ vi.mock("@/app/protected/teacher/actions", () => ({
   getAttendanceAction: vi.fn().mockResolvedValue([]),
   restoreClassAction: vi.fn(),
   restoreStudentAction: vi.fn(),
-  setAttendanceAction: vi.fn(),
+  setAttendanceAction: vi
+    .fn()
+    .mockResolvedValue({ studentId: "", status: "", chargedAmount: null }),
   setScheduleSlotAction: vi.fn(),
   unenrollStudentFromClassAction: vi.fn(),
   updateClassAction: vi.fn(),
@@ -144,7 +146,7 @@ describe("TeacherDashboard class detail - enrollment", () => {
     const unenrollStudentFromClassAction = vi.mocked(
       actions.unenrollStudentFromClassAction,
     );
-    enrollStudentInClassAction.mockResolvedValue(undefined);
+    enrollStudentInClassAction.mockResolvedValue({ billingWarning: null });
     unenrollStudentFromClassAction.mockResolvedValue(undefined);
 
     await openAlgebraDetail(user);
@@ -561,6 +563,9 @@ describe("TeacherDashboard class detail - rendering and navigation", () => {
       grade: null,
       startDate: null,
       finishDate: null,
+      billingType: "monthly",
+      lessonRate: null,
+      billingWarning: null,
     });
     archiveClassAction.mockResolvedValue({
       id: "class-1",

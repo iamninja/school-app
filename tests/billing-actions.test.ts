@@ -266,6 +266,26 @@ describe("deleteFamilyBalanceTransactionAction", () => {
     expect(chain.delete).not.toHaveBeenCalled();
   });
 
+  it("refuses to delete a lesson_charge-typed row and does not call .delete()", async () => {
+    const client = clientWith({
+      family_balance_transactions: {
+        data: { id: "txn-1", type: "lesson_charge" },
+        error: null,
+      },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await expect(
+      deleteFamilyBalanceTransactionAction("txn-1"),
+    ).rejects.toBeInstanceOf(ExpectedError);
+
+    const chain = client.from.mock.results.find(
+      (_, index) =>
+        client.from.mock.calls[index][0] === "family_balance_transactions",
+    )!.value;
+    expect(chain.delete).not.toHaveBeenCalled();
+  });
+
   it("deletes a non-receipt row", async () => {
     const client = clientWith({
       family_balance_transactions: [

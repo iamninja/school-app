@@ -59,6 +59,10 @@ export interface Class {
   created_at?: string;
   start_date?: string | null;
   finish_date?: string | null;
+  billing_type: "monthly" | "per_lesson";
+  // Price of one lesson occurrence (not per hour) — required when
+  // billing_type is 'per_lesson', null otherwise.
+  lesson_rate: number | null;
 }
 
 export interface StudentClassAssignment {
@@ -868,6 +872,7 @@ export interface AssessmentSummary {
 // migration for the full sign/shape CHECK constraints this mirrors.
 export type FamilyBalanceTransactionType =
   | "monthly_charge"
+  | "lesson_charge"
   | "payment"
   | "receipt"
   | "prepayment"
@@ -884,7 +889,10 @@ export interface FamilyBalanceTransaction {
   description: string;
   receipt_id: string | null;
   payment_method: number | null;
-  source: "manual" | "cron" | "receipt";
+  // Set only for type='lesson_charge' — the attendance mark that produced
+  // this row. Deleting/clearing that mark cascades this row away.
+  attendance_record_id: string | null;
+  source: "manual" | "cron" | "receipt" | "attendance";
   created_by: string | null;
   created_at: string;
 }
@@ -895,6 +903,10 @@ export interface FamilyBalanceSummary {
   studentNames: string[];
   activeStudentCount: number;
   monthlyAmount: number;
+  // True when any active student is in a per_lesson-billed class — a flat
+  // 0 monthlyAmount doesn't mean "scholarship" for these families, see
+  // lib/billing/tuition-status.ts.
+  billsPerLesson: boolean;
   balance: number;
   balanceUpdatedAt: string | null;
 }

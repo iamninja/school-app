@@ -19,7 +19,9 @@ vi.mock("@/app/protected/teacher/actions", () => ({
   resetStudentAccountAction: vi.fn(),
   restoreClassAction: vi.fn(),
   restoreStudentAction: vi.fn(),
-  setAttendanceAction: vi.fn(),
+  setAttendanceAction: vi
+    .fn()
+    .mockResolvedValue({ studentId: "", status: "", chargedAmount: null }),
   setScheduleSlotAction: vi.fn(),
   unenrollStudentFromClassAction: vi.fn(),
   updateClassAction: vi.fn(),
@@ -190,6 +192,7 @@ describe("TeacherDashboard student detail - edit", () => {
       parentTwoEmail: "",
       parentTwoPhone: "",
       tuitionAmount: "500",
+      billingWarning: null,
     });
 
     await openMayaDetail(user);
@@ -232,6 +235,7 @@ describe("TeacherDashboard student detail - edit", () => {
       parentTwoEmail: "",
       parentTwoPhone: "",
       tuitionAmount: "420",
+      billingWarning: null,
     });
 
     await openMayaDetail(user);
@@ -273,6 +277,7 @@ describe("TeacherDashboard student detail - edit", () => {
       parentTwoEmail: "jamie@example.com",
       parentTwoPhone: "(555) 999-1111",
       tuitionAmount: "450",
+      billingWarning: null,
     });
 
     await openMayaDetail(user);
@@ -334,6 +339,7 @@ describe("TeacherDashboard student detail - edit", () => {
       parentTwoEmail: "",
       parentTwoPhone: "",
       tuitionAmount: "420",
+      billingWarning: null,
     });
 
     await openMayaDetail(user);
@@ -369,7 +375,7 @@ describe("TeacherDashboard student detail - edit", () => {
     const unenrollStudentFromClassAction = vi.mocked(
       actions.unenrollStudentFromClassAction,
     );
-    enrollStudentInClassAction.mockResolvedValue(undefined);
+    enrollStudentInClassAction.mockResolvedValue({ billingWarning: null });
     unenrollStudentFromClassAction.mockResolvedValue(undefined);
 
     await openMayaDetail(user);

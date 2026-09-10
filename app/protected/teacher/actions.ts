@@ -16,12 +16,186 @@ function nextScheduleRowTime(day: string, time: string): string | null {
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
+// Shared by create/update: 'per_lesson' requires a positive rate, and
+// switching back to 'monthly' clears any stale rate rather than leaving it
+// dangling (the DB CHECK would allow a stale rate to survive, which is a
+// footgun if the class is ever switched back).
+function resolveBilling(data: {
+  billingType?: "monthly" | "per_lesson";
+  lessonRate?: number | null;
+}): { billing_type: "monthly" | "per_lesson"; lesson_rate: number | null } {
+  const billingType = data.billingType ?? "monthly";
+  if (billingType === "per_lesson") {
+    if (!Number.isFinite(data.lessonRate) || (data.lessonRate ?? 0) <= 0) {
+      throw new ExpectedError("Set a rate per lesson for a per-lesson class");
+    }
+    return { billing_type: "per_lesson", lesson_rate: data.lessonRate! };
+  }
+  return { billing_type: "monthly", lesson_rate: null };
+}
+
+// Advisory only - the class update itself has already succeeded by the
+// time this runs, so a mismatch here is a heads-up, never a save blocker.
+// Guards the two ways switching a class's billing mode silently costs the
+// teacher money: an active student left with a stale tuition_amount after
+// the class goes per-lesson (double-charged via both paths), or left with
+// none after the class goes back to monthly (not charged at all).
+async function computeBillingMismatchWarning(
+  supabase: SupabaseServerClient,
+  classId: string,
+  billingType: "monthly" | "per_lesson",
+): Promise<string | null> {
+  const { data: rows, error } = await supabase
+    .from("student_class_assignments")
+    .select(
+      "student_id, students!inner(first_name, last_name, tuition_amount, withdrawn_at)",
+    )
+    .eq("class_id", classId)
+    .is("students.withdrawn_at", null);
+
+  if (error) {
+    return null;
+  }
+
+  const students = (rows ?? []).map((row) => ({
+    id: row.student_id as string,
+    ...(row.students as unknown as {
+      first_name: string;
+      last_name: string;
+      tuition_amount: string | number | null;
+    }),
+  }));
+
+  let mismatched =
+    billingType === "per_lesson"
+      ? students.filter((s) => Number(s.tuition_amount ?? 0) > 0)
+      : students.filter((s) => s.tuition_amount === null);
+
+  if (mismatched.length === 0) {
+    return null;
+  }
+
+  if (billingType === "per_lesson") {
+    // A tuition amount is only a double-charging risk if nothing else
+    // justifies it - a student in this per-lesson class AND a separate
+    // monthly class (a normal mix, e.g. group tuition plus a private
+    // hour) legitimately has tuition set for the monthly one.
+    const { data: otherMonthly } = await supabase
+      .from("student_class_assignments")
+      .select("student_id, classes!inner(billing_type)")
+      .in(
+        "student_id",
+        mismatched.map((s) => s.id),
+      )
+      .neq("class_id", classId)
+      .eq("classes.billing_type", "monthly");
+
+    const studentsWithOtherMonthly = new Set(
+      (otherMonthly ?? []).map((row) => row.student_id as string),
+    );
+    mismatched = mismatched.filter((s) => !studentsWithOtherMonthly.has(s.id));
+
+    if (mismatched.length === 0) {
+      return null;
+    }
+  }
+
+  const names = mismatched
+    .map((s) => `${s.first_name} ${s.last_name}`)
+    .join(", ");
+
+  return billingType === "per_lesson"
+    ? `Still has a monthly tuition set — clear it to avoid double-charging: ${names}`
+    : `No monthly tuition set — won't be billed until you set one: ${names}`;
+}
+
+// Mirror of computeBillingMismatchWarning from the student's side: this is
+// the more common way a mismatch actually arises - assigning an existing
+// student (who may already have a monthly tuition) into a per-lesson
+// class, or vice versa - rather than flipping a class's mode after the
+// fact. Advisory only, same reasoning as the class-side check. Skipped
+// entirely for a withdrawn student - they're not being billed either way.
+async function computeStudentBillingMismatchWarning(
+  supabase: SupabaseServerClient,
+  studentId: string,
+): Promise<string | null> {
+  const { data: student } = await supabase
+    .from("students")
+    .select("tuition_amount, withdrawn_at")
+    .eq("id", studentId)
+    .maybeSingle();
+
+  if (!student || student.withdrawn_at) {
+    return null;
+  }
+
+  const { data: rows, error } = await supabase
+    .from("student_class_assignments")
+    .select("classes!inner(name, billing_type)")
+    .eq("student_id", studentId);
+
+  if (error) {
+    return null;
+  }
+
+  const classes = (rows ?? []).map(
+    (row) =>
+      row.classes as unknown as { name: string; billing_type: string },
+  );
+
+  const hasTuition = Number(student.tuition_amount ?? 0) > 0;
+  const perLessonClasses = classes.filter((c) => c.billing_type === "per_lesson");
+  const monthlyClasses = classes.filter((c) => c.billing_type === "monthly");
+
+  // A tuition amount is only a double-charging risk if no OTHER class
+  // justifies it - a student in one monthly class and one per-lesson
+  // class (a normal mix) is fine, so only warn when there's no monthly
+  // class in the picture at all.
+  if (hasTuition && perLessonClasses.length > 0 && monthlyClasses.length === 0) {
+    return `also billed per lesson in ${perLessonClasses.map((c) => c.name).join(", ")} — clear their monthly tuition to avoid double-charging`;
+  }
+  // Unconditional on what else the student is enrolled in: a monthly
+  // class with no tuition set generates zero revenue for it regardless.
+  if (!hasTuition && monthlyClasses.length > 0) {
+    return `enrolled in ${monthlyClasses.map((c) => c.name).join(", ")} (monthly billing) with no monthly tuition set — won't be charged for it`;
+  }
+
+  return null;
+}
+
+const CLASS_COLUMNS =
+  "id, name, hours_per_week, grade, start_date, finish_date, billing_type, lesson_rate";
+
+function toClassResult(row: {
+  id: string;
+  name: string;
+  hours_per_week: number;
+  grade: string | null;
+  start_date: string | null;
+  finish_date: string | null;
+  billing_type: string;
+  lesson_rate: string | number | null;
+}) {
+  return {
+    id: row.id,
+    name: row.name,
+    hoursPerWeek: row.hours_per_week,
+    grade: row.grade,
+    startDate: row.start_date,
+    finishDate: row.finish_date,
+    billingType: row.billing_type as "monthly" | "per_lesson",
+    lessonRate: row.lesson_rate === null ? null : Number(row.lesson_rate),
+  };
+}
+
 export async function createClassAction(data: {
   name: string;
   hoursPerWeek: number;
   grade?: string | null;
   startDate?: string | null;
   finishDate?: string | null;
+  billingType?: "monthly" | "per_lesson";
+  lessonRate?: number | null;
 }) {
   const supabase = await createClient();
   const {
@@ -33,6 +207,8 @@ export async function createClassAction(data: {
   }
 
   await requireTeacher(supabase, user.id);
+
+  const billing = resolveBilling(data);
 
   const { data: row, error } = await supabase
     .from("classes")
@@ -43,22 +219,16 @@ export async function createClassAction(data: {
       grade: data.grade ?? null,
       start_date: data.startDate ?? null,
       finish_date: data.finishDate ?? null,
+      ...billing,
     })
-    .select("id, name, hours_per_week, grade, start_date, finish_date")
+    .select(CLASS_COLUMNS)
     .single();
 
   if (error) {
     throw error;
   }
 
-  return {
-    id: row.id,
-    name: row.name,
-    hoursPerWeek: row.hours_per_week,
-    grade: row.grade,
-    startDate: row.start_date,
-    finishDate: row.finish_date,
-  };
+  return toClassResult(row);
 }
 
 export async function updateClassAction(data: {
@@ -68,6 +238,8 @@ export async function updateClassAction(data: {
   grade?: string | null;
   startDate?: string | null;
   finishDate?: string | null;
+  billingType?: "monthly" | "per_lesson";
+  lessonRate?: number | null;
 }) {
   const supabase = await createClient();
   const {
@@ -80,6 +252,8 @@ export async function updateClassAction(data: {
 
   await requireTeacher(supabase, user.id);
 
+  const billing = resolveBilling(data);
+
   const { data: row, error } = await supabase
     .from("classes")
     .update({
@@ -88,24 +262,24 @@ export async function updateClassAction(data: {
       grade: data.grade ?? null,
       start_date: data.startDate ?? null,
       finish_date: data.finishDate ?? null,
+      ...billing,
     })
     .eq("id", data.classId)
     .eq("teacher_id", user.id)
-    .select("id, name, hours_per_week, grade, start_date, finish_date")
+    .select(CLASS_COLUMNS)
     .single();
 
   if (error) {
     throw error;
   }
 
-  return {
-    id: row.id,
-    name: row.name,
-    hoursPerWeek: row.hours_per_week,
-    grade: row.grade,
-    startDate: row.start_date,
-    finishDate: row.finish_date,
-  };
+  const billingWarning = await computeBillingMismatchWarning(
+    supabase,
+    data.classId,
+    billing.billing_type,
+  );
+
+  return { ...toClassResult(row), billingWarning };
 }
 
 export async function archiveClassAction(classId: string) {
@@ -426,6 +600,11 @@ export async function createStudentAction(data: CreateStudentInput) {
     }
   }
 
+  const billingWarning = await computeStudentBillingMismatchWarning(
+    supabase,
+    student.id,
+  );
+
   return {
     id: student.id,
     familyId,
@@ -443,6 +622,7 @@ export async function createStudentAction(data: CreateStudentInput) {
     parentTwoPhone: data.familyMode === "new" ? data.parentTwoPhone : undefined,
     tuitionAmount: data.tuitionAmount,
     assignedClassIds: data.assignedClassIds,
+    billingWarning,
   };
 }
 
@@ -584,6 +764,11 @@ export async function updateStudentAction(data: UpdateStudentInput) {
     }
   }
 
+  const billingWarning = await computeStudentBillingMismatchWarning(
+    supabase,
+    data.studentId,
+  );
+
   return {
     id: data.studentId,
     familyId,
@@ -599,6 +784,7 @@ export async function updateStudentAction(data: UpdateStudentInput) {
     parentTwoEmail: data.parentTwoEmail,
     parentTwoPhone: data.parentTwoPhone,
     tuitionAmount: data.tuitionAmount,
+    billingWarning,
   };
 }
 
@@ -817,7 +1003,7 @@ async function requireOwnedClass(
 export async function enrollStudentInClassAction(
   studentId: string,
   classId: string,
-): Promise<void> {
+): Promise<{ billingWarning: string | null }> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -841,6 +1027,13 @@ export async function enrollStudentInClassAction(
   if (error) {
     throw error;
   }
+
+  const billingWarning = await computeStudentBillingMismatchWarning(
+    supabase,
+    studentId,
+  );
+
+  return { billingWarning };
 }
 
 export async function unenrollStudentFromClassAction(
@@ -886,9 +1079,15 @@ export async function getAttendanceAction(data: {
 
   await requireTeacher(supabase, user.id);
 
+  // family_balance_transactions is embedded (not computed from
+  // class.lesson_rate) so this reflects what was ACTUALLY posted - a
+  // charge frozen at an old rate, or one that was never posted because
+  // the class wasn't per-lesson yet at the time, shows the truth instead
+  // of a client-side guess. See post_lesson_charge_row()'s future-only
+  // repricing guard for why these can disagree with the class's current rate.
   const { data: rows, error } = await supabase
     .from("attendance_records")
-    .select("student_id, status")
+    .select("student_id, status, family_balance_transactions(amount)")
     .eq("teacher_id", user.id)
     .eq("class_id", data.classId)
     .eq("attendance_date", data.attendanceDate);
@@ -897,7 +1096,23 @@ export async function getAttendanceAction(data: {
     throw error;
   }
 
-  return rows ?? [];
+  return (rows ?? []).map((row) => ({
+    student_id: row.student_id,
+    status: row.status,
+    chargedAmount: toChargedAmount(row.family_balance_transactions),
+  }));
+}
+
+// family_balance_transactions is the "many" side of the embed (PostgREST
+// can't know the partial unique index caps it at one row per attendance
+// record), so it always comes back as an array - collapse it to the
+// single amount that's actually there, or null.
+function toChargedAmount(
+  transactions: unknown,
+): number | null {
+  const rows = transactions as Array<{ amount: string | number }> | null;
+  const amount = rows?.[0]?.amount;
+  return amount === undefined ? null : Number(amount);
 }
 
 export async function setAttendanceAction(data: {
@@ -917,6 +1132,15 @@ export async function setAttendanceAction(data: {
   }
 
   await requireTeacher(supabase, user.id);
+  // Belt-and-braces alongside the trigger's own teacher_id check
+  // (post_lesson_charge_row(), see the per-lesson-billing-tenant-fix
+  // migration): attendance_records RLS only checks the row's own
+  // teacher_id, never that class_id/student_id actually belong to that
+  // teacher, so this is the one place that gap could otherwise be
+  // exploited to write an attendance row - and now a billing charge -
+  // against another teacher's class/student.
+  await requireOwnedClass(supabase, data.classId, user.id);
+  await requireOwnedStudent(supabase, data.studentId, user.id);
 
   if (!data.status) {
     const { error } = await supabase
@@ -933,10 +1157,11 @@ export async function setAttendanceAction(data: {
       throw error;
     }
 
-    return { studentId: data.studentId, status: "" };
+    // The FK cascade already removed any lesson_charge with the record.
+    return { studentId: data.studentId, status: "", chargedAmount: null };
   }
 
-  const { error } = await supabase
+  const { data: row, error } = await supabase
     .from("attendance_records")
     .upsert(
       {
@@ -948,11 +1173,27 @@ export async function setAttendanceAction(data: {
         status: data.status,
       },
       { onConflict: "teacher_id,class_id,student_id,attendance_date" }
-    );
+    )
+    .select("id")
+    .single();
 
   if (error) {
     throw error;
   }
 
-  return { studentId: data.studentId, status: data.status };
+  // Read back what post_lesson_charge_row() actually posted (or removed)
+  // for this mark, rather than computing a guess from the class's
+  // current rate - the two can legitimately disagree (see
+  // getAttendanceAction's chargedAmount comment).
+  const { data: transaction } = await supabase
+    .from("family_balance_transactions")
+    .select("amount")
+    .eq("attendance_record_id", row.id)
+    .maybeSingle();
+
+  return {
+    studentId: data.studentId,
+    status: data.status,
+    chargedAmount: transaction ? Number(transaction.amount) : null,
+  };
 }

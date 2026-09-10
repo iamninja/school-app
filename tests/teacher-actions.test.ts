@@ -8,6 +8,7 @@ import {
   createStudentAction,
   deleteClassAction,
   enrollStudentInClassAction,
+  getAttendanceAction,
   resetParentAccountAction,
   resetStudentAccountAction,
   restoreClassAction,
@@ -118,6 +119,33 @@ describe("teacher actions - createStudentAction", () => {
       /Use "Existing family" instead/,
     );
   });
+
+  it("warns when creating a student with tuition set while assigned to a per-lesson class", async () => {
+    vi.mocked(createClient).mockResolvedValue(
+      createMockSupabaseClient({
+        families: { data: { id: "family-1" }, error: null },
+        students: [
+          { data: { id: "student-1" }, error: null },
+          { data: { tuition_amount: 420, withdrawn_at: null }, error: null },
+        ],
+        family_parents: { data: null, error: null },
+        student_class_assignments: {
+          data: [
+            { classes: { name: "Private tutoring", billing_type: "per_lesson" } },
+          ],
+          error: null,
+        },
+      }) as never,
+    );
+
+    const result = await createStudentAction({
+      ...baseNewFamilyInput,
+      tuitionAmount: "420",
+      assignedClassIds: ["class-1"],
+    });
+
+    expect(result.billingWarning).toMatch(/also billed per lesson in Private tutoring/i);
+  });
 });
 
 describe("teacher actions - updateStudentAction", () => {
@@ -223,6 +251,56 @@ describe("teacher actions - updateStudentAction", () => {
       "Student not found",
     );
   });
+
+  it("warns when the student's tuition is set while enrolled in a per-lesson class", async () => {
+    vi.mocked(createClient).mockResolvedValue(
+      createMockSupabaseClient({
+        students: [
+          { data: { id: "student-1", family_id: "family-1" }, error: null },
+          { data: null, error: null },
+          { data: { tuition_amount: 420, withdrawn_at: null }, error: null },
+        ],
+        family_parents: [
+          { data: [], error: null },
+          { data: null, error: null },
+        ],
+        student_class_assignments: {
+          data: [
+            { classes: { name: "Private tutoring", billing_type: "per_lesson" } },
+          ],
+          error: null,
+        },
+      }) as never,
+    );
+
+    const result = await updateStudentAction(baseUpdateInput);
+
+    expect(result.billingWarning).toMatch(/also billed per lesson in Private tutoring/i);
+  });
+
+  it("returns no warning when the student isn't in any per-lesson class", async () => {
+    vi.mocked(createClient).mockResolvedValue(
+      createMockSupabaseClient({
+        students: [
+          { data: { id: "student-1", family_id: "family-1" }, error: null },
+          { data: null, error: null },
+          { data: { tuition_amount: 420, withdrawn_at: null }, error: null },
+        ],
+        family_parents: [
+          { data: [], error: null },
+          { data: null, error: null },
+        ],
+        student_class_assignments: {
+          data: [{ classes: { name: "Algebra II", billing_type: "monthly" } }],
+          error: null,
+        },
+      }) as never,
+    );
+
+    const result = await updateStudentAction(baseUpdateInput);
+
+    expect(result.billingWarning).toBeNull();
+  });
 });
 
 describe("teacher actions - setAttendanceAction", () => {
@@ -232,6 +310,8 @@ describe("teacher actions - setAttendanceAction", () => {
 
   it("deletes the record when status is cleared", async () => {
     const client = createMockSupabaseClient({
+      classes: { data: { id: "class-1" }, error: null },
+      students: { data: { id: "student-1" }, error: null },
       attendance_records: { data: null, error: null },
     });
     vi.mocked(createClient).mockResolvedValue(client as never);
@@ -244,15 +324,21 @@ describe("teacher actions - setAttendanceAction", () => {
       status: "",
     });
 
-    expect(result).toEqual({ studentId: "student-1", status: "" });
-    const chain = client.from.mock.results[0].value;
+    expect(result).toEqual({
+      studentId: "student-1",
+      status: "",
+      chargedAmount: null,
+    });
+    const chain = client.from.mock.results[2].value;
     expect(chain.delete).toHaveBeenCalled();
     expect(chain.upsert).not.toHaveBeenCalled();
   });
 
   it("upserts the record when a status is set", async () => {
     const client = createMockSupabaseClient({
-      attendance_records: { data: null, error: null },
+      classes: { data: { id: "class-1" }, error: null },
+      students: { data: { id: "student-1" }, error: null },
+      attendance_records: { data: { id: "record-1" }, error: null },
     });
     vi.mocked(createClient).mockResolvedValue(client as never);
 
@@ -264,8 +350,12 @@ describe("teacher actions - setAttendanceAction", () => {
       status: "present",
     });
 
-    expect(result).toEqual({ studentId: "student-1", status: "present" });
-    const chain = client.from.mock.results[0].value;
+    expect(result).toEqual({
+      studentId: "student-1",
+      status: "present",
+      chargedAmount: null,
+    });
+    const chain = client.from.mock.results[2].value;
     expect(chain.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         status: "present",
@@ -285,7 +375,9 @@ describe("teacher actions - setAttendanceAction", () => {
 
   it("upserts a 'split' (1+1) status the same as any other status", async () => {
     const client = createMockSupabaseClient({
-      attendance_records: { data: null, error: null },
+      classes: { data: { id: "class-1" }, error: null },
+      students: { data: { id: "student-1" }, error: null },
+      attendance_records: { data: { id: "record-1" }, error: null },
     });
     vi.mocked(createClient).mockResolvedValue(client as never);
 
@@ -297,12 +389,110 @@ describe("teacher actions - setAttendanceAction", () => {
       status: "split",
     });
 
-    expect(result).toEqual({ studentId: "student-1", status: "split" });
-    const chain = client.from.mock.results[0].value;
+    expect(result).toEqual({
+      studentId: "student-1",
+      status: "split",
+      chargedAmount: null,
+    });
+    const chain = client.from.mock.results[2].value;
     expect(chain.upsert).toHaveBeenCalledWith(
       expect.objectContaining({ status: "split" }),
       expect.anything(),
     );
+  });
+
+  it("reads back the actual posted charge, not a client-computed guess", async () => {
+    const client = createMockSupabaseClient({
+      classes: { data: { id: "class-1" }, error: null },
+      students: { data: { id: "student-1" }, error: null },
+      attendance_records: { data: { id: "record-1" }, error: null },
+      // What post_lesson_charge_row() actually posted for this mark.
+      family_balance_transactions: { data: { amount: 20 }, error: null },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    const result = await setAttendanceAction({
+      classId: "class-1",
+      className: "Algebra II",
+      studentId: "student-1",
+      attendanceDate: "2026-08-16",
+      status: "present",
+    });
+
+    expect(result.chargedAmount).toBe(20);
+  });
+
+  it("refuses to write attendance for a class this teacher doesn't own", async () => {
+    const client = createMockSupabaseClient({
+      classes: { data: null, error: null },
+      students: { data: { id: "student-1" }, error: null },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await expect(
+      setAttendanceAction({
+        classId: "someone-elses-class",
+        className: "Algebra II",
+        studentId: "student-1",
+        attendanceDate: "2026-08-16",
+        status: "present",
+      }),
+    ).rejects.toThrow("Class not found");
+  });
+
+  it("refuses to write attendance for a student this teacher doesn't own", async () => {
+    const client = createMockSupabaseClient({
+      classes: { data: { id: "class-1" }, error: null },
+      students: { data: null, error: null },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await expect(
+      setAttendanceAction({
+        classId: "class-1",
+        className: "Algebra II",
+        studentId: "someone-elses-student",
+        attendanceDate: "2026-08-16",
+        status: "present",
+      }),
+    ).rejects.toThrow("Student not found");
+  });
+});
+
+describe("teacher actions - getAttendanceAction", () => {
+  beforeEach(() => {
+    vi.mocked(requireTeacher).mockResolvedValue(undefined);
+  });
+
+  it("returns the actual posted charge alongside status, not a computed guess", async () => {
+    const client = createMockSupabaseClient({
+      attendance_records: {
+        data: [
+          {
+            student_id: "student-1",
+            status: "present",
+            family_balance_transactions: [{ amount: 20 }],
+          },
+          {
+            student_id: "student-2",
+            status: "absent",
+            family_balance_transactions: [],
+          },
+        ],
+        error: null,
+      },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    const rows = await getAttendanceAction({
+      classId: "class-1",
+      attendanceDate: "2026-08-16",
+    });
+
+    expect(rows).toEqual([
+      { student_id: "student-1", status: "present", chargedAmount: 20 },
+      { student_id: "student-2", status: "absent", chargedAmount: null },
+    ]);
   });
 });
 
@@ -446,6 +636,83 @@ describe("teacher actions - createClassAction", () => {
       expect.objectContaining({ grade: null }),
     );
   });
+
+  it("passes billing_type and lesson_rate through for a per-lesson class", async () => {
+    const client = createMockSupabaseClient({
+      classes: {
+        data: {
+          id: "class-1",
+          name: "Private tutoring",
+          hours_per_week: 2,
+          grade: null,
+          billing_type: "per_lesson",
+          lesson_rate: 20,
+        },
+        error: null,
+      },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    const result = await createClassAction({
+      name: "Private tutoring",
+      hoursPerWeek: 2,
+      billingType: "per_lesson",
+      lessonRate: 20,
+    });
+
+    expect(result.billingType).toBe("per_lesson");
+    expect(result.lessonRate).toBe(20);
+    expect(client.from.mock.results[0].value.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ billing_type: "per_lesson", lesson_rate: 20 }),
+    );
+  });
+
+  it("defaults to monthly billing with a null rate when none is given", async () => {
+    const client = createMockSupabaseClient({
+      classes: {
+        data: {
+          id: "class-1",
+          name: "Algebra II",
+          hours_per_week: 3,
+          grade: null,
+          billing_type: "monthly",
+          lesson_rate: null,
+        },
+        error: null,
+      },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await createClassAction({ name: "Algebra II", hoursPerWeek: 3 });
+
+    expect(client.from.mock.results[0].value.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ billing_type: "monthly", lesson_rate: null }),
+    );
+  });
+
+  it("rejects a per-lesson class with no positive rate", async () => {
+    const client = createMockSupabaseClient({ classes: { data: null, error: null } });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await expect(
+      createClassAction({
+        name: "Private tutoring",
+        hoursPerWeek: 2,
+        billingType: "per_lesson",
+      }),
+    ).rejects.toBeInstanceOf(ExpectedError);
+
+    await expect(
+      createClassAction({
+        name: "Private tutoring",
+        hoursPerWeek: 2,
+        billingType: "per_lesson",
+        lessonRate: 0,
+      }),
+    ).rejects.toBeInstanceOf(ExpectedError);
+
+    expect(client.from).not.toHaveBeenCalled();
+  });
 });
 
 describe("teacher actions - updateClassAction", () => {
@@ -457,7 +724,16 @@ describe("teacher actions - updateClassAction", () => {
     vi.mocked(createClient).mockResolvedValue(
       createMockSupabaseClient({
         classes: {
-          data: { id: "class-1", name: "Algebra I", hours_per_week: 4 },
+          data: {
+            id: "class-1",
+            name: "Algebra I",
+            hours_per_week: 4,
+            grade: null,
+            start_date: null,
+            finish_date: null,
+            billing_type: "monthly",
+            lesson_rate: null,
+          },
           error: null,
         },
       }) as never,
@@ -473,6 +749,12 @@ describe("teacher actions - updateClassAction", () => {
       id: "class-1",
       name: "Algebra I",
       hoursPerWeek: 4,
+      grade: null,
+      startDate: null,
+      finishDate: null,
+      billingType: "monthly",
+      lessonRate: null,
+      billingWarning: null,
     });
   });
 
@@ -501,6 +783,231 @@ describe("teacher actions - updateClassAction", () => {
     expect(client.from.mock.results[0].value.update).toHaveBeenCalledWith(
       expect.objectContaining({ grade: "epal_grad" }),
     );
+  });
+
+  it("switching back to monthly clears a stale lesson_rate", async () => {
+    const client = createMockSupabaseClient({
+      classes: {
+        data: {
+          id: "class-1",
+          name: "Algebra I",
+          hours_per_week: 4,
+          billing_type: "monthly",
+          lesson_rate: null,
+        },
+        error: null,
+      },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await updateClassAction({
+      classId: "class-1",
+      name: "Algebra I",
+      hoursPerWeek: 4,
+      billingType: "monthly",
+      lessonRate: 20, // stale value from when it was per-lesson - must be nulled
+    });
+
+    expect(client.from.mock.results[0].value.update).toHaveBeenCalledWith(
+      expect.objectContaining({ billing_type: "monthly", lesson_rate: null }),
+    );
+  });
+
+  it("rejects a per-lesson class with no positive rate", async () => {
+    const client = createMockSupabaseClient({ classes: { data: null, error: null } });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await expect(
+      updateClassAction({
+        classId: "class-1",
+        name: "Algebra I",
+        hoursPerWeek: 4,
+        billingType: "per_lesson",
+        lessonRate: -5,
+      }),
+    ).rejects.toBeInstanceOf(ExpectedError);
+
+    expect(client.from).not.toHaveBeenCalled();
+  });
+
+  describe("billing mismatch warning", () => {
+    it("warns when switching to per_lesson while an active student still has a monthly tuition set", async () => {
+      const client = createMockSupabaseClient({
+        classes: {
+          data: {
+            id: "class-1",
+            name: "Private tutoring",
+            hours_per_week: 2,
+            billing_type: "per_lesson",
+            lesson_rate: 20,
+          },
+          error: null,
+        },
+        student_class_assignments: [
+          {
+            // The initial per-class lookup: who's assigned, with tuition set.
+            data: [
+              {
+                student_id: "student-1",
+                students: {
+                  first_name: "Giannis",
+                  last_name: "Verify",
+                  tuition_amount: 120,
+                  withdrawn_at: null,
+                },
+              },
+            ],
+            error: null,
+          },
+          {
+            // The "does this student have another monthly class" follow-up
+            // check - empty, so nothing excuses the tuition amount.
+            data: [],
+            error: null,
+          },
+        ],
+      });
+      vi.mocked(createClient).mockResolvedValue(client as never);
+
+      const result = await updateClassAction({
+        classId: "class-1",
+        name: "Private tutoring",
+        hoursPerWeek: 2,
+        billingType: "per_lesson",
+        lessonRate: 20,
+      });
+
+      expect(result.billingWarning).toMatch(/still has a monthly tuition set/i);
+      expect(result.billingWarning).toContain("Giannis Verify");
+    });
+
+    it("does not warn when the student has tuition set for a separate monthly class", async () => {
+      const client = createMockSupabaseClient({
+        classes: {
+          data: {
+            id: "class-1",
+            name: "Private tutoring",
+            hours_per_week: 2,
+            billing_type: "per_lesson",
+            lesson_rate: 20,
+          },
+          error: null,
+        },
+        student_class_assignments: [
+          {
+            data: [
+              {
+                student_id: "student-1",
+                students: {
+                  first_name: "Giannis",
+                  last_name: "Verify",
+                  tuition_amount: 120,
+                  withdrawn_at: null,
+                },
+              },
+            ],
+            error: null,
+          },
+          {
+            // The student is also in "Algebra II", a monthly class - the
+            // tuition amount is legitimately for that, not this one.
+            data: [
+              { student_id: "student-1", classes: { billing_type: "monthly" } },
+            ],
+            error: null,
+          },
+        ],
+      });
+      vi.mocked(createClient).mockResolvedValue(client as never);
+
+      const result = await updateClassAction({
+        classId: "class-1",
+        name: "Private tutoring",
+        hoursPerWeek: 2,
+        billingType: "per_lesson",
+        lessonRate: 20,
+      });
+
+      expect(result.billingWarning).toBeNull();
+    });
+
+    it("warns when switching to monthly while an active student has no tuition set", async () => {
+      const client = createMockSupabaseClient({
+        classes: {
+          data: {
+            id: "class-1",
+            name: "Private tutoring",
+            hours_per_week: 2,
+            billing_type: "monthly",
+            lesson_rate: null,
+          },
+          error: null,
+        },
+        student_class_assignments: {
+          data: [
+            {
+              students: {
+                first_name: "Giannis",
+                last_name: "Verify",
+                tuition_amount: null,
+                withdrawn_at: null,
+              },
+            },
+          ],
+          error: null,
+        },
+      });
+      vi.mocked(createClient).mockResolvedValue(client as never);
+
+      const result = await updateClassAction({
+        classId: "class-1",
+        name: "Private tutoring",
+        hoursPerWeek: 2,
+        billingType: "monthly",
+      });
+
+      expect(result.billingWarning).toMatch(/no monthly tuition set/i);
+      expect(result.billingWarning).toContain("Giannis Verify");
+    });
+
+    it("returns no warning when every active student's tuition already matches the new billing mode", async () => {
+      const client = createMockSupabaseClient({
+        classes: {
+          data: {
+            id: "class-1",
+            name: "Private tutoring",
+            hours_per_week: 2,
+            billing_type: "per_lesson",
+            lesson_rate: 20,
+          },
+          error: null,
+        },
+        student_class_assignments: {
+          data: [
+            {
+              students: {
+                first_name: "Giannis",
+                last_name: "Verify",
+                tuition_amount: null,
+                withdrawn_at: null,
+              },
+            },
+          ],
+          error: null,
+        },
+      });
+      vi.mocked(createClient).mockResolvedValue(client as never);
+
+      const result = await updateClassAction({
+        classId: "class-1",
+        name: "Private tutoring",
+        hoursPerWeek: 2,
+        billingType: "per_lesson",
+        lessonRate: 20,
+      });
+
+      expect(result.billingWarning).toBeNull();
+    });
   });
 });
 
@@ -572,7 +1079,7 @@ describe("teacher actions - enrollment", () => {
 
     await expect(
       enrollStudentInClassAction("student-1", "class-1"),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({ billingWarning: null });
   });
 
   it("unenrolls a student from a class", async () => {
@@ -612,6 +1119,121 @@ describe("teacher actions - enrollment", () => {
     await expect(
       enrollStudentInClassAction("student-1", "class-1"),
     ).rejects.toThrow("Student not found");
+  });
+
+  describe("student-side billing mismatch warning", () => {
+    it("warns when enrolling a student who already has a monthly tuition into a per-lesson class", async () => {
+      vi.mocked(createClient).mockResolvedValue(
+        createMockSupabaseClient({
+          students: {
+            data: { id: "student-1", tuition_amount: 120, withdrawn_at: null },
+            error: null,
+          },
+          classes: { data: { id: "class-1" }, error: null },
+          student_class_assignments: {
+            data: [
+              { classes: { name: "Private tutoring", billing_type: "per_lesson" } },
+            ],
+            error: null,
+          },
+        }) as never,
+      );
+
+      const result = await enrollStudentInClassAction("student-1", "class-1");
+
+      expect(result.billingWarning).toMatch(/also billed per lesson in Private tutoring/i);
+    });
+
+    it("warns when enrolling a student with no tuition into a monthly class", async () => {
+      vi.mocked(createClient).mockResolvedValue(
+        createMockSupabaseClient({
+          students: {
+            data: { id: "student-1", tuition_amount: null, withdrawn_at: null },
+            error: null,
+          },
+          classes: { data: { id: "class-1" }, error: null },
+          student_class_assignments: {
+            data: [{ classes: { name: "Algebra II", billing_type: "monthly" } }],
+            error: null,
+          },
+        }) as never,
+      );
+
+      const result = await enrollStudentInClassAction("student-1", "class-1");
+
+      expect(result.billingWarning).toMatch(/enrolled in Algebra II.*no monthly tuition set/i);
+    });
+
+    it("returns no warning when tuition already matches the assigned classes", async () => {
+      vi.mocked(createClient).mockResolvedValue(
+        createMockSupabaseClient({
+          students: {
+            data: { id: "student-1", tuition_amount: null, withdrawn_at: null },
+            error: null,
+          },
+          classes: { data: { id: "class-1" }, error: null },
+          student_class_assignments: {
+            data: [
+              { classes: { name: "Private tutoring", billing_type: "per_lesson" } },
+            ],
+            error: null,
+          },
+        }) as never,
+      );
+
+      const result = await enrollStudentInClassAction("student-1", "class-1");
+
+      expect(result.billingWarning).toBeNull();
+    });
+
+    it("does not warn when the student is legitimately in both a monthly and a per-lesson class", async () => {
+      vi.mocked(createClient).mockResolvedValue(
+        createMockSupabaseClient({
+          students: {
+            data: { id: "student-1", tuition_amount: 120, withdrawn_at: null },
+            error: null,
+          },
+          classes: { data: { id: "class-1" }, error: null },
+          student_class_assignments: {
+            data: [
+              { classes: { name: "Algebra II", billing_type: "monthly" } },
+              { classes: { name: "Private tutoring", billing_type: "per_lesson" } },
+            ],
+            error: null,
+          },
+        }) as never,
+      );
+
+      const result = await enrollStudentInClassAction("student-1", "class-1");
+
+      expect(result.billingWarning).toBeNull();
+    });
+
+    it("never warns about a withdrawn student", async () => {
+      vi.mocked(createClient).mockResolvedValue(
+        createMockSupabaseClient({
+          students: {
+            data: {
+              id: "student-1",
+              tuition_amount: 120,
+              withdrawn_at: "2026-09-01T00:00:00Z",
+            },
+            error: null,
+          },
+          classes: { data: { id: "class-1" }, error: null },
+          student_class_assignments: {
+            data: [
+              { classes: { name: "Private tutoring", billing_type: "per_lesson" } },
+            ],
+            error: null,
+          },
+        }) as never,
+      );
+
+      const result = await enrollStudentInClassAction("student-1", "class-1");
+
+      expect(result.billingWarning).toBeNull();
+    });
   });
 });
 

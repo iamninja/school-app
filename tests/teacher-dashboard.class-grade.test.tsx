@@ -16,7 +16,9 @@ vi.mock("@/app/protected/teacher/actions", () => ({
   getAttendanceAction: vi.fn().mockResolvedValue([]),
   restoreClassAction: vi.fn(),
   restoreStudentAction: vi.fn(),
-  setAttendanceAction: vi.fn(),
+  setAttendanceAction: vi
+    .fn()
+    .mockResolvedValue({ studentId: "", status: "", chargedAmount: null }),
   setScheduleSlotAction: vi.fn(),
   unenrollStudentFromClassAction: vi.fn(),
   updateClassAction: vi.fn(),
@@ -81,6 +83,8 @@ describe("TeacherDashboard class grade", () => {
       grade: "gym_c",
       startDate: null,
       finishDate: null,
+      billingType: "monthly",
+      lessonRate: null,
     });
 
     render(<TeacherDashboard {...baseProps} initialClasses={[]} />);
@@ -109,6 +113,9 @@ describe("TeacherDashboard class grade", () => {
       grade: "lyk_b",
       startDate: null,
       finishDate: null,
+      billingType: "monthly",
+      lessonRate: null,
+      billingWarning: null,
     });
 
     render(<TeacherDashboard {...baseProps} />);

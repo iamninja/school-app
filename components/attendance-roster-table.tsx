@@ -10,6 +10,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { formatEuro } from "@/lib/format-currency";
 import type { AttendanceStatus } from "@/lib/attendance-records";
 
 type RosterStudent = {
@@ -34,7 +35,9 @@ export function AttendanceRosterTable({
   className,
   dateKey,
   isTwoHour,
+  isPerLesson,
   getStatus,
+  getChargedAmount,
   onOptimisticChange,
   onCommitted,
 }: {
@@ -43,12 +46,28 @@ export function AttendanceRosterTable({
   className: string;
   dateKey: string;
   isTwoHour: boolean;
+  // True only for a per_lesson-billed class - renders the "€X charged"
+  // hint so the teacher sees the billing consequence of the status they
+  // set. The amount itself comes from getChargedAmount, not computed
+  // from the class's current rate - a posted charge is frozen at
+  // whatever rate was in effect when it was marked (see
+  // post_lesson_charge_row()'s future-only repricing guard), so this can
+  // legitimately disagree with today's rate.
+  isPerLesson?: boolean;
   getStatus: (studentId: string) => AttendanceStatus | "";
+  // The amount actually posted for this student's current mark, read
+  // back from family_balance_transactions - null means nothing was
+  // charged (absent, or not yet known before the first status set).
+  getChargedAmount?: (studentId: string) => number | null;
   onOptimisticChange: (
     studentId: string,
     status: AttendanceStatus | "",
   ) => void;
-  onCommitted: (studentId: string, status: AttendanceStatus | "") => void;
+  onCommitted: (
+    studentId: string,
+    status: AttendanceStatus | "",
+    chargedAmount: number | null,
+  ) => void;
 }) {
   if (roster.length === 0) {
     return (
@@ -63,14 +82,14 @@ export function AttendanceRosterTable({
     status: AttendanceStatus | "",
   ) => {
     onOptimisticChange(studentId, status);
-    await setAttendanceAction({
+    const result = await setAttendanceAction({
       classId,
       className,
       studentId,
       attendanceDate: dateKey,
       status,
     });
-    onCommitted(studentId, status);
+    onCommitted(studentId, status, result.chargedAmount);
   };
 
   return (
@@ -100,6 +119,7 @@ export function AttendanceRosterTable({
                 {student.gradeLevel || "N/A"}
               </TableCell>
               <TableCell>
+                <div className="flex flex-col items-end gap-1">
                 <div className="flex flex-wrap justify-end gap-2">
                   <Button
                     type="button"
@@ -153,6 +173,17 @@ export function AttendanceRosterTable({
                       1+1
                     </Button>
                   ) : null}
+                </div>
+                {isPerLesson && status !== "" && (
+                  <p className="text-xs text-muted-foreground">
+                    {(() => {
+                      const amount = getChargedAmount?.(student.id) ?? null;
+                      return typeof amount === "number"
+                        ? `${formatEuro(amount)} charged${status === "split" ? " (1+1)" : ""}`
+                        : "Not charged";
+                    })()}
+                  </p>
+                )}
                 </div>
               </TableCell>
             </TableRow>
