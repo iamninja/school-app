@@ -667,6 +667,12 @@ export function TeacherDashboard({
   const [attendanceClassId, setAttendanceClassId] = React.useState<string>("");
   const [attendanceStatusByStudent, setAttendanceStatusByStudent] =
     React.useState<Record<string, "present" | "late" | "absent" | "split" | "">>({});
+  // The amount actually posted for each student's current mark - read
+  // back from the server (getAttendanceAction/setAttendanceAction), never
+  // computed client-side, so it can't lie after a rate change or a
+  // monthly<->per-lesson mode switch. See AttendanceRosterTable.
+  const [attendanceChargeByStudent, setAttendanceChargeByStudent] =
+    React.useState<Record<string, number | null>>({});
   const [attendanceDateError, setAttendanceDateError] = React.useState("");
   const [attendanceRecords, setAttendanceRecords] =
     React.useState<AttendanceRecord[]>(initialAttendance);
@@ -1708,6 +1714,7 @@ export function TeacherDashboard({
     const loadAttendance = async () => {
       if (!attendanceClassId) {
         setAttendanceStatusByStudent({});
+        setAttendanceChargeByStudent({});
         return;
       }
       try {
@@ -1718,14 +1725,18 @@ export function TeacherDashboard({
         if (!isActive) {
           return;
         }
-        const next: Record<string, "present" | "late" | "absent" | "split" | ""> = {};
+        const nextStatus: Record<string, "present" | "late" | "absent" | "split" | ""> = {};
+        const nextCharge: Record<string, number | null> = {};
         rows.forEach((row) => {
-          next[row.student_id] = row.status;
+          nextStatus[row.student_id] = row.status;
+          nextCharge[row.student_id] = row.chargedAmount;
         });
-        setAttendanceStatusByStudent(next);
+        setAttendanceStatusByStudent(nextStatus);
+        setAttendanceChargeByStudent(nextCharge);
       } catch {
         if (isActive) {
           setAttendanceStatusByStudent({});
+          setAttendanceChargeByStudent({});
         }
       }
     };
@@ -3915,17 +3926,34 @@ export function TeacherDashboard({
                     className={attendanceClassName}
                     dateKey={attendanceDateKey}
                     isTwoHour={isTwoHourAttendanceDate}
-                    lessonRate={attendanceClassLessonRate}
+                    isPerLesson={attendanceClassLessonRate !== null}
                     getStatus={(studentId) =>
                       attendanceStatusByStudent[studentId] ?? ""
                     }
-                    onOptimisticChange={(studentId, status) =>
+                    getChargedAmount={(studentId) =>
+                      attendanceChargeByStudent[studentId] ?? null
+                    }
+                    onOptimisticChange={(studentId, status) => {
                       setAttendanceStatusByStudent((prev) => ({
                         ...prev,
                         [studentId]: status,
-                      }))
-                    }
-                    onCommitted={updateAttendanceRecords}
+                      }));
+                      // Cleared rather than guessed - the confirmed amount
+                      // (or "Not charged") lands a moment later via
+                      // onCommitted, once the server round-trips the real
+                      // posted amount.
+                      setAttendanceChargeByStudent((prev) => ({
+                        ...prev,
+                        [studentId]: null,
+                      }));
+                    }}
+                    onCommitted={(studentId, status, chargedAmount) => {
+                      updateAttendanceRecords(studentId, status);
+                      setAttendanceChargeByStudent((prev) => ({
+                        ...prev,
+                        [studentId]: chargedAmount,
+                      }));
+                    }}
                   />
                 )}
           </div>

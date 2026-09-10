@@ -247,7 +247,9 @@ export function TeacherBilling({
                           {family.studentNames.join(", ") || "—"}
                         </TableCell>
                         <TableCell className="text-right">
-                          {formatEuro(family.monthlyAmount)}
+                          {family.monthlyAmount === 0 && family.billsPerLesson
+                            ? "Per lesson"
+                            : formatEuro(family.monthlyAmount)}
                         </TableCell>
                         <TableCell
                           className={`text-right ${balanceClassName(family.balance)}`}
@@ -555,7 +557,10 @@ function FamilyBillingDetail({
           {family.studentNames.length > 0
             ? family.studentNames.join(", ")
             : "no active students"}{" "}
-          — {formatEuro(family.monthlyAmount)}/month
+          —{" "}
+          {family.monthlyAmount === 0 && family.billsPerLesson
+            ? "no monthly tuition"
+            : `${formatEuro(family.monthlyAmount)}/month`}
         </p>
         {family.billsPerLesson && (
           <p className="text-sm text-muted-foreground">

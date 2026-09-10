@@ -12,7 +12,9 @@ vi.mock("@/app/protected/teacher/actions", () => ({
   createClassAction: vi.fn(),
   createStudentAction: vi.fn(),
   getAttendanceAction: vi.fn().mockResolvedValue([]),
-  setAttendanceAction: vi.fn(),
+  setAttendanceAction: vi
+    .fn()
+    .mockResolvedValue({ studentId: "", status: "", chargedAmount: null }),
   setScheduleSlotAction: vi.fn(),
   withdrawStudentAction: vi.fn(),
   restoreStudentAction: vi.fn(),

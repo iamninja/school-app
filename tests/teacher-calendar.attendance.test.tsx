@@ -15,7 +15,9 @@ vi.mock("@/app/protected/teacher/calendar-actions", () => ({
 }));
 
 vi.mock("@/app/protected/teacher/actions", () => ({
-  setAttendanceAction: vi.fn(),
+  setAttendanceAction: vi
+    .fn()
+    .mockResolvedValue({ studentId: "", status: "", chargedAmount: null }),
 }));
 
 vi.mock("sonner", () => ({
@@ -210,6 +212,7 @@ describe("TeacherCalendar attendance section", () => {
     setAttendanceAction.mockResolvedValue({
       studentId: studentA.id,
       status: "present",
+      chargedAmount: null,
     });
 
     const { onAttendanceRecordsChange } = renderCalendar({

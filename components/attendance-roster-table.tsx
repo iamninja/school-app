@@ -21,17 +21,6 @@ type RosterStudent = {
   email: string;
 };
 
-// Mirrors the amount post_lesson_charge_row() actually posts, for the
-// "€X charged" hint below - present/late = the full rate, split = half.
-function lessonChargeAmount(
-  status: AttendanceStatus | "",
-  rate: number,
-): number | null {
-  if (status === "present" || status === "late") return rate;
-  if (status === "split") return Math.round((rate / 2) * 100) / 100;
-  return null;
-}
-
 /**
  * Present/Late/Absent/1+1 roster, shared by the Attendance tab (its own
  * class+date picker feeds this) and the Calendar tab's per-lesson attendance
@@ -46,8 +35,9 @@ export function AttendanceRosterTable({
   className,
   dateKey,
   isTwoHour,
-  lessonRate,
+  isPerLesson,
   getStatus,
+  getChargedAmount,
   onOptimisticChange,
   onCommitted,
 }: {
@@ -56,15 +46,28 @@ export function AttendanceRosterTable({
   className: string;
   dateKey: string;
   isTwoHour: boolean;
-  // Set only for a per_lesson-billed class - renders the "€X charged" hint
-  // so the teacher sees the billing consequence of the status they set.
-  lessonRate?: number | null;
+  // True only for a per_lesson-billed class - renders the "€X charged"
+  // hint so the teacher sees the billing consequence of the status they
+  // set. The amount itself comes from getChargedAmount, not computed
+  // from the class's current rate - a posted charge is frozen at
+  // whatever rate was in effect when it was marked (see
+  // post_lesson_charge_row()'s future-only repricing guard), so this can
+  // legitimately disagree with today's rate.
+  isPerLesson?: boolean;
   getStatus: (studentId: string) => AttendanceStatus | "";
+  // The amount actually posted for this student's current mark, read
+  // back from family_balance_transactions - null means nothing was
+  // charged (absent, or not yet known before the first status set).
+  getChargedAmount?: (studentId: string) => number | null;
   onOptimisticChange: (
     studentId: string,
     status: AttendanceStatus | "",
   ) => void;
-  onCommitted: (studentId: string, status: AttendanceStatus | "") => void;
+  onCommitted: (
+    studentId: string,
+    status: AttendanceStatus | "",
+    chargedAmount: number | null,
+  ) => void;
 }) {
   if (roster.length === 0) {
     return (
@@ -79,14 +82,14 @@ export function AttendanceRosterTable({
     status: AttendanceStatus | "",
   ) => {
     onOptimisticChange(studentId, status);
-    await setAttendanceAction({
+    const result = await setAttendanceAction({
       classId,
       className,
       studentId,
       attendanceDate: dateKey,
       status,
     });
-    onCommitted(studentId, status);
+    onCommitted(studentId, status, result.chargedAmount);
   };
 
   return (
@@ -171,13 +174,14 @@ export function AttendanceRosterTable({
                     </Button>
                   ) : null}
                 </div>
-                {typeof lessonRate === "number" && (
+                {isPerLesson && status !== "" && (
                   <p className="text-xs text-muted-foreground">
-                    {status === "absent"
-                      ? "Not charged"
-                      : status === ""
-                        ? null
-                        : `${formatEuro(lessonChargeAmount(status, lessonRate) ?? 0)} charged${status === "split" ? " (1+1)" : ""}`}
+                    {(() => {
+                      const amount = getChargedAmount?.(student.id) ?? null;
+                      return typeof amount === "number"
+                        ? `${formatEuro(amount)} charged${status === "split" ? " (1+1)" : ""}`
+                        : "Not charged";
+                    })()}
                   </p>
                 )}
                 </div>

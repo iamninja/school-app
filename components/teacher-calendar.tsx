@@ -26,6 +26,7 @@ import {
   rescheduleClassOccurrenceAction,
   updateCalendarEventAction,
 } from "@/app/protected/teacher/calendar-actions";
+import { getAttendanceAction } from "@/app/protected/teacher/actions";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -566,6 +567,56 @@ export function TeacherCalendar({
     () => students.filter((student) => !student.withdrawnAt),
     [students],
   );
+
+  // The amount actually posted per student for the selected date's
+  // per-lesson lessons - read back from the server (never computed from
+  // lessonRateByClassId), same reasoning as the Attendance tab's
+  // equivalent state: a posted charge can legitimately disagree with the
+  // class's current rate (see post_lesson_charge_row()'s future-only
+  // repricing guard).
+  const [lessonChargeByStudent, setLessonChargeByStudent] = React.useState<
+    Record<string, number | null>
+  >({});
+
+  React.useEffect(() => {
+    let isActive = true;
+
+    const loadLessonCharges = async () => {
+      const perLessonClassIds = attendanceLessons
+        .map((occurrence) => occurrence.classId)
+        .filter(
+          (classId): classId is string =>
+            !!classId && lessonRateByClassId?.[classId] !== undefined,
+        );
+
+      if (perLessonClassIds.length === 0) {
+        if (isActive) setLessonChargeByStudent({});
+        return;
+      }
+
+      try {
+        const results = await Promise.all(
+          perLessonClassIds.map((classId) =>
+            getAttendanceAction({ classId, attendanceDate: selectedDate }),
+          ),
+        );
+        if (!isActive) return;
+        const next: Record<string, number | null> = {};
+        results.flat().forEach((row) => {
+          next[row.student_id] = row.chargedAmount;
+        });
+        setLessonChargeByStudent(next);
+      } catch {
+        if (isActive) setLessonChargeByStudent({});
+      }
+    };
+
+    void loadLessonCharges();
+
+    return () => {
+      isActive = false;
+    };
+  }, [attendanceLessons, selectedDate, lessonRateByClassId]);
 
   // Falls back to the day's first lesson whenever the previously-active tab
   // isn't one of today's lessons - e.g. right after switching to a new
@@ -1123,7 +1174,7 @@ export function TeacherCalendar({
                     className={occurrence.className ?? ""}
                     dateKey={selectedDate}
                     isTwoHour={occurrence.isTwoHour}
-                    lessonRate={lessonRateByClassId?.[classId] ?? null}
+                    isPerLesson={lessonRateByClassId?.[classId] !== undefined}
                     getStatus={(studentId) =>
                       attendanceRecords.find(
                         (record) =>
@@ -1132,7 +1183,10 @@ export function TeacherCalendar({
                           record.studentId === studentId,
                       )?.status ?? ""
                     }
-                    onOptimisticChange={(studentId, status) =>
+                    getChargedAmount={(studentId) =>
+                      lessonChargeByStudent[studentId] ?? null
+                    }
+                    onOptimisticChange={(studentId, status) => {
                       onAttendanceRecordsChange((prev) =>
                         upsertAttendanceRecord(prev, {
                           classId,
@@ -1141,9 +1195,18 @@ export function TeacherCalendar({
                           attendanceDate: selectedDate,
                           status,
                         }),
-                      )
+                      );
+                      setLessonChargeByStudent((prev) => ({
+                        ...prev,
+                        [studentId]: null,
+                      }));
+                    }}
+                    onCommitted={(studentId, _status, chargedAmount) =>
+                      setLessonChargeByStudent((prev) => ({
+                        ...prev,
+                        [studentId]: chargedAmount,
+                      }))
                     }
-                    onCommitted={() => {}}
                   />
                 </TabsContent>
               );

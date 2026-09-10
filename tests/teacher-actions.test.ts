@@ -8,6 +8,7 @@ import {
   createStudentAction,
   deleteClassAction,
   enrollStudentInClassAction,
+  getAttendanceAction,
   resetParentAccountAction,
   resetStudentAccountAction,
   restoreClassAction,
@@ -323,7 +324,11 @@ describe("teacher actions - setAttendanceAction", () => {
       status: "",
     });
 
-    expect(result).toEqual({ studentId: "student-1", status: "" });
+    expect(result).toEqual({
+      studentId: "student-1",
+      status: "",
+      chargedAmount: null,
+    });
     const chain = client.from.mock.results[2].value;
     expect(chain.delete).toHaveBeenCalled();
     expect(chain.upsert).not.toHaveBeenCalled();
@@ -333,7 +338,7 @@ describe("teacher actions - setAttendanceAction", () => {
     const client = createMockSupabaseClient({
       classes: { data: { id: "class-1" }, error: null },
       students: { data: { id: "student-1" }, error: null },
-      attendance_records: { data: null, error: null },
+      attendance_records: { data: { id: "record-1" }, error: null },
     });
     vi.mocked(createClient).mockResolvedValue(client as never);
 
@@ -345,7 +350,11 @@ describe("teacher actions - setAttendanceAction", () => {
       status: "present",
     });
 
-    expect(result).toEqual({ studentId: "student-1", status: "present" });
+    expect(result).toEqual({
+      studentId: "student-1",
+      status: "present",
+      chargedAmount: null,
+    });
     const chain = client.from.mock.results[2].value;
     expect(chain.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -368,7 +377,7 @@ describe("teacher actions - setAttendanceAction", () => {
     const client = createMockSupabaseClient({
       classes: { data: { id: "class-1" }, error: null },
       students: { data: { id: "student-1" }, error: null },
-      attendance_records: { data: null, error: null },
+      attendance_records: { data: { id: "record-1" }, error: null },
     });
     vi.mocked(createClient).mockResolvedValue(client as never);
 
@@ -380,12 +389,37 @@ describe("teacher actions - setAttendanceAction", () => {
       status: "split",
     });
 
-    expect(result).toEqual({ studentId: "student-1", status: "split" });
+    expect(result).toEqual({
+      studentId: "student-1",
+      status: "split",
+      chargedAmount: null,
+    });
     const chain = client.from.mock.results[2].value;
     expect(chain.upsert).toHaveBeenCalledWith(
       expect.objectContaining({ status: "split" }),
       expect.anything(),
     );
+  });
+
+  it("reads back the actual posted charge, not a client-computed guess", async () => {
+    const client = createMockSupabaseClient({
+      classes: { data: { id: "class-1" }, error: null },
+      students: { data: { id: "student-1" }, error: null },
+      attendance_records: { data: { id: "record-1" }, error: null },
+      // What post_lesson_charge_row() actually posted for this mark.
+      family_balance_transactions: { data: { amount: 20 }, error: null },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    const result = await setAttendanceAction({
+      classId: "class-1",
+      className: "Algebra II",
+      studentId: "student-1",
+      attendanceDate: "2026-08-16",
+      status: "present",
+    });
+
+    expect(result.chargedAmount).toBe(20);
   });
 
   it("refuses to write attendance for a class this teacher doesn't own", async () => {
@@ -422,6 +456,43 @@ describe("teacher actions - setAttendanceAction", () => {
         status: "present",
       }),
     ).rejects.toThrow("Student not found");
+  });
+});
+
+describe("teacher actions - getAttendanceAction", () => {
+  beforeEach(() => {
+    vi.mocked(requireTeacher).mockResolvedValue(undefined);
+  });
+
+  it("returns the actual posted charge alongside status, not a computed guess", async () => {
+    const client = createMockSupabaseClient({
+      attendance_records: {
+        data: [
+          {
+            student_id: "student-1",
+            status: "present",
+            family_balance_transactions: [{ amount: 20 }],
+          },
+          {
+            student_id: "student-2",
+            status: "absent",
+            family_balance_transactions: [],
+          },
+        ],
+        error: null,
+      },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    const rows = await getAttendanceAction({
+      classId: "class-1",
+      attendanceDate: "2026-08-16",
+    });
+
+    expect(rows).toEqual([
+      { student_id: "student-1", status: "present", chargedAmount: 20 },
+      { student_id: "student-2", status: "absent", chargedAmount: null },
+    ]);
   });
 });
 
@@ -772,19 +843,29 @@ describe("teacher actions - updateClassAction", () => {
           },
           error: null,
         },
-        student_class_assignments: {
-          data: [
-            {
-              students: {
-                first_name: "Giannis",
-                last_name: "Verify",
-                tuition_amount: 120,
-                withdrawn_at: null,
+        student_class_assignments: [
+          {
+            // The initial per-class lookup: who's assigned, with tuition set.
+            data: [
+              {
+                student_id: "student-1",
+                students: {
+                  first_name: "Giannis",
+                  last_name: "Verify",
+                  tuition_amount: 120,
+                  withdrawn_at: null,
+                },
               },
-            },
-          ],
-          error: null,
-        },
+            ],
+            error: null,
+          },
+          {
+            // The "does this student have another monthly class" follow-up
+            // check - empty, so nothing excuses the tuition amount.
+            data: [],
+            error: null,
+          },
+        ],
       });
       vi.mocked(createClient).mockResolvedValue(client as never);
 
@@ -798,6 +879,56 @@ describe("teacher actions - updateClassAction", () => {
 
       expect(result.billingWarning).toMatch(/still has a monthly tuition set/i);
       expect(result.billingWarning).toContain("Giannis Verify");
+    });
+
+    it("does not warn when the student has tuition set for a separate monthly class", async () => {
+      const client = createMockSupabaseClient({
+        classes: {
+          data: {
+            id: "class-1",
+            name: "Private tutoring",
+            hours_per_week: 2,
+            billing_type: "per_lesson",
+            lesson_rate: 20,
+          },
+          error: null,
+        },
+        student_class_assignments: [
+          {
+            data: [
+              {
+                student_id: "student-1",
+                students: {
+                  first_name: "Giannis",
+                  last_name: "Verify",
+                  tuition_amount: 120,
+                  withdrawn_at: null,
+                },
+              },
+            ],
+            error: null,
+          },
+          {
+            // The student is also in "Algebra II", a monthly class - the
+            // tuition amount is legitimately for that, not this one.
+            data: [
+              { student_id: "student-1", classes: { billing_type: "monthly" } },
+            ],
+            error: null,
+          },
+        ],
+      });
+      vi.mocked(createClient).mockResolvedValue(client as never);
+
+      const result = await updateClassAction({
+        classId: "class-1",
+        name: "Private tutoring",
+        hoursPerWeek: 2,
+        billingType: "per_lesson",
+        lessonRate: 20,
+      });
+
+      expect(result.billingWarning).toBeNull();
     });
 
     it("warns when switching to monthly while an active student has no tuition set", async () => {
@@ -1043,6 +1174,29 @@ describe("teacher actions - enrollment", () => {
           classes: { data: { id: "class-1" }, error: null },
           student_class_assignments: {
             data: [
+              { classes: { name: "Private tutoring", billing_type: "per_lesson" } },
+            ],
+            error: null,
+          },
+        }) as never,
+      );
+
+      const result = await enrollStudentInClassAction("student-1", "class-1");
+
+      expect(result.billingWarning).toBeNull();
+    });
+
+    it("does not warn when the student is legitimately in both a monthly and a per-lesson class", async () => {
+      vi.mocked(createClient).mockResolvedValue(
+        createMockSupabaseClient({
+          students: {
+            data: { id: "student-1", tuition_amount: 120, withdrawn_at: null },
+            error: null,
+          },
+          classes: { data: { id: "class-1" }, error: null },
+          student_class_assignments: {
+            data: [
+              { classes: { name: "Algebra II", billing_type: "monthly" } },
               { classes: { name: "Private tutoring", billing_type: "per_lesson" } },
             ],
             error: null,

@@ -32,6 +32,16 @@ describe("deriveTuitionStatus", () => {
     ).toBe("due");
   });
 
+  it("never returns scholarship for a positive balance, even with a stale billsPerLesson flag", () => {
+    // Regression guard: billsPerLesson is derived from *current* class
+    // enrollment. A family that finished a per-lesson class (unenrolled
+    // or the class archived) while still owing money must not fall back
+    // to "Scholarship" just because the flag no longer reflects history.
+    expect(
+      deriveTuitionStatus({ balance: 180, monthlyAmount: 0, billsPerLesson: false }),
+    ).toBe("due");
+  });
+
   it("keeps the existing monthly-billing behaviour unchanged", () => {
     expect(deriveTuitionStatus({ balance: -10, monthlyAmount: 100 })).toBe("credit");
     expect(deriveTuitionStatus({ balance: 0, monthlyAmount: 100 })).toBe("clear");

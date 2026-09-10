@@ -47,7 +47,9 @@ async function computeBillingMismatchWarning(
 ): Promise<string | null> {
   const { data: rows, error } = await supabase
     .from("student_class_assignments")
-    .select("students!inner(first_name, last_name, tuition_amount, withdrawn_at)")
+    .select(
+      "student_id, students!inner(first_name, last_name, tuition_amount, withdrawn_at)",
+    )
     .eq("class_id", classId)
     .is("students.withdrawn_at", null);
 
@@ -55,22 +57,47 @@ async function computeBillingMismatchWarning(
     return null;
   }
 
-  const students = (rows ?? []).map(
-    (row) =>
-      row.students as unknown as {
-        first_name: string;
-        last_name: string;
-        tuition_amount: string | number | null;
-      },
-  );
+  const students = (rows ?? []).map((row) => ({
+    id: row.student_id as string,
+    ...(row.students as unknown as {
+      first_name: string;
+      last_name: string;
+      tuition_amount: string | number | null;
+    }),
+  }));
 
-  const mismatched =
+  let mismatched =
     billingType === "per_lesson"
       ? students.filter((s) => Number(s.tuition_amount ?? 0) > 0)
       : students.filter((s) => s.tuition_amount === null);
 
   if (mismatched.length === 0) {
     return null;
+  }
+
+  if (billingType === "per_lesson") {
+    // A tuition amount is only a double-charging risk if nothing else
+    // justifies it - a student in this per-lesson class AND a separate
+    // monthly class (a normal mix, e.g. group tuition plus a private
+    // hour) legitimately has tuition set for the monthly one.
+    const { data: otherMonthly } = await supabase
+      .from("student_class_assignments")
+      .select("student_id, classes!inner(billing_type)")
+      .in(
+        "student_id",
+        mismatched.map((s) => s.id),
+      )
+      .neq("class_id", classId)
+      .eq("classes.billing_type", "monthly");
+
+    const studentsWithOtherMonthly = new Set(
+      (otherMonthly ?? []).map((row) => row.student_id as string),
+    );
+    mismatched = mismatched.filter((s) => !studentsWithOtherMonthly.has(s.id));
+
+    if (mismatched.length === 0) {
+      return null;
+    }
   }
 
   const names = mismatched
@@ -120,20 +147,20 @@ async function computeStudentBillingMismatchWarning(
   const perLessonClasses = classes.filter((c) => c.billing_type === "per_lesson");
   const monthlyClasses = classes.filter((c) => c.billing_type === "monthly");
 
-  const warnings: string[] = [];
-
-  if (hasTuition && perLessonClasses.length > 0) {
-    warnings.push(
-      `also billed per lesson in ${perLessonClasses.map((c) => c.name).join(", ")} — clear their monthly tuition to avoid double-charging`,
-    );
+  // A tuition amount is only a double-charging risk if no OTHER class
+  // justifies it - a student in one monthly class and one per-lesson
+  // class (a normal mix) is fine, so only warn when there's no monthly
+  // class in the picture at all.
+  if (hasTuition && perLessonClasses.length > 0 && monthlyClasses.length === 0) {
+    return `also billed per lesson in ${perLessonClasses.map((c) => c.name).join(", ")} — clear their monthly tuition to avoid double-charging`;
   }
+  // Unconditional on what else the student is enrolled in: a monthly
+  // class with no tuition set generates zero revenue for it regardless.
   if (!hasTuition && monthlyClasses.length > 0) {
-    warnings.push(
-      `enrolled in ${monthlyClasses.map((c) => c.name).join(", ")} (monthly billing) with no monthly tuition set — won't be charged for it`,
-    );
+    return `enrolled in ${monthlyClasses.map((c) => c.name).join(", ")} (monthly billing) with no monthly tuition set — won't be charged for it`;
   }
 
-  return warnings.length > 0 ? warnings.join("; also ") : null;
+  return null;
 }
 
 const CLASS_COLUMNS =
@@ -1052,9 +1079,15 @@ export async function getAttendanceAction(data: {
 
   await requireTeacher(supabase, user.id);
 
+  // family_balance_transactions is embedded (not computed from
+  // class.lesson_rate) so this reflects what was ACTUALLY posted - a
+  // charge frozen at an old rate, or one that was never posted because
+  // the class wasn't per-lesson yet at the time, shows the truth instead
+  // of a client-side guess. See post_lesson_charge_row()'s future-only
+  // repricing guard for why these can disagree with the class's current rate.
   const { data: rows, error } = await supabase
     .from("attendance_records")
-    .select("student_id, status")
+    .select("student_id, status, family_balance_transactions(amount)")
     .eq("teacher_id", user.id)
     .eq("class_id", data.classId)
     .eq("attendance_date", data.attendanceDate);
@@ -1063,7 +1096,23 @@ export async function getAttendanceAction(data: {
     throw error;
   }
 
-  return rows ?? [];
+  return (rows ?? []).map((row) => ({
+    student_id: row.student_id,
+    status: row.status,
+    chargedAmount: toChargedAmount(row.family_balance_transactions),
+  }));
+}
+
+// family_balance_transactions is the "many" side of the embed (PostgREST
+// can't know the partial unique index caps it at one row per attendance
+// record), so it always comes back as an array - collapse it to the
+// single amount that's actually there, or null.
+function toChargedAmount(
+  transactions: unknown,
+): number | null {
+  const rows = transactions as Array<{ amount: string | number }> | null;
+  const amount = rows?.[0]?.amount;
+  return amount === undefined ? null : Number(amount);
 }
 
 export async function setAttendanceAction(data: {
@@ -1108,10 +1157,11 @@ export async function setAttendanceAction(data: {
       throw error;
     }
 
-    return { studentId: data.studentId, status: "" };
+    // The FK cascade already removed any lesson_charge with the record.
+    return { studentId: data.studentId, status: "", chargedAmount: null };
   }
 
-  const { error } = await supabase
+  const { data: row, error } = await supabase
     .from("attendance_records")
     .upsert(
       {
@@ -1123,11 +1173,27 @@ export async function setAttendanceAction(data: {
         status: data.status,
       },
       { onConflict: "teacher_id,class_id,student_id,attendance_date" }
-    );
+    )
+    .select("id")
+    .single();
 
   if (error) {
     throw error;
   }
 
-  return { studentId: data.studentId, status: data.status };
+  // Read back what post_lesson_charge_row() actually posted (or removed)
+  // for this mark, rather than computing a guess from the class's
+  // current rate - the two can legitimately disagree (see
+  // getAttendanceAction's chargedAmount comment).
+  const { data: transaction } = await supabase
+    .from("family_balance_transactions")
+    .select("amount")
+    .eq("attendance_record_id", row.id)
+    .maybeSingle();
+
+  return {
+    studentId: data.studentId,
+    status: data.status,
+    chargedAmount: transaction ? Number(transaction.amount) : null,
+  };
 }
