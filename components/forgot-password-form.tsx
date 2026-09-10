@@ -52,10 +52,15 @@ export function ForgotPasswordForm({
             <CardTitle className="text-2xl">Check Your Email</CardTitle>
             <CardDescription>Password reset instructions sent</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
             <p className="text-sm text-muted-foreground">
               If you registered using your email and password, you will receive
               a password reset email.
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Using an email your teacher set up for you and don&apos;t check
+              it? Ask your teacher to reset your account instead — no email
+              access needed.
             </p>
           </CardContent>
         </Card>

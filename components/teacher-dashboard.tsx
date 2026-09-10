@@ -21,6 +21,7 @@ import {
   ClipboardListIcon,
   EuroIcon,
   FileTextIcon,
+  InfoIcon,
   LayersIcon,
   PencilIcon,
   PlusIcon,
@@ -2589,6 +2590,13 @@ export function TeacherDashboard({
                           {student.email || "No email"}
                           {student.phone ? ` • ${student.phone}` : ""}
                         </div>
+                        <div
+                          className="mt-1 flex cursor-help items-center gap-1 text-xs text-muted-foreground"
+                          title="Updating an email: 1) Click Edit and change the email address (student or parent). 2) If they'd already registered with the old one, click Reset account below to sign them out and let them register again with the new address. Grades, attendance, and billing are never affected."
+                        >
+                          <InfoIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                          <span>How to update an email</span>
+                        </div>
                       </div>
                       <div className="flex items-center gap-2">
                         <Button
@@ -3024,6 +3032,9 @@ export function TeacherDashboard({
                               : ""
                           }
                         />
+                        <p className="text-xs text-muted-foreground">
+                          Doesn&apos;t need to be a real inbox — it&apos;s just their login. Update it anytime.
+                        </p>
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="student-phone">
@@ -3143,6 +3154,9 @@ export function TeacherDashboard({
                                 : ""
                             }
                           />
+                          <p className="text-xs text-muted-foreground">
+                            Doesn&apos;t need to be a real inbox — it&apos;s just their login. Update it anytime.
+                          </p>
                         </div>
                         <div className="space-y-2 sm:col-span-2">
                           <Label htmlFor="parent-phone">Parent phone</Label>
@@ -3539,6 +3553,9 @@ export function TeacherDashboard({
                               : ""
                           }
                         />
+                        <p className="text-xs text-muted-foreground">
+                          Doesn&apos;t need to be a real inbox — it&apos;s just their login. If they already have an account, reset it after changing this so they can register with the new address.
+                        </p>
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="edit-student-phone">
@@ -3619,6 +3636,9 @@ export function TeacherDashboard({
                                 : ""
                             }
                           />
+                          <p className="text-xs text-muted-foreground">
+                            Doesn&apos;t need to be a real inbox — it&apos;s just their login. If they already have an account, reset it after changing this so they can register with the new address.
+                          </p>
                         </div>
                         <div className="space-y-2 sm:col-span-2">
                           <Label htmlFor="edit-parent-phone">
