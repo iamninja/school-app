@@ -220,7 +220,11 @@ type ClassItem = {
   lessonRate: number | null;
 };
 
-type ScheduleSlotValue = { classId: string; isTwoHour: boolean };
+type ScheduleSlotValue = {
+  classId: string;
+  isTwoHour: boolean;
+  endTime: string | null;
+};
 type ScheduleState = Record<string, ScheduleSlotValue | null>;
 
 type StudentItem = {
@@ -270,6 +274,7 @@ type TeacherDashboardProps = {
     time: string;
     classId: string;
     isTwoHour?: boolean;
+    endTime?: string | null;
   }>;
   initialStudents: StudentItem[];
   initialFamilies?: FamilyItem[];
@@ -606,6 +611,7 @@ export function TeacherDashboard({
       initial[slotId] = {
         classId: slot.classId,
         isTwoHour: slot.isTwoHour ?? false,
+        endTime: slot.endTime ?? null,
       };
     });
     return initial;
@@ -1136,7 +1142,10 @@ export function TeacherDashboard({
       if (sourceSlotId) {
         next[sourceSlotId] = null;
       }
-      next[slotId] = { classId: classItem.id, isTwoHour };
+      // A moved/newly-placed slot always starts at its default window - see
+      // setScheduleSlotAction's upsert, which resets end_time server-side
+      // for the same reason.
+      next[slotId] = { classId: classItem.id, isTwoHour, endTime: null };
       return next;
     });
 
@@ -1196,7 +1205,11 @@ export function TeacherDashboard({
       });
       setSchedule((prev) => ({
         ...prev,
-        [slotId]: { classId: current.classId, isTwoHour: wantsTwoHour },
+        [slotId]: {
+          classId: current.classId,
+          isTwoHour: wantsTwoHour,
+          endTime: current.endTime,
+        },
       }));
     } catch (error: unknown) {
       toast.error(
@@ -1668,6 +1681,7 @@ export function TeacherDashboard({
           ...parseSlotId(slotId),
           classId: value.classId,
           isTwoHour: value.isTwoHour,
+          endTime: value.endTime,
         })),
     [schedule],
   );

@@ -432,6 +432,10 @@ export async function setScheduleSlotAction(data: {
     }
   }
 
+  // Always reset end_time on placement (a fresh row, a move, or a different
+  // class taking over this cell) - a custom window belongs to whichever
+  // placement created it, never inherited by whatever gets dropped there
+  // next. Only setScheduleSlotTimesAction ever sets a non-null end_time.
   const { data: row, error } = await supabase
     .from("class_schedule_slots")
     .upsert(
@@ -441,6 +445,7 @@ export async function setScheduleSlotAction(data: {
         time: data.time,
         class_id: data.classId,
         is_two_hour: isTwoHour,
+        end_time: null,
       },
       { onConflict: "teacher_id,day,time" }
     )

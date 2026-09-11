@@ -112,6 +112,7 @@ export function PortalUpcomingCard({
     day: string;
     time: string;
     is_two_hour?: boolean;
+    end_time?: string | null;
   }>;
   calendarEvents: Array<{
     id: string;
@@ -134,6 +135,7 @@ export function PortalUpcomingCard({
     day: slot.day,
     time: slot.time,
     isTwoHour: slot.is_two_hour,
+    endTime: slot.end_time,
   }));
   const projectionEvents: ProjectionEvent[] = calendarEvents.map((event) => ({
     id: event.id,
