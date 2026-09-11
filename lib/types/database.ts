@@ -78,6 +78,9 @@ export interface ClassScheduleSlot {
   day: string;
   time: string;
   is_two_hour?: boolean;
+  // The slot's real end time when customized away from the grid-derived
+  // default; null means derive it (see lib/schedule-grid.ts's slotWindow()).
+  end_time?: string | null;
   created_at?: string;
 }
 

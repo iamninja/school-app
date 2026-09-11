@@ -3,7 +3,7 @@
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { requireTeacher } from "@/lib/auth/require-teacher";
 import { ExpectedError } from "@/lib/expected-error";
-import { SCHEDULE_ROWS } from "@/lib/schedule-grid";
+import { SCHEDULE_ROWS, slotWindow, timeToMinutes } from "@/lib/schedule-grid";
 
 // The (day, time) one grid row below - null when `time` is that day's last
 // SCHEDULE_ROWS entry, since a 2-hour lesson can't extend past it.
@@ -444,7 +444,7 @@ export async function setScheduleSlotAction(data: {
       },
       { onConflict: "teacher_id,day,time" }
     )
-    .select("day, time, class_id, is_two_hour")
+    .select("day, time, class_id, is_two_hour, end_time")
     .single();
 
   if (error) {
@@ -456,6 +456,98 @@ export async function setScheduleSlotAction(data: {
     time: row.time,
     classId: row.class_id,
     isTwoHour: row.is_two_hour,
+    endTime: row.end_time,
+  };
+}
+
+// A slot's custom end time - null resets it to the grid-derived default.
+// Only ever changes end_time; the grid anchor `time` and `is_two_hour` are
+// untouched. See the "custom lesson times" project memory for why this is a
+// single end_time column rather than a start+end pair.
+export async function setScheduleSlotTimesAction(data: {
+  day: string;
+  time: string;
+  endTime: string | null;
+}) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error("Not authenticated");
+  }
+
+  await requireTeacher(supabase, user.id);
+
+  if (data.endTime !== null) {
+    if (!/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(data.endTime)) {
+      throw new ExpectedError("Enter a valid end time");
+    }
+    if (timeToMinutes(data.endTime) % 15 !== 0) {
+      throw new ExpectedError("End time must land on a 15-minute mark");
+    }
+
+    const column: "time" | "satTime" = data.day === "Sat" ? "satTime" : "time";
+    const axisStartMinutes = timeToMinutes(SCHEDULE_ROWS[0][column]);
+    const lastRow = SCHEDULE_ROWS[SCHEDULE_ROWS.length - 1];
+    const axisEndMinutes = timeToMinutes(lastRow[column]) + 60;
+
+    const window = slotWindow(data.day, data.time, { endTime: data.endTime });
+    if (
+      timeToMinutes(window.start) < axisStartMinutes ||
+      timeToMinutes(window.end) > axisEndMinutes
+    ) {
+      throw new ExpectedError("Custom time must stay within the day's schedule");
+    }
+
+    // Only other slots on the same day can possibly overlap - a default
+    // (non-customized) slot's derived window never overlaps another
+    // default slot's, since is_two_hour reservation already prevents that
+    // at placement time. This check only matters once a custom window can
+    // spill outside its own grid row.
+    const { data: siblingRows, error: siblingsError } = await supabase
+      .from("class_schedule_slots")
+      .select("time, is_two_hour, end_time")
+      .match({ teacher_id: user.id, day: data.day })
+      .neq("time", data.time);
+    if (siblingsError) {
+      throw siblingsError;
+    }
+
+    for (const sibling of siblingRows ?? []) {
+      const siblingWindow = slotWindow(data.day, sibling.time, {
+        isTwoHour: sibling.is_two_hour ?? false,
+        endTime: sibling.end_time,
+      });
+      const overlaps =
+        timeToMinutes(window.start) < timeToMinutes(siblingWindow.end) &&
+        timeToMinutes(siblingWindow.start) < timeToMinutes(window.end);
+      if (overlaps) {
+        throw new ExpectedError(
+          `That overlaps the ${sibling.time} lesson (${siblingWindow.start}–${siblingWindow.end})`,
+        );
+      }
+    }
+  }
+
+  const { data: row, error } = await supabase
+    .from("class_schedule_slots")
+    .update({ end_time: data.endTime })
+    .match({ teacher_id: user.id, day: data.day, time: data.time })
+    .select("day, time, class_id, is_two_hour, end_time")
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return {
+    day: row.day,
+    time: row.time,
+    classId: row.class_id,
+    isTwoHour: row.is_two_hour,
+    endTime: row.end_time,
   };
 }
 
