@@ -102,6 +102,66 @@ export function slotWindow(
   return recurringLessonWindow(day, time, opts.isTwoHour);
 }
 
+// A clock time's position on a day's grid axis, in row units: the integer
+// part is the row index, the fractional part is how far into that row's own
+// real-duration span the time falls (0 = the row's top edge, 1 = its bottom
+// edge / the next row's top edge). Every row occupies exactly 1.0 unit
+// regardless of its real duration (45 vs 60 minutes) - that's what makes a
+// row-unit distance directly proportional to the grid's actual pixel
+// geometry once rows are rendered at a uniform height, even though a
+// weekday row's real duration isn't uniform (rows 0-1 are 45 min, the rest
+// are 60). Returns null for a time outside every row's span - shouldn't
+// happen given setScheduleSlotTimesAction's own bounds check, but the
+// caller falls back to whole-cell rendering rather than trusting that.
+function timeToRowPosition(day: string, time: string): number | null {
+  const column: "time" | "satTime" = day === "Sat" ? "satTime" : "time";
+  const minutes = timeToMinutes(time);
+  for (let i = 0; i < SCHEDULE_ROWS.length; i++) {
+    const rowStart = timeToMinutes(SCHEDULE_ROWS[i][column]);
+    const nextRow = SCHEDULE_ROWS[i + 1];
+    const rowEnd = nextRow ? timeToMinutes(nextRow[column]) : rowStart + 60;
+    if (minutes >= rowStart && minutes <= rowEnd) {
+      return i + (minutes - rowStart) / (rowEnd - rowStart);
+    }
+  }
+  return null;
+}
+
+/**
+ * Where a real (possibly cross-row) window sits within the Schedule tab's
+ * grid, for rendering a customized lesson's card at its exact position
+ * instead of filling its whole grid cell. `startRow`/`endRow` are the grid
+ * row indexes the card's wrapper must span; `topPct`/`heightPct` position
+ * the card within that spanning wrapper (not within a single row - a
+ * wrapper spanning N rows is N times taller than one row, so these are
+ * fractions of the whole span). Returns null if the window falls outside
+ * the grid entirely, in which case the caller should render the old
+ * whole-cell way rather than nothing.
+ */
+export function windowToRowGeometry(
+  day: string,
+  window: { start: string; end: string },
+): { startRow: number; endRow: number; topPct: number; heightPct: number } | null {
+  const startPos = timeToRowPosition(day, window.start);
+  const endPos = timeToRowPosition(day, window.end);
+  if (startPos === null || endPos === null) return null;
+
+  const startRow = Math.floor(startPos);
+  // An end landing exactly on a row boundary belongs to the row above it
+  // (the lesson ends at that row's bottom edge) rather than the row below
+  // (which it only touches, not enters) - Number.isInteger catches that
+  // exact-boundary case; Math.floor alone would put it in the row below.
+  const endRow = Number.isInteger(endPos) ? endPos - 1 : Math.floor(endPos);
+  const spanRows = endRow - startRow + 1;
+
+  return {
+    startRow,
+    endRow,
+    topPct: ((startPos - startRow) / spanRows) * 100,
+    heightPct: ((endPos - startPos) / spanRows) * 100,
+  };
+}
+
 /**
  * Display label for a lesson's time - just the start ("16:00") for a normal
  * 1-hour lesson, a "start–end" range for a two-hour one or anything with a
