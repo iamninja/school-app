@@ -41,7 +41,7 @@ import {
   formatClassDateRangeEn,
 } from "@/lib/portal-labels-en";
 import { fromIsoDate } from "@/lib/calendar-projection";
-import { lessonTimeLabel } from "@/lib/schedule-grid";
+import { lessonTimeLabel, slotWindow } from "@/lib/schedule-grid";
 
 /**
  * English counterpart to student-dashboard.tsx, for the public /demo-en
@@ -78,6 +78,7 @@ type StudentDashboardEnProps = {
     day: string;
     time: string;
     is_two_hour?: boolean;
+    end_time?: string | null;
   }>;
   attendance: Array<{
     class_id: string | null;
@@ -397,10 +398,18 @@ export function StudentDashboardEn(props: StudentDashboardEnProps) {
                                     {DAY_LABELS_EN[schedule.day] ??
                                       schedule.day}{" "}
                                     at{" "}
-                                    {lessonTimeLabel(
-                                      schedule.time,
-                                      schedule.is_two_hour ?? false,
-                                    )}
+                                    {(() => {
+                                      const window = schedule.end_time
+                                        ? slotWindow(schedule.day, schedule.time, {
+                                            endTime: schedule.end_time,
+                                          })
+                                        : null;
+                                      return lessonTimeLabel(
+                                        window ? window.start : schedule.time,
+                                        schedule.is_two_hour ?? false,
+                                        schedule.end_time,
+                                      );
+                                    })()}
                                   </span>
                                 ),
                               )}

@@ -46,7 +46,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { CLASS_GRADE_LABELS } from "@/lib/class-grades";
 import { fromIsoDate } from "@/lib/calendar-projection";
-import { lessonTimeLabel } from "@/lib/schedule-grid";
+import { lessonTimeLabel, slotWindow } from "@/lib/schedule-grid";
 import type {
   PendingGradingItem,
   QuizAttemptAnswerReview,
@@ -98,7 +98,12 @@ type StudentItem = {
 
 type TeacherClassDetailProps = {
   classItem: ClassItem;
-  scheduledSlots: { day: string; time: string; isTwoHour?: boolean }[];
+  scheduledSlots: {
+    day: string;
+    time: string;
+    isTwoHour?: boolean;
+    endTime?: string | null;
+  }[];
   enrolledStudents: StudentItem[];
   allStudents: StudentItem[];
   assignedQuizzes: TeacherQuizListItem[];
@@ -585,12 +590,21 @@ export function TeacherClassDetail({
                     Not yet scheduled.
                   </span>
                 ) : (
-                  sortedSlots.map((slot) => (
-                    <Badge key={`${slot.day}-${slot.time}`} variant="outline">
-                      {slot.day} &middot;{" "}
-                      {lessonTimeLabel(slot.time, slot.isTwoHour ?? false)}
-                    </Badge>
-                  ))
+                  sortedSlots.map((slot) => {
+                    const window = slot.endTime
+                      ? slotWindow(slot.day, slot.time, { endTime: slot.endTime })
+                      : null;
+                    return (
+                      <Badge key={`${slot.day}-${slot.time}`} variant="outline">
+                        {slot.day} &middot;{" "}
+                        {lessonTimeLabel(
+                          window ? window.start : slot.time,
+                          slot.isTwoHour ?? false,
+                          slot.endTime,
+                        )}
+                      </Badge>
+                    );
+                  })
                 )}
               </div>
             </div>

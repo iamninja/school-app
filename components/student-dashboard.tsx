@@ -41,7 +41,7 @@ import {
   ASSESSMENT_TAKEN_LATE_LABEL_EL,
 } from "@/lib/greek-labels";
 import { fromIsoDate } from "@/lib/calendar-projection";
-import { lessonTimeLabel } from "@/lib/schedule-grid";
+import { lessonTimeLabel, slotWindow } from "@/lib/schedule-grid";
 
 type StudentDashboardProps = {
   student: {
@@ -71,6 +71,7 @@ type StudentDashboardProps = {
     day: string;
     time: string;
     is_two_hour?: boolean;
+    end_time?: string | null;
   }>;
   attendance: Array<{
     class_id: string | null;
@@ -403,10 +404,18 @@ export function StudentDashboard(props: StudentDashboardProps) {
                                     {DAY_LABELS_EL[schedule.day] ??
                                       schedule.day}{" "}
                                     στις{" "}
-                                    {lessonTimeLabel(
-                                      schedule.time,
-                                      schedule.is_two_hour ?? false,
-                                    )}
+                                    {(() => {
+                                      const window = schedule.end_time
+                                        ? slotWindow(schedule.day, schedule.time, {
+                                            endTime: schedule.end_time,
+                                          })
+                                        : null;
+                                      return lessonTimeLabel(
+                                        window ? window.start : schedule.time,
+                                        schedule.is_two_hour ?? false,
+                                        schedule.end_time,
+                                      );
+                                    })()}
                                   </span>
                                 ),
                               )}

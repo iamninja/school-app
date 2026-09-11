@@ -441,6 +441,7 @@ export interface StudentDashboardData {
     day: string;
     time: string;
     is_two_hour?: boolean;
+    end_time?: string | null;
   }>;
   attendance: Array<{
     class_id: string | null;
@@ -477,6 +478,7 @@ export interface ParentDashboardChild {
     day: string;
     time: string;
     is_two_hour?: boolean;
+    end_time?: string | null;
   }>;
   attendance: Array<{
     class_id: string | null;
