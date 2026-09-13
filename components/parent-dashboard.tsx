@@ -11,6 +11,7 @@ import {
   ClipboardListIcon,
   ClockIcon,
   EuroIcon,
+  ExternalLinkIcon,
   FileTextIcon,
   PenLine,
   PrinterIcon,
@@ -139,7 +140,8 @@ function AssessmentRow({ assessment }: { assessment: AssessmentSummary }) {
   const whenLabel = formatAssessmentWhenLabel(assessment);
   const hasDetails = Boolean(
     assessment.description ||
-      (assessment.status === "marked" && assessment.teacherComment),
+      (assessment.status === "marked" &&
+        (assessment.teacherComment || assessment.gradedPaperUrl)),
   );
 
   const summary = (
@@ -216,6 +218,18 @@ function AssessmentRow({ assessment }: { assessment: AssessmentSummary }) {
               <span className="font-medium text-foreground/80">Σχόλιο: </span>
               {assessment.teacherComment}
             </p>
+          ) : null}
+          {assessment.status === "marked" && assessment.gradedPaperUrl ? (
+            <Button variant="outline" size="sm" className="h-7" asChild>
+              <a
+                href={assessment.gradedPaperUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <ExternalLinkIcon className="mr-1 size-3.5" aria-hidden="true" />
+                Δείτε το διορθωμένο γραπτό
+              </a>
+            </Button>
           ) : null}
         </div>
       ) : null}

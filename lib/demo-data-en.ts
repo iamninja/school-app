@@ -219,6 +219,7 @@ const ALEX: StudentDashboardData = {
       status: "registered",
       score: null,
       teacherComment: null,
+      gradedPaperUrl: null,
       isLate: false,
     },
     {
@@ -235,6 +236,7 @@ const ALEX: StudentDashboardData = {
       status: "registered",
       score: null,
       teacherComment: null,
+      gradedPaperUrl: null,
       isLate: false,
     },
     {
@@ -253,6 +255,7 @@ const ALEX: StudentDashboardData = {
       status: "marked",
       score: 14,
       teacherComment: "Good effort - watch your dot product arithmetic.",
+      gradedPaperUrl: null,
       isLate: true,
     },
     {
@@ -271,6 +274,7 @@ const ALEX: StudentDashboardData = {
       status: "taken",
       score: null,
       teacherComment: null,
+      gradedPaperUrl: null,
       isLate: false,
     },
     {
@@ -287,6 +291,7 @@ const ALEX: StudentDashboardData = {
       status: "marked",
       score: 18,
       teacherComment: "Great work!",
+      gradedPaperUrl: "https://drive.google.com/file/d/demo-factoring-graded-paper/view",
       isLate: false,
     },
   ],
@@ -740,6 +745,7 @@ const SOPHIE: ParentDashboardData["kids"][number] = {
       status: "registered",
       score: null,
       teacherComment: null,
+      gradedPaperUrl: null,
       isLate: false,
     },
     {
@@ -756,6 +762,7 @@ const SOPHIE: ParentDashboardData["kids"][number] = {
       status: "marked",
       score: 17,
       teacherComment: "Great work - just one slip on the last problem.",
+      gradedPaperUrl: null,
       isLate: false,
     },
   ],

@@ -4,7 +4,10 @@ import * as React from "react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import {
+  AlertCircleIcon,
   ArrowLeftIcon,
+  CheckCircle2Icon,
+  Loader2Icon,
   PencilIcon,
   PlusIcon,
   Trash2Icon,
@@ -13,6 +16,7 @@ import {
 
 import {
   addStudentToAssessmentAction,
+  checkGradedPaperLinkAction,
   clearAssessmentMarkAction,
   createAssessmentAction,
   deleteAssessmentAction,
@@ -45,6 +49,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { AssessmentStatusBadge } from "@/components/assessment-status-badge";
 import { fromIsoDate } from "@/lib/calendar-projection";
 import { upsertAssessmentAssignment } from "@/lib/assessment-status";
@@ -1059,6 +1068,16 @@ function AssessmentDetailView({
                             {assignment.teacher_comment}
                           </div>
                         ) : null}
+                        {assignment.graded_paper_url ? (
+                          <a
+                            href={assignment.graded_paper_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-xs text-primary underline"
+                          >
+                            Paper
+                          </a>
+                        ) : null}
                       </div>
                     ) : (
                       "—"
@@ -1309,12 +1328,47 @@ function MarkEntryForm({
     assignment.score !== null ? String(assignment.score) : "",
   );
   const [comment, setComment] = React.useState(assignment.teacher_comment ?? "");
+  const [gradedPaperUrl, setGradedPaperUrl] = React.useState(
+    assignment.graded_paper_url ?? "",
+  );
   const [takenAtLocal, setTakenAtLocal] = React.useState(
     assignment.taken_at
       ? toDatetimeLocalValue(assignment.taken_at)
       : toDatetimeLocalValue(new Date().toISOString()),
   );
   const [isSaving, setIsSaving] = React.useState(false);
+
+  const [linkCheck, setLinkCheck] = React.useState<
+    | { status: "idle" }
+    | { status: "checking" }
+    | { status: "ok" }
+    | { status: "bad"; reason: string }
+  >({ status: "idle" });
+
+  React.useEffect(() => {
+    const url = gradedPaperUrl.trim();
+    if (!url) {
+      setLinkCheck({ status: "idle" });
+      return;
+    }
+
+    let cancelled = false;
+    setLinkCheck({ status: "checking" });
+    const timer = setTimeout(async () => {
+      const result = await checkGradedPaperLinkAction(url);
+      if (cancelled) return;
+      setLinkCheck(
+        result.ok
+          ? { status: "ok" }
+          : { status: "bad", reason: result.reason },
+      );
+    }, 500);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [gradedPaperUrl]);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -1323,6 +1377,7 @@ function MarkEntryForm({
       const updated = await enterAssessmentMarkAction(assignment.id, {
         score: Number(score),
         teacherComment: comment || undefined,
+        gradedPaperUrl: gradedPaperUrl.trim() || undefined,
         takenAt: takenAtLocal ? new Date(takenAtLocal).toISOString() : undefined,
       });
       onSaved(updated);
@@ -1371,6 +1426,45 @@ function MarkEntryForm({
           value={comment}
           onChange={(e) => setComment(e.target.value)}
         />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="mark-graded-paper-url">
+          Graded paper link (optional)
+        </Label>
+        <div className="flex items-center gap-2">
+          <Input
+            id="mark-graded-paper-url"
+            type="url"
+            placeholder="https://drive.google.com/..."
+            value={gradedPaperUrl}
+            onChange={(e) => setGradedPaperUrl(e.target.value)}
+            className="flex-1"
+          />
+          {linkCheck.status === "checking" ? (
+            <Loader2Icon
+              className="size-4 shrink-0 animate-spin text-muted-foreground"
+              aria-label="Checking link…"
+            />
+          ) : linkCheck.status === "ok" ? (
+            <CheckCircle2Icon
+              className="size-5 shrink-0 text-green-600"
+              aria-label="Link looks shareable"
+            />
+          ) : linkCheck.status === "bad" ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  className="shrink-0"
+                  aria-label={linkCheck.reason}
+                >
+                  <AlertCircleIcon className="size-5 text-destructive" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>{linkCheck.reason}</TooltipContent>
+            </Tooltip>
+          ) : null}
+        </div>
       </div>
       <DialogFooter>
         <Button type="submit" disabled={isSaving}>

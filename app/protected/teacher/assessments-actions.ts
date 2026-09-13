@@ -30,7 +30,7 @@ const VALID_GRADES = new Set([
 
 const ASSIGNMENT_COLUMNS =
   "id, assessment_id, student_id, kind, effective_scheduled_date, effective_scheduled_time, " +
-  "effective_deadline_at, taken_at, status, score, teacher_comment, created_at";
+  "effective_deadline_at, taken_at, status, score, teacher_comment, graded_paper_url, created_at";
 
 const ASSIGNMENT_COLUMNS_WITH_STUDENT = `${ASSIGNMENT_COLUMNS}, students:student_id (first_name, last_name)`;
 
@@ -69,6 +69,89 @@ function isValidDateTimeString(value: string): boolean {
   return !Number.isNaN(new Date(value).getTime());
 }
 
+function isValidHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+// Lightweight SSRF guard for checkGradedPaperLinkAction below - this is a
+// server-side fetch of a teacher-supplied URL, so it shouldn't double as an
+// internal port-scanner. String-based only (no DNS resolution, so it won't
+// catch DNS rebinding) - proportionate to the threat model here (a single
+// trusted teacher account), not a general-purpose security control.
+function isPrivateOrLocalHostname(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  if (host === "localhost" || host === "0.0.0.0" || host === "::1") return true;
+  if (/^127\./.test(host)) return true;
+  if (/^10\./.test(host)) return true;
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(host)) return true;
+  if (/^192\.168\./.test(host)) return true;
+  if (/^169\.254\./.test(host)) return true;
+  return false;
+}
+
+// Anonymous, cookie-less fetch of a teacher-supplied "graded paper" link -
+// this is a good proxy for "can a student/parent who clicks this link open
+// it," since no Google session of the teacher's is involved, same as the
+// student/parent clicking it cold. Heuristic, not a guarantee: Google could
+// change these pages, and a file shared with specific accounts that shows
+// an in-app "request access" page rather than bouncing to sign-in would be
+// missed - good enough to catch the common "forgot to share" mistake.
+export async function checkGradedPaperLinkAction(
+  url: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  await requireTeacherSession();
+
+  if (!isValidHttpUrl(url)) {
+    return {
+      ok: false,
+      reason: "Enter a valid link starting with http:// or https://",
+    };
+  }
+
+  const parsed = new URL(url);
+  if (isPrivateOrLocalHostname(parsed.hostname)) {
+    return { ok: false, reason: "This link isn't reachable from the internet" };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const response = await fetch(parsed.toString(), {
+      method: "GET",
+      redirect: "follow",
+      signal: controller.signal,
+    });
+    // Only headers/the final URL matter - stop the body download
+    // immediately so a link to a huge file doesn't get pulled through the
+    // server.
+    response.body?.cancel().catch(() => {});
+
+    if (new URL(response.url).hostname === "accounts.google.com") {
+      return {
+        ok: false,
+        reason:
+          'This looks like a Google Drive/Docs link that isn\'t shared. Open it in Drive, click Share, and set it to "Anyone with the link."',
+      };
+    }
+    if (!response.ok) {
+      return {
+        ok: false,
+        reason: `This link returned an error (${response.status})`,
+      };
+    }
+    return { ok: true };
+  } catch {
+    return { ok: false, reason: "Couldn't reach this link - double-check the URL" };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 type RawAssignmentRow = {
   id: string;
   assessment_id: string;
@@ -81,6 +164,7 @@ type RawAssignmentRow = {
   status: AssessmentAssignmentStatus;
   score: number | null;
   teacher_comment: string | null;
+  graded_paper_url: string | null;
   created_at: string;
   students: { first_name: string; last_name: string } | null;
 };
@@ -100,6 +184,7 @@ function toTeacherAssignmentRow(
     status: row.status,
     score: row.score,
     teacher_comment: row.teacher_comment,
+    graded_paper_url: row.graded_paper_url,
     created_at: row.created_at,
     studentName: row.students
       ? `${row.students.first_name} ${row.students.last_name}`.trim()
@@ -561,7 +646,12 @@ export async function markAssessmentTakenAction(
 
 export async function enterAssessmentMarkAction(
   assignmentId: string,
-  input: { score: number; teacherComment?: string; takenAt?: string },
+  input: {
+    score: number;
+    teacherComment?: string;
+    gradedPaperUrl?: string;
+    takenAt?: string;
+  },
 ): Promise<TeacherAssessmentAssignmentRow> {
   const { supabase, userId } = await requireTeacherSession();
 
@@ -584,6 +674,11 @@ export async function enterAssessmentMarkAction(
   if (input.takenAt && !isValidDateTimeString(input.takenAt)) {
     throw new ExpectedError("Pick a valid date/time");
   }
+  if (input.gradedPaperUrl && !isValidHttpUrl(input.gradedPaperUrl.trim())) {
+    throw new ExpectedError(
+      "Enter a valid link (starting with http:// or https://)",
+    );
+  }
 
   // taken_at is set once and never overwritten again (see
   // lib/assessment-status.ts) - only fill it in here if this is the first
@@ -596,6 +691,7 @@ export async function enterAssessmentMarkAction(
       status: "marked",
       score: input.score,
       teacher_comment: input.teacherComment?.trim() || null,
+      graded_paper_url: input.gradedPaperUrl?.trim() || null,
       taken_at: takenAt,
     })
     .eq("id", assignmentId)
@@ -630,7 +726,12 @@ export async function clearAssessmentMarkAction(
 
   const { data, error } = await supabase
     .from("assessment_assignments")
-    .update({ status: "taken", score: null, teacher_comment: null })
+    .update({
+      status: "taken",
+      score: null,
+      teacher_comment: null,
+      graded_paper_url: null,
+    })
     .eq("id", assignmentId)
     .eq("teacher_id", userId)
     .select(ASSIGNMENT_COLUMNS_WITH_STUDENT)

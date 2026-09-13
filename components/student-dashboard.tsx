@@ -10,6 +10,7 @@ import {
   ClipboardCheck,
   ClipboardListIcon,
   ClockIcon,
+  ExternalLinkIcon,
   UserRound,
 } from "lucide-react";
 
@@ -20,6 +21,7 @@ import {
   StatTile,
 } from "@/components/portal-shell";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StudentQuizPanel } from "@/components/student-quiz-panel";
 import { PortalHistoryDialog } from "@/components/portal-history-dialog";
@@ -117,7 +119,8 @@ function AssessmentRow({ assessment }: { assessment: AssessmentSummary }) {
   const whenLabel = formatAssessmentWhenLabel(assessment);
   const hasDetails = Boolean(
     assessment.description ||
-      (assessment.status === "marked" && assessment.teacherComment),
+      (assessment.status === "marked" &&
+        (assessment.teacherComment || assessment.gradedPaperUrl)),
   );
 
   const summary = (
@@ -191,6 +194,18 @@ function AssessmentRow({ assessment }: { assessment: AssessmentSummary }) {
               <span className="font-medium text-foreground/80">Σχόλιο: </span>
               {assessment.teacherComment}
             </p>
+          ) : null}
+          {assessment.status === "marked" && assessment.gradedPaperUrl ? (
+            <Button variant="outline" size="sm" className="h-7" asChild>
+              <a
+                href={assessment.gradedPaperUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <ExternalLinkIcon className="mr-1 size-3.5" aria-hidden="true" />
+                Δείτε το διορθωμένο γραπτό
+              </a>
+            </Button>
           ) : null}
         </div>
       ) : null}
