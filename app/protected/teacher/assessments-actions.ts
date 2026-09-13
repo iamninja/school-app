@@ -78,6 +78,80 @@ function isValidHttpUrl(value: string): boolean {
   }
 }
 
+// Lightweight SSRF guard for checkGradedPaperLinkAction below - this is a
+// server-side fetch of a teacher-supplied URL, so it shouldn't double as an
+// internal port-scanner. String-based only (no DNS resolution, so it won't
+// catch DNS rebinding) - proportionate to the threat model here (a single
+// trusted teacher account), not a general-purpose security control.
+function isPrivateOrLocalHostname(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  if (host === "localhost" || host === "0.0.0.0" || host === "::1") return true;
+  if (/^127\./.test(host)) return true;
+  if (/^10\./.test(host)) return true;
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(host)) return true;
+  if (/^192\.168\./.test(host)) return true;
+  if (/^169\.254\./.test(host)) return true;
+  return false;
+}
+
+// Anonymous, cookie-less fetch of a teacher-supplied "graded paper" link -
+// this is a good proxy for "can a student/parent who clicks this link open
+// it," since no Google session of the teacher's is involved, same as the
+// student/parent clicking it cold. Heuristic, not a guarantee: Google could
+// change these pages, and a file shared with specific accounts that shows
+// an in-app "request access" page rather than bouncing to sign-in would be
+// missed - good enough to catch the common "forgot to share" mistake.
+export async function checkGradedPaperLinkAction(
+  url: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  await requireTeacherSession();
+
+  if (!isValidHttpUrl(url)) {
+    return {
+      ok: false,
+      reason: "Enter a valid link starting with http:// or https://",
+    };
+  }
+
+  const parsed = new URL(url);
+  if (isPrivateOrLocalHostname(parsed.hostname)) {
+    return { ok: false, reason: "This link isn't reachable from the internet" };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const response = await fetch(parsed.toString(), {
+      method: "GET",
+      redirect: "follow",
+      signal: controller.signal,
+    });
+    // Only headers/the final URL matter - stop the body download
+    // immediately so a link to a huge file doesn't get pulled through the
+    // server.
+    response.body?.cancel().catch(() => {});
+
+    if (new URL(response.url).hostname === "accounts.google.com") {
+      return {
+        ok: false,
+        reason:
+          'This looks like a Google Drive/Docs link that isn\'t shared. Open it in Drive, click Share, and set it to "Anyone with the link."',
+      };
+    }
+    if (!response.ok) {
+      return {
+        ok: false,
+        reason: `This link returned an error (${response.status})`,
+      };
+    }
+    return { ok: true };
+  } catch {
+    return { ok: false, reason: "Couldn't reach this link - double-check the URL" };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 type RawAssignmentRow = {
   id: string;
   assessment_id: string;

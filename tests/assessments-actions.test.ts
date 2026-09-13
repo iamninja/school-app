@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { createClient } from "@/lib/supabase/server";
 import { requireTeacher } from "@/lib/auth/require-teacher";
 import { ExpectedError } from "@/lib/expected-error";
@@ -10,6 +10,7 @@ import {
   markAssessmentTakenAction,
   enterAssessmentMarkAction,
   clearAssessmentMarkAction,
+  checkGradedPaperLinkAction,
 } from "@/app/protected/teacher/assessments-actions";
 import { createMockSupabaseClient } from "./support/mock-supabase";
 
@@ -567,5 +568,113 @@ describe("clearAssessmentMarkAction", () => {
     expect(updateCall.status).toBe("taken");
     expect(updateCall.score).toBeNull();
     expect(updateCall.graded_paper_url).toBeNull();
+  });
+});
+
+describe("checkGradedPaperLinkAction", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(requireTeacher).mockResolvedValue(undefined);
+    const client = createMockSupabaseClient({});
+    vi.mocked(createClient).mockResolvedValue(client as never);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("rejects an invalid URL without making a network request", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await checkGradedPaperLinkAction("not a url");
+
+    expect(result).toEqual({
+      ok: false,
+      reason: "Enter a valid link starting with http:// or https://",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a link that resolves to a private/local hostname", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await checkGradedPaperLinkAction("http://localhost:3000/x");
+
+    expect(result).toEqual({
+      ok: false,
+      reason: "This link isn't reachable from the internet",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("accepts a link that resolves cleanly on a non-Google host", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        url: "https://example.com/paper.pdf",
+        ok: true,
+        status: 200,
+      })),
+    );
+
+    const result = await checkGradedPaperLinkAction("https://example.com/paper.pdf");
+
+    expect(result).toEqual({ ok: true });
+  });
+
+  it("rejects a Drive link that bounces to a Google sign-in wall", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        url: "https://accounts.google.com/ServiceLogin?continue=...",
+        ok: false,
+        status: 200,
+      })),
+    );
+
+    const result = await checkGradedPaperLinkAction(
+      "https://drive.google.com/file/d/abc123/view",
+    );
+
+    expect(result.ok).toBe(false);
+    expect((result as { ok: false; reason: string }).reason).toMatch(
+      /isn't shared/,
+    );
+  });
+
+  it("rejects a link that returns an error status", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        url: "https://example.com/gone.pdf",
+        ok: false,
+        status: 404,
+      })),
+    );
+
+    const result = await checkGradedPaperLinkAction("https://example.com/gone.pdf");
+
+    expect(result).toEqual({
+      ok: false,
+      reason: "This link returned an error (404)",
+    });
+  });
+
+  it("rejects a link the server can't reach", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("network error");
+      }),
+    );
+
+    const result = await checkGradedPaperLinkAction("https://example.com/unreachable");
+
+    expect(result).toEqual({
+      ok: false,
+      reason: "Couldn't reach this link - double-check the URL",
+    });
   });
 });
