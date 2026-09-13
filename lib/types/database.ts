@@ -818,6 +818,7 @@ export interface AssessmentAssignment {
   status: AssessmentAssignmentStatus;
   score: number | null;
   teacher_comment: string | null;
+  graded_paper_url: string | null;
   created_at: string;
 }
 
@@ -866,6 +867,11 @@ export interface AssessmentSummary {
   status: AssessmentAssignmentStatus;
   score: number | null;
   teacherComment: string | null;
+  // Optional link to the graded paper (e.g. a Google Drive share link),
+  // set alongside teacherComment at marking time. Absent unless the
+  // teacher attached one - the "view graded paper" button only renders
+  // when this is non-null.
+  gradedPaperUrl: string | null;
   isLate: boolean;
 }
 

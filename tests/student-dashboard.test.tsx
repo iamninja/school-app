@@ -138,6 +138,7 @@ function makeAssessment(
     status: "registered",
     score: null,
     teacherComment: null,
+    gradedPaperUrl: null,
     isLate: false,
     ...overrides,
   };
@@ -205,6 +206,50 @@ describe("StudentDashboard assessments", () => {
     await user.click(screen.getByText("Pop Quiz"));
 
     expect(screen.getByText(/κεφάλαια 3-5/i)).toBeInTheDocument();
+  });
+
+  it("shows a 'view graded paper' button once expanded when a graded paper link is set", async () => {
+    const user = userEvent.setup();
+    render(
+      <StudentDashboard
+        {...baseProps}
+        assessments={[
+          makeAssessment({
+            status: "marked",
+            score: 18,
+            gradedPaperUrl: "https://drive.google.com/file/d/abc123/view",
+          }),
+        ]}
+      />,
+    );
+
+    await user.click(screen.getByText("Pop Quiz"));
+
+    expect(
+      screen.getByRole("link", { name: /διορθωμένο γραπτό/i }),
+    ).toHaveAttribute("href", "https://drive.google.com/file/d/abc123/view");
+  });
+
+  it("shows no graded paper button when marked without a link", async () => {
+    const user = userEvent.setup();
+    render(
+      <StudentDashboard
+        {...baseProps}
+        assessments={[
+          makeAssessment({
+            status: "marked",
+            score: 18,
+            teacherComment: "Καλή δουλειά",
+          }),
+        ]}
+      />,
+    );
+
+    await user.click(screen.getByText("Pop Quiz"));
+
+    expect(
+      screen.queryByRole("link", { name: /διορθωμένο γραπτό/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("does not make a row clickable when it has no description or comment", () => {

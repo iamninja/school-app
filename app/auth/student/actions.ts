@@ -355,7 +355,7 @@ export async function getStudentDashboardDataAction(): Promise<
   const { data: assessmentAssignmentRows } = await supabase
     .from("assessment_assignments")
     .select(
-      "id, assessment_id, kind, effective_scheduled_date, effective_scheduled_time, effective_deadline_at, taken_at, status, score, teacher_comment, assessments(title, max_score, class_id, class_name, description)",
+      "id, assessment_id, kind, effective_scheduled_date, effective_scheduled_time, effective_deadline_at, taken_at, status, score, teacher_comment, graded_paper_url, assessments(title, max_score, class_id, class_name, description)",
     )
     .eq("student_id", student.id)
     .order("created_at", { ascending: false });
@@ -378,6 +378,7 @@ export async function getStudentDashboardDataAction(): Promise<
     status: row.status,
     score: row.score,
     teacherComment: row.teacher_comment,
+    gradedPaperUrl: row.graded_paper_url,
     isLate: isAssessmentAssignmentLate({
       kind: row.kind,
       effectiveScheduledDate: row.effective_scheduled_date,

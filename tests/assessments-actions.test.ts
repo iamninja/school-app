@@ -414,6 +414,85 @@ describe("enterAssessmentMarkAction", () => {
     expect(updateCall.taken_at).toBe("2026-09-10T00:00:00.000Z");
   });
 
+  it("saves a gradedPaperUrl alongside the mark", async () => {
+    const client = createMockSupabaseClient({
+      assessment_assignments: [
+        {
+          data: {
+            id: "a1",
+            taken_at: "2026-09-10T00:00:00.000Z",
+            assessment_id: "assessment-1",
+            assessments: { max_score: 20 },
+          },
+          error: null,
+        },
+        {
+          data: { id: "a1", status: "marked", score: 18, taken_at: "2026-09-10T00:00:00.000Z" },
+          error: null,
+        },
+      ],
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await enterAssessmentMarkAction("a1", {
+      score: 18,
+      gradedPaperUrl: "https://drive.google.com/file/d/abc123/view",
+    });
+
+    const updateCall = client.from.mock.results.at(-1)?.value.update.mock.calls[0][0];
+    expect(updateCall.graded_paper_url).toBe(
+      "https://drive.google.com/file/d/abc123/view",
+    );
+  });
+
+  it("does not require a gradedPaperUrl to save a mark", async () => {
+    const client = createMockSupabaseClient({
+      assessment_assignments: [
+        {
+          data: {
+            id: "a1",
+            taken_at: "2026-09-10T00:00:00.000Z",
+            assessment_id: "assessment-1",
+            assessments: { max_score: 20 },
+          },
+          error: null,
+        },
+        {
+          data: { id: "a1", status: "marked", score: 18, taken_at: "2026-09-10T00:00:00.000Z" },
+          error: null,
+        },
+      ],
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await enterAssessmentMarkAction("a1", { score: 18 });
+
+    const updateCall = client.from.mock.results.at(-1)?.value.update.mock.calls[0][0];
+    expect(updateCall.graded_paper_url).toBeNull();
+  });
+
+  it("rejects a gradedPaperUrl that isn't a valid http(s) link", async () => {
+    const client = createMockSupabaseClient({
+      assessment_assignments: {
+        data: {
+          id: "a1",
+          taken_at: null,
+          assessment_id: "assessment-1",
+          assessments: { max_score: 20 },
+        },
+        error: null,
+      },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await expect(
+      enterAssessmentMarkAction("a1", {
+        score: 18,
+        gradedPaperUrl: "not a url",
+      }),
+    ).rejects.toThrow(ExpectedError);
+  });
+
   it("never overwrites an existing taken_at when re-grading", async () => {
     const originalTakenAt = "2026-09-01T00:00:00.000Z";
     const client = createMockSupabaseClient({
@@ -468,7 +547,13 @@ describe("clearAssessmentMarkAction", () => {
       assessment_assignments: [
         { data: { id: "a1", status: "marked" }, error: null },
         {
-          data: { id: "a1", status: "taken", score: null, teacher_comment: null },
+          data: {
+            id: "a1",
+            status: "taken",
+            score: null,
+            teacher_comment: null,
+            graded_paper_url: null,
+          },
           error: null,
         },
       ],
@@ -481,5 +566,6 @@ describe("clearAssessmentMarkAction", () => {
     expect(updateCall).not.toHaveProperty("taken_at");
     expect(updateCall.status).toBe("taken");
     expect(updateCall.score).toBeNull();
+    expect(updateCall.graded_paper_url).toBeNull();
   });
 });

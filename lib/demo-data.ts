@@ -214,6 +214,7 @@ const NIKOS: StudentDashboardData = {
       status: "registered",
       score: null,
       teacherComment: null,
+      gradedPaperUrl: null,
       isLate: false,
     },
     {
@@ -230,6 +231,7 @@ const NIKOS: StudentDashboardData = {
       status: "registered",
       score: null,
       teacherComment: null,
+      gradedPaperUrl: null,
       isLate: false,
     },
     {
@@ -248,6 +250,7 @@ const NIKOS: StudentDashboardData = {
       status: "marked",
       score: 14,
       teacherComment: "Καλή προσπάθεια, πρόσεχε τις πράξεις με το εσωτερικό γινόμενο.",
+      gradedPaperUrl: null,
       isLate: true,
     },
     {
@@ -266,6 +269,7 @@ const NIKOS: StudentDashboardData = {
       status: "taken",
       score: null,
       teacherComment: null,
+      gradedPaperUrl: null,
       isLate: false,
     },
     {
@@ -282,6 +286,7 @@ const NIKOS: StudentDashboardData = {
       status: "marked",
       score: 18,
       teacherComment: "Πολύ καλή δουλειά!",
+      gradedPaperUrl: "https://drive.google.com/file/d/demo-factoring-graded-paper/view",
       isLate: false,
     },
   ],
@@ -744,6 +749,7 @@ const MARIA: ParentDashboardData["kids"][number] = {
       status: "registered",
       score: null,
       teacherComment: null,
+      gradedPaperUrl: null,
       isLate: false,
     },
     {
@@ -760,6 +766,7 @@ const MARIA: ParentDashboardData["kids"][number] = {
       status: "marked",
       score: 17,
       teacherComment: "Πολύ καλά, μόνο μια απροσεξία στην τελευταία άσκηση.",
+      gradedPaperUrl: null,
       isLate: false,
     },
   ],

@@ -1059,6 +1059,16 @@ function AssessmentDetailView({
                             {assignment.teacher_comment}
                           </div>
                         ) : null}
+                        {assignment.graded_paper_url ? (
+                          <a
+                            href={assignment.graded_paper_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-xs text-primary underline"
+                          >
+                            Paper
+                          </a>
+                        ) : null}
                       </div>
                     ) : (
                       "—"
@@ -1309,6 +1319,9 @@ function MarkEntryForm({
     assignment.score !== null ? String(assignment.score) : "",
   );
   const [comment, setComment] = React.useState(assignment.teacher_comment ?? "");
+  const [gradedPaperUrl, setGradedPaperUrl] = React.useState(
+    assignment.graded_paper_url ?? "",
+  );
   const [takenAtLocal, setTakenAtLocal] = React.useState(
     assignment.taken_at
       ? toDatetimeLocalValue(assignment.taken_at)
@@ -1323,6 +1336,7 @@ function MarkEntryForm({
       const updated = await enterAssessmentMarkAction(assignment.id, {
         score: Number(score),
         teacherComment: comment || undefined,
+        gradedPaperUrl: gradedPaperUrl.trim() || undefined,
         takenAt: takenAtLocal ? new Date(takenAtLocal).toISOString() : undefined,
       });
       onSaved(updated);
@@ -1370,6 +1384,18 @@ function MarkEntryForm({
           id="mark-comment"
           value={comment}
           onChange={(e) => setComment(e.target.value)}
+        />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="mark-graded-paper-url">
+          Graded paper link (optional)
+        </Label>
+        <Input
+          id="mark-graded-paper-url"
+          type="url"
+          placeholder="https://drive.google.com/..."
+          value={gradedPaperUrl}
+          onChange={(e) => setGradedPaperUrl(e.target.value)}
         />
       </div>
       <DialogFooter>
