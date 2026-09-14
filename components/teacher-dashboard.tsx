@@ -139,9 +139,12 @@ const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
 // Fixed row height, needed so a customized lesson's top%/height% (computed
 // by windowToRowGeometry against a uniform "1 row = 1 unit" axis) maps to
-// real pixels consistently. Taller than the old auto/min-height rows so an
-// inset card (as little as 25-75% of a row) still fits its content.
-const ROW_PX = 104;
+// real pixels consistently. A full ScheduledClassCard (name+buttons row,
+// two-line time/hrs-per-week, drag/extend footer, plus padding and gaps)
+// needs close to 100px on its own - an *inset* overlay card, which can be
+// well under a full row tall, needs real headroom above that, not just
+// enough for the full-height case.
+const ROW_PX = 128;
 const SECTIONS = [
   {
     value: "schedule",
