@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useTransition } from "react";
 
 export function TeacherLoginForm({
   className,
@@ -23,13 +23,22 @@ export function TeacherLoginForm({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  // Separate from isNavigating: signInWithPassword itself is a normal async
+  // call, but router.push()'s own work (re-rendering /protected/teacher's
+  // dozen-plus sequential Supabase reads, with no loading.tsx before this
+  // fix) doesn't block this function at all - the button would otherwise
+  // flip back to "Login" the instant push() is *called*, not when the
+  // navigation actually lands, making a slow dashboard load look stuck
+  // rather than in progress. useTransition's isPending tracks the
+  // navigation itself, not just the call that kicked it off.
+  const [isSigningIn, setIsSigningIn] = useState(false);
+  const [isNavigating, startTransition] = useTransition();
   const router = useRouter();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     const supabase = createClient();
-    setIsLoading(true);
+    setIsSigningIn(true);
     setError(null);
 
     try {
@@ -38,13 +47,17 @@ export function TeacherLoginForm({
         password,
       });
       if (error) throw error;
-      router.push("/protected/teacher");
+      startTransition(() => {
+        router.push("/protected/teacher");
+      });
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred");
     } finally {
-      setIsLoading(false);
+      setIsSigningIn(false);
     }
   };
+
+  const isLoading = isSigningIn || isNavigating;
 
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>

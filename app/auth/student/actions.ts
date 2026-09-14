@@ -155,7 +155,7 @@ export async function getStudentDashboardDataAction(): Promise<
       .filter(Boolean) || [];
   const { data: schedules } = await supabase
     .from("class_schedule_slots")
-    .select("class_id, day, time, is_two_hour")
+    .select("class_id, day, time, is_two_hour, end_time")
     .in("class_id", classIds);
 
   // Get attendance records

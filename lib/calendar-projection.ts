@@ -1,5 +1,6 @@
 import { format, parse } from "date-fns";
 import type { CalendarEvent } from "@/lib/types/database";
+import { slotWindow } from "@/lib/schedule-grid";
 
 // Pure projection logic shared by the teacher's Calendar tab, the
 // Attendance tab's date picker (via lib/attendance-dates.ts), and the
@@ -56,6 +57,9 @@ export interface ProjectionSlot {
   day: string;
   time: string;
   isTwoHour?: boolean;
+  // A teacher-set custom end time, when this slot's real window differs
+  // from the grid-derived default. See lib/schedule-grid.ts's slotWindow().
+  endTime?: string | null;
 }
 
 export interface ProjectionClass {
@@ -190,15 +194,21 @@ export function projectOccurrences(input: ProjectionInput): Occurrence[] {
         coverage?.wholeDayEventId ?? coverage?.timesCovered.get(slot.time) ?? null;
       if (matchedEventId) matchedCancellationIds.add(matchedEventId);
 
+      // A customized slot's real start is deduced from its stored end time
+      // (see slotWindow()); an un-customized slot keeps startTime as the
+      // bare grid anchor and endTime null, same as before this column
+      // existed - the derived window is still a display/overlap concern
+      // computed on demand via recurringLessonWindow() (teacher-calendar.tsx's
+      // effectiveWindow()), not baked in here.
+      const customWindow = slot.endTime
+        ? slotWindow(weekday, slot.time, { endTime: slot.endTime })
+        : null;
+
       occurrences.push({
         date,
         kind: matchedEventId ? "cancelled" : "recurring",
-        startTime: slot.time,
-        // Left null, same as before two-hour slots existed - the real
-        // teaching window (break-adjusted, 1 or 2 rows) is a display/overlap
-        // concern computed on demand via recurringLessonWindow(), not baked
-        // in here. See teacher-calendar.tsx's effectiveWindow().
-        endTime: null,
+        startTime: customWindow ? customWindow.start : slot.time,
+        endTime: customWindow ? customWindow.end : null,
         classId: slot.classId,
         className: cls.name,
         studentId: null,

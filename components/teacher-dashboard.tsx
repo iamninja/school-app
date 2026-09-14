@@ -47,6 +47,7 @@ import {
   restoreClassAction,
   restoreStudentAction,
   setScheduleSlotAction,
+  setScheduleSlotTimesAction,
   unenrollStudentFromClassAction,
   updateClassAction,
   updateStudentAction,
@@ -107,7 +108,7 @@ import {
   type AttendanceRecord,
 } from "@/lib/attendance-records";
 import { weekdayLabelFromDate } from "@/lib/calendar-projection";
-import { lessonTimeLabel, SCHEDULE_ROWS } from "@/lib/schedule-grid";
+import { lessonTimeLabel, slotWindow, SCHEDULE_ROWS } from "@/lib/schedule-grid";
 import { CLASS_GRADES, CLASS_GRADE_LABELS } from "@/lib/class-grades";
 import { formatEuro } from "@/lib/format-currency";
 import {
@@ -220,7 +221,11 @@ type ClassItem = {
   lessonRate: number | null;
 };
 
-type ScheduleSlotValue = { classId: string; isTwoHour: boolean };
+type ScheduleSlotValue = {
+  classId: string;
+  isTwoHour: boolean;
+  endTime: string | null;
+};
 type ScheduleState = Record<string, ScheduleSlotValue | null>;
 
 type StudentItem = {
@@ -270,6 +275,7 @@ type TeacherDashboardProps = {
     time: string;
     classId: string;
     isTwoHour?: boolean;
+    endTime?: string | null;
   }>;
   initialStudents: StudentItem[];
   initialFamilies?: FamilyItem[];
@@ -371,6 +377,7 @@ function ScheduledClassCard({
   canExtend,
   onClear,
   onToggleTwoHour,
+  onEditTime,
 }: {
   classItem: ClassItem;
   slotId: string;
@@ -379,6 +386,7 @@ function ScheduledClassCard({
   canExtend: boolean;
   onClear: (slotId: string) => void;
   onToggleTwoHour: (slotId: string) => void;
+  onEditTime: (slotId: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({
@@ -406,21 +414,38 @@ function ScheduledClassCard({
         <div className="text-sm font-semibold text-foreground">
           {classItem.name}
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-6 w-6"
-          onClick={() => onClear(slotId)}
-          aria-label="Clear slot"
-        >
-          <XIcon className="h-3.5 w-3.5" />
-        </Button>
+        <div className="flex items-center gap-0.5">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6"
+            onClick={(event) => {
+              event.stopPropagation();
+              onEditTime(slotId);
+            }}
+            aria-label="Set a custom lesson time"
+          >
+            <PencilIcon className="h-3 w-3" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6"
+            onClick={() => onClear(slotId)}
+            aria-label="Clear slot"
+          >
+            <XIcon className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </div>
-      <div className="text-[11px] text-muted-foreground">
-        {label} • {classItem.hoursPerWeek} hrs/week
+      <div className="text-[11px] leading-tight text-muted-foreground">
+        <div className="truncate" title={label}>
+          {label}
+        </div>
+        <div>{classItem.hoursPerWeek} hrs/week</div>
       </div>
-      <div className="mt-auto flex items-center justify-between gap-2">
-        <div className="text-[10px] uppercase tracking-wide text-muted-foreground/80">
+      <div className="mt-auto flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+        <div className="text-[10px] whitespace-nowrap uppercase tracking-wide text-muted-foreground/80">
           Drag to reschedule
         </div>
         <Button
@@ -455,6 +480,7 @@ function ScheduleCell({
   canExtend,
   onClear,
   onToggleTwoHour,
+  onEditTime,
   tinted = false,
   style,
   showBottomBorder = true,
@@ -466,6 +492,7 @@ function ScheduleCell({
   canExtend: boolean;
   onClear: (slotId: string) => void;
   onToggleTwoHour: (slotId: string) => void;
+  onEditTime: (slotId: string) => void;
   tinted?: boolean;
   style?: React.CSSProperties;
   showBottomBorder?: boolean;
@@ -493,6 +520,7 @@ function ScheduleCell({
           canExtend={canExtend}
           onClear={onClear}
           onToggleTwoHour={onToggleTwoHour}
+          onEditTime={onEditTime}
         />
       ) : (
         <div className="text-[11px] text-muted-foreground/60">
@@ -606,10 +634,14 @@ export function TeacherDashboard({
       initial[slotId] = {
         classId: slot.classId,
         isTwoHour: slot.isTwoHour ?? false,
+        endTime: slot.endTime ?? null,
       };
     });
     return initial;
   });
+  const [editingTimeSlotId, setEditingTimeSlotId] = React.useState<string | null>(null);
+  const [editEndTimeInput, setEditEndTimeInput] = React.useState("");
+  const [isSavingEndTime, setIsSavingEndTime] = React.useState(false);
   const [studentForm, setStudentForm] = React.useState({
     firstName: "",
     lastName: "",
@@ -1136,7 +1168,10 @@ export function TeacherDashboard({
       if (sourceSlotId) {
         next[sourceSlotId] = null;
       }
-      next[slotId] = { classId: classItem.id, isTwoHour };
+      // A moved/newly-placed slot always starts at its default window - see
+      // setScheduleSlotAction's upsert, which resets end_time server-side
+      // for the same reason.
+      next[slotId] = { classId: classItem.id, isTwoHour, endTime: null };
       return next;
     });
 
@@ -1196,12 +1231,46 @@ export function TeacherDashboard({
       });
       setSchedule((prev) => ({
         ...prev,
-        [slotId]: { classId: current.classId, isTwoHour: wantsTwoHour },
+        [slotId]: {
+          classId: current.classId,
+          isTwoHour: wantsTwoHour,
+          endTime: current.endTime,
+        },
       }));
     } catch (error: unknown) {
       toast.error(
         error instanceof Error ? error.message : "Failed to update the slot",
       );
+    }
+  };
+
+  const handleOpenEditTime = (slotId: string) => {
+    setEditingTimeSlotId(slotId);
+    setEditEndTimeInput(schedule[slotId]?.endTime ?? "");
+  };
+
+  const handleSaveEndTime = async (endTime: string | null) => {
+    if (!editingTimeSlotId) return;
+    const { day, time } = parseSlotId(editingTimeSlotId);
+    setIsSavingEndTime(true);
+    try {
+      await setScheduleSlotTimesAction({ day, time, endTime });
+      setSchedule((prev) => {
+        const current = prev[editingTimeSlotId];
+        if (!current) return prev;
+        return { ...prev, [editingTimeSlotId]: { ...current, endTime } };
+      });
+      setEditingTimeSlotId(null);
+      toast.success(endTime ? "Custom time saved" : "Reset to the default time");
+    } catch (error: unknown) {
+      // Overlap/bounds rejections surface here as a plain notification, not
+      // a blocking dialog - the edit dialog itself stays open so the teacher
+      // can just pick a different time.
+      toast.error(
+        error instanceof Error ? error.message : "Failed to update the time",
+      );
+    } finally {
+      setIsSavingEndTime(false);
     }
   };
 
@@ -1668,6 +1737,7 @@ export function TeacherDashboard({
           ...parseSlotId(slotId),
           classId: value.classId,
           isTwoHour: value.isTwoHour,
+          endTime: value.endTime,
         })),
     [schedule],
   );
@@ -2001,7 +2071,21 @@ export function TeacherDashboard({
                           const classItem = value
                             ? classes.find((item) => item.id === value.classId)
                             : undefined;
-                          const label = `${day} ${lessonTimeLabel(cellTime, value?.isTwoHour ?? false)}`;
+                          // A customized slot's real start is deduced from
+                          // its end_time (see slotWindow()) - the anchor
+                          // itself is never what should be labeled once a
+                          // custom window is set.
+                          const customWindow = value?.endTime
+                            ? slotWindow(day, cellTime, { endTime: value.endTime })
+                            : null;
+                          // No day prefix - the card already lives in that
+                          // day's column, so repeating it in every single
+                          // label just eats width the actual time needs.
+                          const label = lessonTimeLabel(
+                            customWindow ? customWindow.start : cellTime,
+                            value?.isTwoHour ?? false,
+                            value?.endTime,
+                          );
                           const targetNextSlotId = nextSlotId(day, cellTime);
                           const canExtend =
                             !!targetNextSlotId && !schedule[targetNextSlotId];
@@ -2021,6 +2105,7 @@ export function TeacherDashboard({
                               canExtend={canExtend}
                               onClear={handleClearSlot}
                               onToggleTwoHour={handleToggleTwoHour}
+                              onEditTime={handleOpenEditTime}
                               tinted={day === "Sat"}
                               showBottomBorder={!cellEndRowIsLast}
                               style={{
@@ -2048,6 +2133,71 @@ export function TeacherDashboard({
               </div>
             </div>
           </DndContext>
+
+          <Dialog
+            open={editingTimeSlotId !== null}
+            onOpenChange={(open) => {
+              if (!open) setEditingTimeSlotId(null);
+            }}
+          >
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Custom lesson time</DialogTitle>
+              </DialogHeader>
+              {editingTimeSlotId &&
+                (() => {
+                  const { day, time } = parseSlotId(editingTimeSlotId);
+                  const current = schedule[editingTimeSlotId];
+                  const classItem = current
+                    ? classes.find((item) => item.id === current.classId)
+                    : undefined;
+                  const preview = editEndTimeInput
+                    ? slotWindow(day, time, { endTime: editEndTimeInput })
+                    : null;
+                  return (
+                    <div className="space-y-4">
+                      <div className="text-sm text-muted-foreground">
+                        {classItem?.name} · {day} · {time} slot
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-end-time">End time</Label>
+                        <Input
+                          id="edit-end-time"
+                          type="time"
+                          step={900}
+                          value={editEndTimeInput}
+                          onChange={(event) =>
+                            setEditEndTimeInput(event.target.value)
+                          }
+                        />
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        {preview
+                          ? `${preview.start}–${preview.end} (45 min)`
+                          : "Default time (derived from the grid)"}
+                      </div>
+                      <DialogFooter className="gap-2 sm:justify-between">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          disabled={isSavingEndTime}
+                          onClick={() => void handleSaveEndTime(null)}
+                        >
+                          Use default time
+                        </Button>
+                        <Button
+                          type="button"
+                          disabled={isSavingEndTime || !editEndTimeInput}
+                          onClick={() => void handleSaveEndTime(editEndTimeInput)}
+                        >
+                          {isSavingEndTime ? "Saving..." : "Save"}
+                        </Button>
+                      </DialogFooter>
+                    </div>
+                  );
+                })()}
+            </DialogContent>
+          </Dialog>
         </TabsContent>
 
         <TabsContent value="calendar" className="mt-0">
@@ -2085,6 +2235,7 @@ export function TeacherDashboard({
                 .map(([slotId, value]) => ({
                   ...parseSlotId(slotId),
                   isTwoHour: value.isTwoHour,
+                  endTime: value.endTime,
                 }));
               const enrolledStudents = students.filter(
                 (student) =>

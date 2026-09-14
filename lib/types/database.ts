@@ -78,6 +78,9 @@ export interface ClassScheduleSlot {
   day: string;
   time: string;
   is_two_hour?: boolean;
+  // The slot's real end time when customized away from the grid-derived
+  // default; null means derive it (see lib/schedule-grid.ts's slotWindow()).
+  end_time?: string | null;
   created_at?: string;
 }
 
@@ -438,6 +441,7 @@ export interface StudentDashboardData {
     day: string;
     time: string;
     is_two_hour?: boolean;
+    end_time?: string | null;
   }>;
   attendance: Array<{
     class_id: string | null;
@@ -474,6 +478,7 @@ export interface ParentDashboardChild {
     day: string;
     time: string;
     is_two_hour?: boolean;
+    end_time?: string | null;
   }>;
   attendance: Array<{
     class_id: string | null;

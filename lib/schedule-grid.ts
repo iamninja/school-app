@@ -22,7 +22,7 @@ export const SCHEDULE_ROWS: readonly { time: string; satTime: string }[] = [
 
 const LESSON_MINUTES = 45;
 
-function timeToMinutes(time: string): number {
+export function timeToMinutes(time: string): number {
   const [hours, minutes] = time.split(":").map(Number);
   return hours * 60 + minutes;
 }
@@ -78,6 +78,28 @@ export function recurringLessonWindow(
     ? timeToMinutes(endRow[column])
     : timeToMinutes(startTime) + (isTwoHour ? 120 : 60);
   return { start: minutesToTime(startMinutes), end: minutesToTime(endMinutes) };
+}
+
+/**
+ * A recurring slot's real teaching window, preferring a teacher-set custom
+ * `endTime` over the grid-derived one when present. A custom window is
+ * always exactly LESSON_MINUTES long - only its position shifts, never its
+ * duration - so the start is deduced by subtracting that constant rather
+ * than stored separately. See the "custom lesson times" project memory for
+ * why this single-column design was chosen over a start+end pair.
+ */
+export function slotWindow(
+  day: string,
+  time: string,
+  opts: { isTwoHour?: boolean; endTime?: string | null } = {},
+): { start: string; end: string } {
+  if (opts.endTime) {
+    return {
+      start: minutesToTime(timeToMinutes(opts.endTime) - LESSON_MINUTES),
+      end: opts.endTime,
+    };
+  }
+  return recurringLessonWindow(day, time, opts.isTwoHour);
 }
 
 /**
