@@ -108,12 +108,7 @@ import {
   type AttendanceRecord,
 } from "@/lib/attendance-records";
 import { weekdayLabelFromDate } from "@/lib/calendar-projection";
-import {
-  lessonTimeLabel,
-  slotWindow,
-  windowToRowGeometry,
-  SCHEDULE_ROWS,
-} from "@/lib/schedule-grid";
+import { lessonTimeLabel, slotWindow, SCHEDULE_ROWS } from "@/lib/schedule-grid";
 import { CLASS_GRADES, CLASS_GRADE_LABELS } from "@/lib/class-grades";
 import { formatEuro } from "@/lib/format-currency";
 import {
@@ -136,15 +131,6 @@ import type {
 } from "@/lib/types/database";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
-
-// Fixed row height, needed so a customized lesson's top%/height% (computed
-// by windowToRowGeometry against a uniform "1 row = 1 unit" axis) maps to
-// real pixels consistently. A full ScheduledClassCard (name+buttons row,
-// two-line time/hrs-per-week, drag/extend footer, plus padding and gaps)
-// needs close to 100px on its own - an *inset* overlay card, which can be
-// well under a full row tall, needs real headroom above that, not just
-// enough for the full-height case.
-const ROW_PX = 128;
 const SECTIONS = [
   {
     value: "schedule",
@@ -241,19 +227,6 @@ type ScheduleSlotValue = {
   endTime: string | null;
 };
 type ScheduleState = Record<string, ScheduleSlotValue | null>;
-
-// A slot with a custom end time, positioned at its exact (possibly
-// cross-row) place in the grid instead of filling its whole cell. Computed
-// once per render from `schedule` - see customOverlaysByDay below.
-type CustomOverlay = {
-  slotId: string;
-  day: string;
-  value: ScheduleSlotValue;
-  classItem: ClassItem;
-  label: string;
-  canExtend: boolean;
-  geometry: { startRow: number; endRow: number; topPct: number; heightPct: number };
-};
 
 type StudentItem = {
   id: string;
@@ -511,7 +484,6 @@ function ScheduleCell({
   onClear,
   onToggleTwoHour,
   onEditTime,
-  overlaid = false,
   tinted = false,
   style,
   showBottomBorder = true,
@@ -524,12 +496,6 @@ function ScheduleCell({
   onClear: (slotId: string) => void;
   onToggleTwoHour: (slotId: string) => void;
   onEditTime: (slotId: string) => void;
-  // True when a CustomOverlay (this row's own, or an earlier row's window
-  // spilling into it) is drawn on top of this cell instead - suppresses
-  // the inline card and the "Drop class here" hint so nothing shows through
-  // around the overlay's inset card. The droppable target itself is
-  // unaffected; dnd-kit tracks registered rects, not paint order.
-  overlaid?: boolean;
   tinted?: boolean;
   style?: React.CSSProperties;
   showBottomBorder?: boolean;
@@ -548,7 +514,7 @@ function ScheduleCell({
         (isOver ? "bg-brand/10" : tinted ? "bg-accent/30" : "bg-card")
       }
     >
-      {overlaid ? null : classItem ? (
+      {classItem ? (
         <ScheduledClassCard
           classItem={classItem}
           slotId={slotId}
@@ -1779,84 +1745,6 @@ export function TeacherDashboard({
     [schedule],
   );
 
-  // Customized slots, positioned at their exact grid geometry instead of
-  // filling their whole cell - keyed by day so the render loop can look up
-  // "is this row covered by some earlier row's overlay spilling into it"
-  // without rescanning the whole schedule per cell.
-  //
-  // Two passes. Pass 1: every slot with its own explicit end_time gets an
-  // overlay at its real (possibly cross-row) window. Pass 2: a plain,
-  // never-customized slot that happens to sit in a row a pass-1 overlay
-  // spills into would otherwise just vanish - ScheduleCell suppresses its
-  // inline card for any row an overlay's span touches, custom or not, and
-  // until this pass nothing else was rendering that slot in its place. Its
-  // own window is always the grid-derived default (it would already be a
-  // pass-1 overlay if it had a custom one), positioned in whatever part of
-  // the row the earlier slot's spillover doesn't cover - which is exactly
-  // where it belongs, since the write path already guarantees the two
-  // don't actually overlap in time (see assertNoOverlap in actions.ts).
-  const customOverlaysByDay = React.useMemo(() => {
-    const map = new Map<string, CustomOverlay[]>();
-    for (const day of DAYS) {
-      const overlays: CustomOverlay[] = [];
-
-      const buildOverlay = (
-        rowIndex: number,
-        window: { start: string; end: string },
-      ): CustomOverlay | null => {
-        const row = SCHEDULE_ROWS[rowIndex];
-        const cellTime = day === "Sat" ? row.satTime : row.time;
-        const slotId = createSlotId(day, cellTime);
-        const value = schedule[slotId];
-        if (!value) return null;
-        const classItem = classes.find((item) => item.id === value.classId);
-        if (!classItem) return null;
-        const geometry = windowToRowGeometry(day, window);
-        if (!geometry) return null;
-        const targetNextSlotId = nextSlotId(day, cellTime);
-        return {
-          slotId,
-          day,
-          value,
-          classItem,
-          geometry,
-          canExtend: !!targetNextSlotId && !schedule[targetNextSlotId],
-          // No day prefix - the card already lives in that day's column, so
-          // repeating it in every single label just eats width the actual
-          // time needs (see ScheduledClassCard's two-line metadata layout).
-          label: lessonTimeLabel(window.start, value.isTwoHour, value.endTime),
-        };
-      };
-
-      const coveredRows = new Set<number>();
-      SCHEDULE_ROWS.forEach((row, rowIndex) => {
-        const cellTime = day === "Sat" ? row.satTime : row.time;
-        const value = schedule[createSlotId(day, cellTime)];
-        if (!value?.endTime) return;
-        const window = slotWindow(day, cellTime, { endTime: value.endTime });
-        const overlay = buildOverlay(rowIndex, window);
-        if (!overlay) return;
-        overlays.push(overlay);
-        for (let covered = rowIndex + 1; covered <= overlay.geometry.endRow; covered++) {
-          coveredRows.add(covered);
-        }
-      });
-
-      coveredRows.forEach((rowIndex) => {
-        const row = SCHEDULE_ROWS[rowIndex];
-        const cellTime = day === "Sat" ? row.satTime : row.time;
-        const value = schedule[createSlotId(day, cellTime)];
-        if (!value || value.endTime) return; // empty, or already a pass-1 overlay
-        const window = slotWindow(day, cellTime, { isTwoHour: value.isTwoHour });
-        const overlay = buildOverlay(rowIndex, window);
-        if (overlay) overlays.push(overlay);
-      });
-
-      map.set(day, overlays);
-    }
-    return map;
-  }, [schedule, classes]);
-
   const attendanceDateSets = React.useMemo(
     () =>
       buildAttendanceDateSets({
@@ -2141,12 +2029,7 @@ export function TeacherDashboard({
                   </div>
                 </div>
 
-                <div
-                  className="grid grid-cols-[72px_repeat(6,minmax(0,1fr))_72px]"
-                  style={{
-                    gridTemplateRows: `repeat(${SCHEDULE_ROWS.length}, ${ROW_PX}px)`,
-                  }}
-                >
+                <div className="grid grid-cols-[72px_repeat(6,minmax(0,1fr))_72px]">
                   {SCHEDULE_ROWS.map((row, rowIndex) => {
                     const gridRow = rowIndex + 1;
                     const isLastRow = rowIndex === SCHEDULE_ROWS.length - 1;
@@ -2198,8 +2081,9 @@ export function TeacherDashboard({
                           const customWindow = value?.endTime
                             ? slotWindow(day, cellTime, { endTime: value.endTime })
                             : null;
-                          // No day prefix - see the matching comment on
-                          // customOverlaysByDay's own label above.
+                          // No day prefix - the card already lives in that
+                          // day's column, so repeating it in every single
+                          // label just eats width the actual time needs.
                           const label = lessonTimeLabel(
                             customWindow ? customWindow.start : cellTime,
                             value?.isTwoHour ?? false,
@@ -2214,21 +2098,6 @@ export function TeacherDashboard({
                             rowIndex + (value?.isTwoHour ? 1 : 0) ===
                             SCHEDULE_ROWS.length - 1;
 
-                          // This cell is either the anchor of its own
-                          // customized overlay, or sits somewhere an
-                          // *earlier* row's overlay spills into - either way
-                          // it's guaranteed empty of its own inline card
-                          // (its own overlay draws separately; a spillover
-                          // target is guaranteed unoccupied by the same
-                          // same-day overlap check setScheduleSlotTimesAction
-                          // already enforces server-side).
-                          const dayOverlays = customOverlaysByDay.get(day) ?? [];
-                          const overlaid = dayOverlays.some(
-                            (overlay) =>
-                              rowIndex >= overlay.geometry.startRow &&
-                              rowIndex <= overlay.geometry.endRow,
-                          );
-
                           return (
                             <ScheduleCell
                               key={slotId}
@@ -2240,7 +2109,6 @@ export function TeacherDashboard({
                               onClear={handleClearSlot}
                               onToggleTwoHour={handleToggleTwoHour}
                               onEditTime={handleOpenEditTime}
-                              overlaid={overlaid}
                               tinted={day === "Sat"}
                               showBottomBorder={!cellEndRowIsLast}
                               style={{
@@ -2264,44 +2132,6 @@ export function TeacherDashboard({
                       </React.Fragment>
                     );
                   })}
-
-                  {/* Customized-window overlays, rendered as later children of
-                      this same grid so they always paint on top of every
-                      ScheduleCell they visually cover (anchor row or
-                      spillover) - see customOverlaysByDay above. */}
-                  {DAYS.flatMap((day, dayIndex) =>
-                    (customOverlaysByDay.get(day) ?? []).map((overlay) => (
-                      <div
-                        key={`overlay-${overlay.slotId}`}
-                        style={{
-                          gridColumn: dayIndex + 2,
-                          gridRow: `${overlay.geometry.startRow + 1} / ${overlay.geometry.endRow + 2}`,
-                          position: "relative",
-                          pointerEvents: "none",
-                        }}
-                      >
-                        <div
-                          className="absolute inset-x-0 p-2"
-                          style={{
-                            top: `${overlay.geometry.topPct}%`,
-                            height: `${overlay.geometry.heightPct}%`,
-                            pointerEvents: "auto",
-                          }}
-                        >
-                          <ScheduledClassCard
-                            classItem={overlay.classItem}
-                            slotId={overlay.slotId}
-                            label={overlay.label}
-                            isTwoHour={overlay.value.isTwoHour}
-                            canExtend={overlay.canExtend}
-                            onClear={handleClearSlot}
-                            onToggleTwoHour={handleToggleTwoHour}
-                            onEditTime={handleOpenEditTime}
-                          />
-                        </div>
-                      </div>
-                    )),
-                  )}
                 </div>
               </div>
             </div>

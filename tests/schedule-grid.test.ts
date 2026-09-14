@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import {
   lessonTimeLabel,
   recurringLessonWindow,
-  windowToRowGeometry,
   SCHEDULE_ROWS,
 } from "@/lib/schedule-grid";
 
@@ -89,68 +88,6 @@ describe("recurringLessonWindow", () => {
 
     it("uses a real end time even for a non-two-hour lesson", () => {
       expect(lessonTimeLabel("16:00", false, "16:45")).toBe("16:00–16:45");
-    });
-  });
-
-  describe("windowToRowGeometry", () => {
-    it("positions a window entirely within one 60-minute row (the plan's worked example)", () => {
-      // Row 2 is 16:00-17:00. 16:15-17:00 starts a quarter of the way in
-      // and runs to the row's exact bottom edge.
-      expect(windowToRowGeometry("Wed", { start: "16:15", end: "17:00" })).toEqual({
-        startRow: 2,
-        endRow: 2,
-        topPct: 25,
-        heightPct: 75,
-      });
-    });
-
-    it("positions a window entirely within a 45-minute row (row 0, back-to-back with row 1)", () => {
-      // Row 0 is 14:30-15:15 (45 min). A lesson starting 15 min in and
-      // running the full remaining 30 min: top = 15/45, height = 30/45.
-      const result = windowToRowGeometry("Mon", { start: "14:45", end: "15:15" });
-      expect(result?.startRow).toBe(0);
-      expect(result?.endRow).toBe(0);
-      expect(result?.topPct).toBeCloseTo((15 / 45) * 100);
-      expect(result?.heightPct).toBeCloseTo((30 / 45) * 100);
-    });
-
-    it("spans into the next row when a custom window spills past its anchor row's real duration", () => {
-      // Row 1 (15:15-16:00, 45 min) into row 2 (16:00-17:00, 60 min) - the
-      // two rows have different real durations, so this exercises the
-      // uniform-row-unit math, not just a linear minutes split.
-      const result = windowToRowGeometry("Mon", { start: "15:45", end: "16:30" });
-      expect(result?.startRow).toBe(1);
-      expect(result?.endRow).toBe(2);
-      // start: 30/45 of the way through row 1 = row-unit 1.667; end: 30/60
-      // of the way through row 2 = row-unit 2.5. Both as a fraction of the
-      // 2-row span (1 to 3 in row-units).
-      expect(result?.topPct).toBeCloseTo(((1 + 30 / 45 - 1) / 2) * 100);
-      expect(result?.heightPct).toBeCloseTo((((2 + 30 / 60) - (1 + 30 / 45)) / 2) * 100);
-    });
-
-    it("treats a window ending exactly on a row boundary as ending at the row above, not spilling into the next", () => {
-      // 14:30-15:15 is exactly row 0's own full span - must not span into
-      // row 1 just because 15:15 is also row 1's start time.
-      expect(windowToRowGeometry("Mon", { start: "14:30", end: "15:15" })).toEqual({
-        startRow: 0,
-        endRow: 0,
-        topPct: 0,
-        heightPct: 100,
-      });
-    });
-
-    it("uses the Saturday column's own axis, not the weekday one", () => {
-      // Saturday row 2 is satTime 10:00-11:00.
-      expect(windowToRowGeometry("Sat", { start: "10:15", end: "11:00" })).toEqual({
-        startRow: 2,
-        endRow: 2,
-        topPct: 25,
-        heightPct: 75,
-      });
-    });
-
-    it("returns null for a window outside the grid's axis entirely", () => {
-      expect(windowToRowGeometry("Mon", { start: "05:00", end: "05:45" })).toBeNull();
     });
   });
 
