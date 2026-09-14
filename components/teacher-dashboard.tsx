@@ -2253,6 +2253,71 @@ export function TeacherDashboard({
               </div>
             </div>
           </DndContext>
+
+          <Dialog
+            open={editingTimeSlotId !== null}
+            onOpenChange={(open) => {
+              if (!open) setEditingTimeSlotId(null);
+            }}
+          >
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Custom lesson time</DialogTitle>
+              </DialogHeader>
+              {editingTimeSlotId &&
+                (() => {
+                  const { day, time } = parseSlotId(editingTimeSlotId);
+                  const current = schedule[editingTimeSlotId];
+                  const classItem = current
+                    ? classes.find((item) => item.id === current.classId)
+                    : undefined;
+                  const preview = editEndTimeInput
+                    ? slotWindow(day, time, { endTime: editEndTimeInput })
+                    : null;
+                  return (
+                    <div className="space-y-4">
+                      <div className="text-sm text-muted-foreground">
+                        {classItem?.name} · {day} · {time} slot
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-end-time">End time</Label>
+                        <Input
+                          id="edit-end-time"
+                          type="time"
+                          step={900}
+                          value={editEndTimeInput}
+                          onChange={(event) =>
+                            setEditEndTimeInput(event.target.value)
+                          }
+                        />
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        {preview
+                          ? `${preview.start}–${preview.end} (45 min)`
+                          : "Default time (derived from the grid)"}
+                      </div>
+                      <DialogFooter className="gap-2 sm:justify-between">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          disabled={isSavingEndTime}
+                          onClick={() => void handleSaveEndTime(null)}
+                        >
+                          Use default time
+                        </Button>
+                        <Button
+                          type="button"
+                          disabled={isSavingEndTime || !editEndTimeInput}
+                          onClick={() => void handleSaveEndTime(editEndTimeInput)}
+                        >
+                          {isSavingEndTime ? "Saving..." : "Save"}
+                        </Button>
+                      </DialogFooter>
+                    </div>
+                  );
+                })()}
+            </DialogContent>
+          </Dialog>
         </TabsContent>
 
         <TabsContent value="calendar" className="mt-0">
@@ -2505,71 +2570,6 @@ export function TeacherDashboard({
           </div>
             </>
           )}
-
-          <Dialog
-            open={editingTimeSlotId !== null}
-            onOpenChange={(open) => {
-              if (!open) setEditingTimeSlotId(null);
-            }}
-          >
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Custom lesson time</DialogTitle>
-              </DialogHeader>
-              {editingTimeSlotId &&
-                (() => {
-                  const { day, time } = parseSlotId(editingTimeSlotId);
-                  const current = schedule[editingTimeSlotId];
-                  const classItem = current
-                    ? classes.find((item) => item.id === current.classId)
-                    : undefined;
-                  const preview = editEndTimeInput
-                    ? slotWindow(day, time, { endTime: editEndTimeInput })
-                    : null;
-                  return (
-                    <div className="space-y-4">
-                      <div className="text-sm text-muted-foreground">
-                        {classItem?.name} · {day} · {time} slot
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="edit-end-time">End time</Label>
-                        <Input
-                          id="edit-end-time"
-                          type="time"
-                          step={900}
-                          value={editEndTimeInput}
-                          onChange={(event) =>
-                            setEditEndTimeInput(event.target.value)
-                          }
-                        />
-                      </div>
-                      <div className="text-sm text-muted-foreground">
-                        {preview
-                          ? `${preview.start}–${preview.end} (45 min)`
-                          : "Default time (derived from the grid)"}
-                      </div>
-                      <DialogFooter className="gap-2 sm:justify-between">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          disabled={isSavingEndTime}
-                          onClick={() => void handleSaveEndTime(null)}
-                        >
-                          Use default time
-                        </Button>
-                        <Button
-                          type="button"
-                          disabled={isSavingEndTime || !editEndTimeInput}
-                          onClick={() => void handleSaveEndTime(editEndTimeInput)}
-                        >
-                          {isSavingEndTime ? "Saving..." : "Save"}
-                        </Button>
-                      </DialogFooter>
-                    </div>
-                  );
-                })()}
-            </DialogContent>
-          </Dialog>
 
           <Dialog
             open={isCreateClassOpen}
