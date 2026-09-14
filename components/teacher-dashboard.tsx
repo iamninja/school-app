@@ -444,8 +444,8 @@ function ScheduledClassCard({
         </div>
         <div>{classItem.hoursPerWeek} hrs/week</div>
       </div>
-      <div className="mt-auto flex items-center justify-between gap-2">
-        <div className="text-[10px] uppercase tracking-wide text-muted-foreground/80">
+      <div className="mt-auto flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+        <div className="text-[10px] whitespace-nowrap uppercase tracking-wide text-muted-foreground/80">
           Drag to reschedule
         </div>
         <Button
