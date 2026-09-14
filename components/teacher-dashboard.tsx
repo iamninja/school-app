@@ -462,8 +462,11 @@ function ScheduledClassCard({
           </Button>
         </div>
       </div>
-      <div className="text-[11px] text-muted-foreground">
-        {label} • {classItem.hoursPerWeek} hrs/week
+      <div className="text-[11px] leading-tight text-muted-foreground">
+        <div className="truncate" title={label}>
+          {label}
+        </div>
+        <div>{classItem.hoursPerWeek} hrs/week</div>
       </div>
       <div className="mt-auto flex items-center justify-between gap-2">
         <div className="text-[10px] uppercase tracking-wide text-muted-foreground/80">
@@ -1798,7 +1801,10 @@ export function TeacherDashboard({
           classItem,
           geometry,
           canExtend: !!targetNextSlotId && !schedule[targetNextSlotId],
-          label: `${day} ${lessonTimeLabel(window.start, value.isTwoHour, value.endTime)}`,
+          // No day prefix - the card already lives in that day's column, so
+          // repeating it in every single label just eats width the actual
+          // time needs (see ScheduledClassCard's two-line metadata layout).
+          label: lessonTimeLabel(window.start, value.isTwoHour, value.endTime),
         });
       });
       map.set(day, overlays);
@@ -2147,11 +2153,13 @@ export function TeacherDashboard({
                           const customWindow = value?.endTime
                             ? slotWindow(day, cellTime, { endTime: value.endTime })
                             : null;
-                          const label = `${day} ${lessonTimeLabel(
+                          // No day prefix - see the matching comment on
+                          // customOverlaysByDay's own label above.
+                          const label = lessonTimeLabel(
                             customWindow ? customWindow.start : cellTime,
                             value?.isTwoHour ?? false,
                             value?.endTime,
-                          )}`;
+                          );
                           const targetNextSlotId = nextSlotId(day, cellTime);
                           const canExtend =
                             !!targetNextSlotId && !schedule[targetNextSlotId];
