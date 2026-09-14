@@ -374,6 +374,44 @@ export async function restoreClassAction(classId: string) {
   return { id: classId, archivedAt: null as string | null };
 }
 
+// Same-day overlap check shared by every write path that places or times a
+// slot. A *plain* (non-customized) placement's derived window can still
+// collide with a neighboring slot's customized spillover - e.g. dropping a
+// fresh class at the 16:00 row when the 15:15 row was customized to run
+// until 16:45 - so this isn't only needed once a window is itself the one
+// being customized.
+async function assertNoOverlap(
+  supabase: SupabaseServerClient,
+  teacherId: string,
+  day: string,
+  excludeTime: string,
+  window: { start: string; end: string },
+) {
+  const { data: siblingRows, error } = await supabase
+    .from("class_schedule_slots")
+    .select("time, is_two_hour, end_time")
+    .match({ teacher_id: teacherId, day })
+    .neq("time", excludeTime);
+  if (error) {
+    throw error;
+  }
+
+  for (const sibling of siblingRows ?? []) {
+    const siblingWindow = slotWindow(day, sibling.time, {
+      isTwoHour: sibling.is_two_hour ?? false,
+      endTime: sibling.end_time,
+    });
+    const overlaps =
+      timeToMinutes(window.start) < timeToMinutes(siblingWindow.end) &&
+      timeToMinutes(siblingWindow.start) < timeToMinutes(window.end);
+    if (overlaps) {
+      throw new ExpectedError(
+        `That overlaps the ${sibling.time} lesson (${siblingWindow.start}–${siblingWindow.end})`,
+      );
+    }
+  }
+}
+
 export async function setScheduleSlotAction(data: {
   day: string;
   time: string;
@@ -431,6 +469,14 @@ export async function setScheduleSlotAction(data: {
       );
     }
   }
+
+  await assertNoOverlap(
+    supabase,
+    user.id,
+    data.day,
+    data.time,
+    slotWindow(data.day, data.time, { isTwoHour }),
+  );
 
   // Always reset end_time on placement (a fresh row, a move, or a different
   // class taking over this cell) - a custom window belongs to whichever
@@ -506,34 +552,7 @@ export async function setScheduleSlotTimesAction(data: {
       throw new ExpectedError("Custom time must stay within the day's schedule");
     }
 
-    // Only other slots on the same day can possibly overlap - a default
-    // (non-customized) slot's derived window never overlaps another
-    // default slot's, since is_two_hour reservation already prevents that
-    // at placement time. This check only matters once a custom window can
-    // spill outside its own grid row.
-    const { data: siblingRows, error: siblingsError } = await supabase
-      .from("class_schedule_slots")
-      .select("time, is_two_hour, end_time")
-      .match({ teacher_id: user.id, day: data.day })
-      .neq("time", data.time);
-    if (siblingsError) {
-      throw siblingsError;
-    }
-
-    for (const sibling of siblingRows ?? []) {
-      const siblingWindow = slotWindow(data.day, sibling.time, {
-        isTwoHour: sibling.is_two_hour ?? false,
-        endTime: sibling.end_time,
-      });
-      const overlaps =
-        timeToMinutes(window.start) < timeToMinutes(siblingWindow.end) &&
-        timeToMinutes(siblingWindow.start) < timeToMinutes(window.end);
-      if (overlaps) {
-        throw new ExpectedError(
-          `That overlaps the ${sibling.time} lesson (${siblingWindow.start}–${siblingWindow.end})`,
-        );
-      }
-    }
+    await assertNoOverlap(supabase, user.id, data.day, data.time, window);
   }
 
   const { data: row, error } = await supabase

@@ -1776,25 +1776,39 @@ export function TeacherDashboard({
   // Customized slots, positioned at their exact grid geometry instead of
   // filling their whole cell - keyed by day so the render loop can look up
   // "is this row covered by some earlier row's overlay spilling into it"
-  // without rescanning the whole schedule per cell. A slot only becomes an
-  // overlay once it has both a valid end_time and a class actually assigned
-  // (a cleared slot's stale end_time, if any, is moot).
+  // without rescanning the whole schedule per cell.
+  //
+  // Two passes. Pass 1: every slot with its own explicit end_time gets an
+  // overlay at its real (possibly cross-row) window. Pass 2: a plain,
+  // never-customized slot that happens to sit in a row a pass-1 overlay
+  // spills into would otherwise just vanish - ScheduleCell suppresses its
+  // inline card for any row an overlay's span touches, custom or not, and
+  // until this pass nothing else was rendering that slot in its place. Its
+  // own window is always the grid-derived default (it would already be a
+  // pass-1 overlay if it had a custom one), positioned in whatever part of
+  // the row the earlier slot's spillover doesn't cover - which is exactly
+  // where it belongs, since the write path already guarantees the two
+  // don't actually overlap in time (see assertNoOverlap in actions.ts).
   const customOverlaysByDay = React.useMemo(() => {
     const map = new Map<string, CustomOverlay[]>();
     for (const day of DAYS) {
       const overlays: CustomOverlay[] = [];
-      SCHEDULE_ROWS.forEach((row) => {
+
+      const buildOverlay = (
+        rowIndex: number,
+        window: { start: string; end: string },
+      ): CustomOverlay | null => {
+        const row = SCHEDULE_ROWS[rowIndex];
         const cellTime = day === "Sat" ? row.satTime : row.time;
         const slotId = createSlotId(day, cellTime);
         const value = schedule[slotId];
-        if (!value?.endTime) return;
+        if (!value) return null;
         const classItem = classes.find((item) => item.id === value.classId);
-        if (!classItem) return;
-        const window = slotWindow(day, cellTime, { endTime: value.endTime });
+        if (!classItem) return null;
         const geometry = windowToRowGeometry(day, window);
-        if (!geometry) return;
+        if (!geometry) return null;
         const targetNextSlotId = nextSlotId(day, cellTime);
-        overlays.push({
+        return {
           slotId,
           day,
           value,
@@ -1805,8 +1819,33 @@ export function TeacherDashboard({
           // repeating it in every single label just eats width the actual
           // time needs (see ScheduledClassCard's two-line metadata layout).
           label: lessonTimeLabel(window.start, value.isTwoHour, value.endTime),
-        });
+        };
+      };
+
+      const coveredRows = new Set<number>();
+      SCHEDULE_ROWS.forEach((row, rowIndex) => {
+        const cellTime = day === "Sat" ? row.satTime : row.time;
+        const value = schedule[createSlotId(day, cellTime)];
+        if (!value?.endTime) return;
+        const window = slotWindow(day, cellTime, { endTime: value.endTime });
+        const overlay = buildOverlay(rowIndex, window);
+        if (!overlay) return;
+        overlays.push(overlay);
+        for (let covered = rowIndex + 1; covered <= overlay.geometry.endRow; covered++) {
+          coveredRows.add(covered);
+        }
       });
+
+      coveredRows.forEach((rowIndex) => {
+        const row = SCHEDULE_ROWS[rowIndex];
+        const cellTime = day === "Sat" ? row.satTime : row.time;
+        const value = schedule[createSlotId(day, cellTime)];
+        if (!value || value.endTime) return; // empty, or already a pass-1 overlay
+        const window = slotWindow(day, cellTime, { isTwoHour: value.isTwoHour });
+        const overlay = buildOverlay(rowIndex, window);
+        if (overlay) overlays.push(overlay);
+      });
+
       map.set(day, overlays);
     }
     return map;

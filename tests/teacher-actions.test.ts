@@ -538,6 +538,7 @@ describe("teacher actions - setScheduleSlotAction", () => {
     const client = createMockSupabaseClient({
       class_schedule_slots: [
         { data: null, error: null }, // next-row availability check
+        { data: [], error: null }, // assertNoOverlap's sibling-window check
         {
           data: { day: "Wed", time: "16:00", class_id: "class-1", is_two_hour: true },
           error: null,
@@ -559,7 +560,7 @@ describe("teacher actions - setScheduleSlotAction", () => {
       classId: "class-1",
       isTwoHour: true,
     });
-    const upsertChain = client.from.mock.results[1].value;
+    const upsertChain = client.from.mock.results[2].value;
     expect(upsertChain.upsert).toHaveBeenCalledWith(
       expect.objectContaining({ is_two_hour: true }),
       expect.anything(),
