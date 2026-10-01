@@ -1,0 +1,14 @@
+-- Keep the exact XML we send to AADE, next to the exact response we get back
+-- (raw_response, added 2026-09-02). The original log migration deliberately
+-- did not archive the request ("the full invoice payload on every attempt for
+-- no benefit"), but 2026-10-01 showed why that was wrong: a receipt (A-2) got
+-- a Success response with a MARK, UID and QR link, yet AADE's own QR page and
+-- RequestTransmittedDocs could not find it - the same unresolved "phantom
+-- success" as 2026-09-01. Without the request body there is nothing to
+-- compare against a receipt that did register (A-1), or to hand to AADE
+-- support. Only submit rows carry it; verify rows are a GET with no body.
+--
+-- The table is teacher-only under RLS and holds the issuer's own invoice
+-- data (amounts, VAT codes, the business AFM) - nothing the app does not
+-- already store on the receipt itself.
+alter table public.mydata_submission_log add column request_xml text;

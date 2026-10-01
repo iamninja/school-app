@@ -394,6 +394,9 @@ describe("submitReceiptToMyDataAction", () => {
         environment: "sandbox",
         success: true,
         mark: "400001968145986",
+        // Both halves of the exchange are kept verbatim: what we sent...
+        request_xml: "<InvoicesDoc />",
+        // ...and what AADE answered with.
         raw_response: "<ResponseDoc/>",
       }),
     );
@@ -524,9 +527,48 @@ describe("submitReceiptToMyDataAction", () => {
     const logChain = client.from.mock.results[
       client.from.mock.calls.findIndex(([t]) => t === "mydata_submission_log")
     ].value;
+    // The request is logged on the failure path too - a rejection is exactly
+    // when you want to see what was sent.
     expect(logChain.insert).toHaveBeenCalledWith(
-      expect.objectContaining({ success: false }),
+      expect.objectContaining({
+        success: false,
+        request_xml: "<InvoicesDoc />",
+        raw_response: "<ResponseDoc/>",
+      }),
     );
+  });
+
+  it("truncates an oversized request before logging it, rather than storing it unbounded", async () => {
+    const mydata = await import("@/lib/mydata/client");
+    const invoiceXml = await import("@/lib/mydata/invoice-xml");
+    vi.mocked(invoiceXml.buildInvoiceXml).mockReturnValueOnce(
+      "<InvoicesDoc>" + "y".repeat(30000) + "</InvoicesDoc>",
+    );
+    vi.mocked(mydata.getActiveMyDataEnvironment).mockResolvedValue("sandbox");
+    vi.mocked(mydata.sendInvoiceXml).mockResolvedValue({
+      ok: false,
+      error: "rejected",
+      raw: "<ResponseDoc/>",
+    });
+
+    const client = createMockSupabaseClient({
+      receipts: [
+        { data: receiptRow, error: null },
+        { data: { ...receiptRow, mydata_status: "failed" }, error: null },
+      ],
+      receipt_line_items: { data: [], error: null },
+      business_profile: { data: businessProfile, error: null },
+      mydata_submission_log: { data: null, error: null },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await expect(submitReceiptToMyDataAction("receipt-1")).rejects.toThrow();
+
+    const logChain = client.from.mock.results[
+      client.from.mock.calls.findIndex(([t]) => t === "mydata_submission_log")
+    ].value;
+    const loggedRequest = vi.mocked(logChain.insert).mock.calls[0][0].request_xml;
+    expect(loggedRequest.length).toBe(20000);
   });
 });
 
