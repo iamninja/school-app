@@ -70,9 +70,15 @@ export function ReceiptDocument({
         </div>
       )}
 
-      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3 border-b-2 border-brand pb-3">
-        <div className="min-w-0 space-y-2">
-          <div className="flex items-center gap-[3mm]">
+      <div className="border-b-2 border-brand pb-3">
+        {/* Top row: logo left, title right. The business details sit in
+            their own block below, NOT inside the logo's column: a long
+            business name made that column as wide as the whole sheet and
+            pushed the title onto its own line under the logo. The row only
+            wraps when the container is genuinely too narrow (parent portal
+            dialog); on the A5 sheet it always fits. */}
+        <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+          <div className="flex min-w-0 items-center gap-[3mm]">
             {/* eslint-disable-next-line @next/next/no-img-element -- print document, see the file-level note on why next/image is skipped here */}
             <img
               src="/branding/modus-mark.svg"
@@ -91,36 +97,37 @@ export function ReceiptDocument({
               </p>
             </div>
           </div>
-          <div className="space-y-px">
-            <p className="text-xs font-bold">
-              {business?.business_name ?? "—"}
+          <div className="max-w-[48mm] shrink-0 space-y-1 text-right">
+            <p className="text-sm font-bold leading-tight tracking-tight">
+              ΑΠΟΔΕΙΞΗ ΠΑΡΟΧΗΣ ΥΠΗΡΕΣΙΩΝ
             </p>
-            {business?.address && <p>{business.address}</p>}
-            {(business?.postal_code || business?.city) && (
-              <p>
-                {[business?.postal_code, business?.city]
-                  .filter(Boolean)
-                  .join(" ")}
-              </p>
-            )}
-            {business?.afm && <p>ΑΦΜ: {business.afm}</p>}
-            {business?.doy && <p>ΔΟΥ: {business.doy}</p>}
-            {business?.activity_code && <p>ΚΑΔ: {business.activity_code}</p>}
-            {business?.phone && <p>Τηλ.: {business.phone}</p>}
+            <p className="font-medium">
+              Σειρά {receipt.series} · Αρ. {receipt.receipt_number}
+            </p>
+            <p className="text-black/70">
+              {format(new Date(receipt.issue_date), "d MMMM yyyy", {
+                locale: el,
+              })}
+            </p>
           </div>
         </div>
-        <div className="max-w-[48mm] shrink-0 space-y-1 text-right">
-          <p className="text-sm font-bold leading-tight tracking-tight">
-            ΑΠΟΔΕΙΞΗ ΠΑΡΟΧΗΣ ΥΠΗΡΕΣΙΩΝ
+
+        <div className="mt-3 space-y-px">
+          <p className="text-xs font-bold">
+            {business?.business_name ?? "—"}
           </p>
-          <p className="font-medium">
-            Σειρά {receipt.series} · Αρ. {receipt.receipt_number}
-          </p>
-          <p className="text-black/70">
-            {format(new Date(receipt.issue_date), "d MMMM yyyy", {
-              locale: el,
-            })}
-          </p>
+          {business?.address && <p>{business.address}</p>}
+          {(business?.postal_code || business?.city) && (
+            <p>
+              {[business?.postal_code, business?.city]
+                .filter(Boolean)
+                .join(" ")}
+            </p>
+          )}
+          {business?.afm && <p>ΑΦΜ: {business.afm}</p>}
+          {business?.doy && <p>ΔΟΥ: {business.doy}</p>}
+          {business?.activity_code && <p>ΚΑΔ: {business.activity_code}</p>}
+          {business?.phone && <p>Τηλ.: {business.phone}</p>}
         </div>
       </div>
 
