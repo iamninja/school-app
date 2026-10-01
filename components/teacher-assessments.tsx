@@ -1,5 +1,6 @@
 "use client";
 
+import { getErrorMessage } from "@/lib/expected-error";
 import * as React from "react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -194,7 +195,7 @@ function formToInput(form: AssessmentFormState): AssessmentInput {
 }
 
 function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error ? error.message : fallback;
+  return getErrorMessage(error, fallback);
 }
 
 export function TeacherAssessments({

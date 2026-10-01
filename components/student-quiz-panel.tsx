@@ -1,5 +1,6 @@
 "use client";
 
+import { getErrorMessage } from "@/lib/expected-error";
 import * as React from "react";
 import { format } from "date-fns";
 import { el, enUS } from "date-fns/locale";
@@ -135,7 +136,7 @@ export function StudentQuizPanel({
       setView({ mode: "taking", quiz });
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : labels.loadQuizError,
+        getErrorMessage(error, labels.loadQuizError),
       );
     } finally {
       setIsLoading(false);
@@ -154,7 +155,7 @@ export function StudentQuizPanel({
       setView({ mode: "review", review });
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : labels.loadReviewError,
+        getErrorMessage(error, labels.loadReviewError),
       );
     } finally {
       setIsLoading(false);
@@ -219,7 +220,7 @@ export function StudentQuizPanel({
       toast.success(auto ? labels.autoSubmitted : labels.submitted);
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : labels.submitError,
+        getErrorMessage(error, labels.submitError),
       );
     } finally {
       setIsSubmitting(false);

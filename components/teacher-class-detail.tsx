@@ -1,5 +1,6 @@
 "use client";
 
+import { getErrorMessage } from "@/lib/expected-error";
 import * as React from "react";
 import { format } from "date-fns";
 import {
@@ -204,7 +205,7 @@ export function TeacherClassDetail({
       setHomeworkDueDate("");
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to add homework",
+        getErrorMessage(error, "Failed to add homework"),
       );
     } finally {
       setIsSavingHomework(false);
@@ -218,7 +219,7 @@ export function TeacherClassDetail({
       onHomeworkChange((prev) => prev.filter((h) => h.id !== homeworkId));
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to delete homework",
+        getErrorMessage(error, "Failed to delete homework"),
       );
     } finally {
       setDeletingHomeworkId(null);
@@ -233,7 +234,7 @@ export function TeacherClassDetail({
       setPendingGrading(items);
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to load pending grading",
+        getErrorMessage(error, "Failed to load pending grading"),
       );
     }
   }, [classItem.id]);
@@ -269,7 +270,7 @@ export function TeacherClassDetail({
       setStudentReview(review);
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to load answers",
+        getErrorMessage(error, "Failed to load answers"),
       );
     } finally {
       setIsLoadingStudentReview(false);
@@ -296,7 +297,7 @@ export function TeacherClassDetail({
       }
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to load quiz results",
+        getErrorMessage(error, "Failed to load quiz results"),
       );
     } finally {
       setIsLoadingResults(false);
@@ -314,7 +315,7 @@ export function TeacherClassDetail({
       setBreakdown(data);
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to load breakdown",
+        getErrorMessage(error, "Failed to load breakdown"),
       );
     } finally {
       setIsLoadingBreakdown(false);
@@ -342,7 +343,7 @@ export function TeacherClassDetail({
       });
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to save comment",
+        getErrorMessage(error, "Failed to save comment"),
       );
     }
   };
@@ -381,7 +382,7 @@ export function TeacherClassDetail({
       await refreshAfterGrading();
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to save grade",
+        getErrorMessage(error, "Failed to save grade"),
       );
     } finally {
       setGradingAnswerId(null);
@@ -396,7 +397,7 @@ export function TeacherClassDetail({
       await refreshAfterGrading();
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "AI grading failed",
+        getErrorMessage(error, "AI grading failed"),
       );
     } finally {
       setGradingAnswerId(null);
@@ -432,7 +433,7 @@ export function TeacherClassDetail({
       });
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to save comment",
+        getErrorMessage(error, "Failed to save comment"),
       );
     }
   };

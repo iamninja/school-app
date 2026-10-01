@@ -1,5 +1,6 @@
 "use client";
 
+import { getErrorMessage } from "@/lib/expected-error";
 import * as React from "react";
 import {
   DndContext,
@@ -868,7 +869,7 @@ export function TeacherDashboard({
       setIsCreateClassOpen(false);
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to create class",
+        getErrorMessage(error, "Failed to create class"),
       );
     } finally {
       setIsSavingClass(false);
@@ -962,7 +963,7 @@ export function TeacherDashboard({
       closeEditClassDialog();
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to update class",
+        getErrorMessage(error, "Failed to update class"),
       );
     } finally {
       setIsSavingClass(false);
@@ -991,7 +992,7 @@ export function TeacherDashboard({
       toast.success("Class archived and removed from the schedule");
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to archive class",
+        getErrorMessage(error, "Failed to archive class"),
       );
     }
   };
@@ -1007,7 +1008,7 @@ export function TeacherDashboard({
       toast.success("Class restored");
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to restore class",
+        getErrorMessage(error, "Failed to restore class"),
       );
     }
   };
@@ -1038,7 +1039,7 @@ export function TeacherDashboard({
       toast.success("Class deleted");
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to delete class",
+        getErrorMessage(error, "Failed to delete class"),
       );
     }
   };
@@ -1067,7 +1068,7 @@ export function TeacherDashboard({
       }
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to enroll student",
+        getErrorMessage(error, "Failed to enroll student"),
       );
     } finally {
       setIsMutatingEnrollment(false);
@@ -1092,7 +1093,7 @@ export function TeacherDashboard({
       );
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to remove student",
+        getErrorMessage(error, "Failed to remove student"),
       );
     } finally {
       setIsMutatingEnrollment(false);
@@ -1192,7 +1193,7 @@ export function TeacherDashboard({
     } catch (error: unknown) {
       setSchedule(previousSchedule);
       toast.error(
-        error instanceof Error ? error.message : "Failed to update the schedule",
+        getErrorMessage(error, "Failed to update the schedule"),
       );
     }
   };
@@ -1239,7 +1240,7 @@ export function TeacherDashboard({
       }));
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to update the slot",
+        getErrorMessage(error, "Failed to update the slot"),
       );
     }
   };
@@ -1267,7 +1268,7 @@ export function TeacherDashboard({
       // a blocking dialog - the edit dialog itself stays open so the teacher
       // can just pick a different time.
       toast.error(
-        error instanceof Error ? error.message : "Failed to update the time",
+        getErrorMessage(error, "Failed to update the time"),
       );
     } finally {
       setIsSavingEndTime(false);
@@ -1376,7 +1377,7 @@ export function TeacherDashboard({
       );
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to create student",
+        getErrorMessage(error, "Failed to create student"),
       );
       return;
     }
@@ -1471,7 +1472,7 @@ export function TeacherDashboard({
       await resetStudentAccountAction(studentId);
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to reset account",
+        getErrorMessage(error, "Failed to reset account"),
       );
       return;
     }
@@ -1506,7 +1507,7 @@ export function TeacherDashboard({
       });
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to reset account",
+        getErrorMessage(error, "Failed to reset account"),
       );
       return;
     }
@@ -1625,7 +1626,7 @@ export function TeacherDashboard({
       });
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to update student",
+        getErrorMessage(error, "Failed to update student"),
       );
       setIsSavingStudent(false);
       return;

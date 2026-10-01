@@ -1,5 +1,6 @@
 "use client";
 
+import { getErrorMessage } from "@/lib/expected-error";
 import * as React from "react";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -213,7 +214,7 @@ export function TeacherReceipts({
       if (requestId !== previewRequestId.current) return;
       setCoveragePreview(null);
       setCoverageError(
-        error instanceof Error ? error.message : "Could not preview these months",
+        getErrorMessage(error, "Could not preview these months"),
       );
     }
   };
@@ -315,7 +316,7 @@ export function TeacherReceipts({
       );
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to issue receipt",
+        getErrorMessage(error, "Failed to issue receipt"),
       );
     } finally {
       setIsSubmitting(false);
@@ -337,7 +338,7 @@ export function TeacherReceipts({
       // The receipt is still saved and still retryable; only the
       // transmission failed, so this is a message rather than a crash.
       toast.error(
-        error instanceof Error ? error.message : "Failed to send to myDATA",
+        getErrorMessage(error, "Failed to send to myDATA"),
       );
       setReceipts((prev) =>
         prev.map((item) =>
@@ -367,7 +368,7 @@ export function TeacherReceipts({
       // receipt (via the action), so the message here is the detail, not
       // the whole story - the badge reflects the real outcome either way.
       toast.error(
-        error instanceof Error ? error.message : "Could not verify with AADE",
+        getErrorMessage(error, "Could not verify with AADE"),
       );
       setReceipts((prev) =>
         prev.map((item) =>
@@ -403,7 +404,7 @@ export function TeacherReceipts({
       toast.success("Receipt deleted");
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to delete receipt",
+        getErrorMessage(error, "Failed to delete receipt"),
       );
     } finally {
       setDeletingId(null);

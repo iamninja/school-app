@@ -1,5 +1,6 @@
 "use client";
 
+import { getErrorMessage } from "@/lib/expected-error";
 import * as React from "react";
 import { toast } from "sonner";
 import {
@@ -701,7 +702,7 @@ export function TeacherCalendar({
       toast.success("Class cancelled for this date");
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to cancel the class",
+        getErrorMessage(error, "Failed to cancel the class"),
       );
     } finally {
       setCancellingKey(null);
@@ -716,7 +717,7 @@ export function TeacherCalendar({
       toast.success("Class restored");
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to restore the class",
+        getErrorMessage(error, "Failed to restore the class"),
       );
     } finally {
       setDeletingId(null);
@@ -734,7 +735,7 @@ export function TeacherCalendar({
       toast.success("Deleted");
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to delete",
+        getErrorMessage(error, "Failed to delete"),
       );
     } finally {
       setDeletingId(null);
@@ -787,7 +788,7 @@ export function TeacherCalendar({
       setRescheduleTarget(null);
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to reschedule",
+        getErrorMessage(error, "Failed to reschedule"),
       );
     } finally {
       setIsRescheduling(false);
@@ -888,7 +889,7 @@ export function TeacherCalendar({
       closeDialog();
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to save event",
+        getErrorMessage(error, "Failed to save event"),
       );
     } finally {
       setIsSaving(false);

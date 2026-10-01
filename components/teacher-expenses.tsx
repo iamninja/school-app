@@ -1,5 +1,6 @@
 "use client";
 
+import { getErrorMessage } from "@/lib/expected-error";
 import * as React from "react";
 import { toast } from "sonner";
 import { format, subDays } from "date-fns";
@@ -172,7 +173,7 @@ export function TeacherExpenses({
       setHasCheckedMyData(true);
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to check myDATA",
+        getErrorMessage(error, "Failed to check myDATA"),
       );
     } finally {
       setIsCheckingMyData(false);
@@ -216,7 +217,7 @@ export function TeacherExpenses({
       setIsFormOpen(false);
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to save expense",
+        getErrorMessage(error, "Failed to save expense"),
       );
     } finally {
       setIsSubmitting(false);
@@ -238,7 +239,7 @@ export function TeacherExpenses({
       toast.success("Expense deleted");
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to delete expense",
+        getErrorMessage(error, "Failed to delete expense"),
       );
     } finally {
       setDeletingId(null);
