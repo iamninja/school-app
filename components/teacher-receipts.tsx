@@ -15,6 +15,7 @@ import {
 import {
   createReceiptAction,
   deleteReceiptAction,
+  previewReceiptCoverageAction,
   submitReceiptToMyDataAction,
   verifyReceiptWithMyDataAction,
 } from "@/app/protected/teacher/receipt-actions";
@@ -37,8 +38,20 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ReceiptDocument } from "@/components/receipt-document";
 import { formatEuro } from "@/lib/format-currency";
-import { PAYMENT_METHODS } from "@/lib/payment-methods";
-import type { BusinessProfile, Receipt, ReceiptPrefill } from "@/lib/types/database";
+import { formatPeriodLabel } from "@/lib/billing/school-year";
+import {
+  CASH_LIMIT_MESSAGE,
+  CASH_PAYMENT_CODE,
+  CASH_PAYMENT_LIMIT,
+  PAYMENT_METHODS,
+  isCashAllowed,
+} from "@/lib/payment-methods";
+import type {
+  BusinessProfile,
+  Receipt,
+  ReceiptCoveragePreview,
+  ReceiptPrefill,
+} from "@/lib/types/database";
 
 type FamilyOption = {
   id: string;
@@ -90,12 +103,97 @@ export function TeacherReceipts({
   const [countsTowardBalance, setCountsTowardBalance] = React.useState(true);
   const [lines, setLines] = React.useState<LineDraft[]>([blankLine()]);
 
+  // Multi-month receipt: a range of covered months at an agreed price. The
+  // month inputs hold "YYYY-MM"; the server wants first-of-month dates.
+  const [coversEnabled, setCoversEnabled] = React.useState(false);
+  const [coversStart, setCoversStart] = React.useState("");
+  const [coversEnd, setCoversEnd] = React.useState("");
+  const [agreedAmount, setAgreedAmount] = React.useState("");
+  const [coveragePreview, setCoveragePreview] =
+    React.useState<ReceiptCoveragePreview | null>(null);
+  const [coverageError, setCoverageError] = React.useState<string | null>(null);
+  const previewRequestId = React.useRef(0);
+
   const businessReady = Boolean(business?.business_name && business?.afm);
 
   const total = lines.reduce((sum, line) => {
     const value = Number.parseFloat(line.amount);
     return sum + (Number.isFinite(value) ? value : 0);
   }, 0);
+
+  // Cash above the legal limit: the option is disabled, and if cash was
+  // already picked we show the error and block submit rather than silently
+  // switching what the teacher says actually happened.
+  const cashBlocked =
+    paymentMethod === CASH_PAYMENT_CODE && !isCashAllowed(total);
+
+  // Soft warning only: several cash receipts to one family on one day can
+  // add up to one over-the-limit payment. Splitting doesn't make it legal.
+  const sameDayCashTotal =
+    paymentMethod === CASH_PAYMENT_CODE && familyId
+      ? receipts
+          .filter(
+            (receipt) =>
+              receipt.family_id === familyId &&
+              receipt.issue_date === issueDate &&
+              receipt.payment_method === CASH_PAYMENT_CODE,
+          )
+          .reduce((sum, receipt) => sum + receipt.total_amount, 0) + total
+      : 0;
+  const sameDayCashWarning =
+    !cashBlocked && sameDayCashTotal > CASH_PAYMENT_LIMIT;
+
+  const agreedValue = Number.parseFloat(agreedAmount);
+  const hasAgreed = Number.isFinite(agreedValue) && agreedValue > 0;
+  const discount =
+    coveragePreview && hasAgreed
+      ? Math.max(0, coveragePreview.grossTotal - agreedValue)
+      : 0;
+  const balanceAfter = coveragePreview
+    ? coveragePreview.balance +
+      coveragePreview.newChargesTotal -
+      discount -
+      (countsTowardBalance ? total : 0)
+    : null;
+
+  const loadCoveragePreview = async (
+    nextFamilyId: string,
+    start: string,
+    end: string,
+  ) => {
+    const requestId = ++previewRequestId.current;
+    if (!nextFamilyId || !start || !end) {
+      setCoveragePreview(null);
+      setCoverageError(null);
+      return;
+    }
+    try {
+      const preview = await previewReceiptCoverageAction({
+        familyId: nextFamilyId,
+        start: `${start}-01`,
+        end: `${end}-01`,
+      });
+      if (requestId !== previewRequestId.current) return;
+      setCoveragePreview(preview);
+      setCoverageError(null);
+      setLines((prev) =>
+        prev.length === 1 && !prev[0].description
+          ? [
+              {
+                ...prev[0],
+                description: `Δίδακτρα ${formatPeriodLabel(`${start}-01`)} – ${formatPeriodLabel(`${end}-01`)}`,
+              },
+            ]
+          : prev,
+      );
+    } catch (error: unknown) {
+      if (requestId !== previewRequestId.current) return;
+      setCoveragePreview(null);
+      setCoverageError(
+        error instanceof Error ? error.message : "Could not preview these months",
+      );
+    }
+  };
 
   const resetForm = () => {
     setFamilyId("");
@@ -107,6 +205,12 @@ export function TeacherReceipts({
     setPaymentMethod(3);
     setCountsTowardBalance(true);
     setLines([blankLine()]);
+    setCoversEnabled(false);
+    setCoversStart("");
+    setCoversEnd("");
+    setAgreedAmount("");
+    setCoveragePreview(null);
+    setCoverageError(null);
   };
 
   // Picking a family is a convenience prefill only - the name stays freely
@@ -116,6 +220,14 @@ export function TeacherReceipts({
     const family = families.find((item) => item.id === nextFamilyId);
     if (family && family.parentNames.length > 0) {
       setRecipientName(family.parentNames[0]);
+    }
+    if (!nextFamilyId) {
+      // Coverage needs a family; there is nothing to cover without one.
+      setCoversEnabled(false);
+      setCoveragePreview(null);
+      setCoverageError(null);
+    } else if (coversEnabled) {
+      void loadCoveragePreview(nextFamilyId, coversStart, coversEnd);
     }
   };
 
@@ -136,17 +248,36 @@ export function TeacherReceipts({
 
   const handleCreate = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (cashBlocked) {
+      toast.error(CASH_LIMIT_MESSAGE);
+      return;
+    }
+    const covering = coversEnabled && familyId && coversStart && coversEnd;
+    if (coversEnabled && !covering) {
+      toast.error("Choose the first and last covered month");
+      return;
+    }
     setIsSubmitting(true);
     try {
+      // The discount can't be a negative line (amounts must be >= 0 and
+      // myDATA takes the amount actually collected), so it is stated in the
+      // notes of the printed receipt instead.
+      const coverageNote =
+        covering && coveragePreview && hasAgreed && discount > 0
+          ? `Συμφωνημένη τιμή ${formatAmount(agreedValue)} αντί ${formatAmount(coveragePreview.grossTotal)} (έκπτωση ${formatAmount(discount)})`
+          : "";
       const created = await createReceiptAction({
         issueDate,
         recipientName,
         recipientAfm,
         recipientAddress,
         familyId: familyId || null,
-        notes,
+        notes: [notes.trim(), coverageNote].filter(Boolean).join(" — "),
         paymentMethod,
         countsTowardBalance,
+        coversPeriodStart: covering ? `${coversStart}-01` : null,
+        coversPeriodEnd: covering ? `${coversEnd}-01` : null,
+        agreedAmount: covering && hasAgreed ? agreedValue : null,
         lineItems: lines.map((line) => ({
           description: line.description,
           amount: Number.parseFloat(line.amount),
@@ -483,6 +614,140 @@ export function TeacherReceipts({
               </div>
             )}
 
+            {familyId && countsTowardBalance && (
+              <div className="space-y-3 rounded-md border p-3">
+                <div className="flex items-start gap-2">
+                  <Checkbox
+                    id="receipt-covers-months"
+                    checked={coversEnabled}
+                    onCheckedChange={(checked) => {
+                      const enabled = checked === true;
+                      setCoversEnabled(enabled);
+                      if (enabled) {
+                        void loadCoveragePreview(
+                          familyId,
+                          coversStart,
+                          coversEnd,
+                        );
+                      } else {
+                        setCoveragePreview(null);
+                        setCoverageError(null);
+                      }
+                    }}
+                  />
+                  <div className="space-y-1">
+                    <Label
+                      htmlFor="receipt-covers-months"
+                      className="font-normal"
+                    >
+                      This receipt covers multiple months
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Charges those months now at today&apos;s monthly amount,
+                      so the monthly run skips them. Use the agreed price for
+                      the whole range if it&apos;s discounted.
+                    </p>
+                  </div>
+                </div>
+
+                {coversEnabled && (
+                  <>
+                    <div className="grid gap-4 sm:grid-cols-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="receipt-covers-start">From month</Label>
+                        <Input
+                          id="receipt-covers-start"
+                          type="month"
+                          value={coversStart}
+                          onChange={(event) => {
+                            setCoversStart(event.target.value);
+                            void loadCoveragePreview(
+                              familyId,
+                              event.target.value,
+                              coversEnd,
+                            );
+                          }}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="receipt-covers-end">To month</Label>
+                        <Input
+                          id="receipt-covers-end"
+                          type="month"
+                          value={coversEnd}
+                          onChange={(event) => {
+                            setCoversEnd(event.target.value);
+                            void loadCoveragePreview(
+                              familyId,
+                              coversStart,
+                              event.target.value,
+                            );
+                          }}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="receipt-agreed-amount">
+                          Agreed price (total)
+                        </Label>
+                        <Input
+                          id="receipt-agreed-amount"
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          placeholder="Full price"
+                          value={agreedAmount}
+                          onChange={(event) =>
+                            setAgreedAmount(event.target.value)
+                          }
+                        />
+                      </div>
+                    </div>
+
+                    {coverageError && (
+                      <p className="text-sm text-destructive">{coverageError}</p>
+                    )}
+
+                    {coveragePreview && (
+                      <dl className="space-y-1 text-sm">
+                        <div className="flex justify-between">
+                          <dt>
+                            Full price ({coveragePreview.periods.length} months
+                            × {formatAmount(coveragePreview.monthlyAmount)})
+                          </dt>
+                          <dd>{formatAmount(coveragePreview.grossTotal)}</dd>
+                        </div>
+                        {hasAgreed && (
+                          <div className="flex justify-between">
+                            <dt>Agreed price</dt>
+                            <dd>{formatAmount(agreedValue)}</dd>
+                          </div>
+                        )}
+                        <div className="flex justify-between">
+                          <dt>Discount</dt>
+                          <dd>{formatAmount(discount)}</dd>
+                        </div>
+                        <div className="flex justify-between">
+                          <dt>This receipt</dt>
+                          <dd>{formatAmount(total)}</dd>
+                        </div>
+                        <div className="flex justify-between font-medium">
+                          <dt>Balance after</dt>
+                          <dd>{formatAmount(balanceAfter ?? 0)}</dd>
+                        </div>
+                        <p className="pt-1 text-xs text-muted-foreground">
+                          Amount is fixed at today&apos;s monthly total. A
+                          student added later isn&apos;t covered for these
+                          months. If you only receive part of the agreed price
+                          now, the rest stays owed and later receipts pay it
+                          off.
+                        </p>
+                      </dl>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
             <div className="space-y-2">
               <Label htmlFor="receipt-recipient">Issued to</Label>
               <Input
@@ -524,15 +789,38 @@ export function TeacherReceipts({
                 className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
               >
                 {PAYMENT_METHODS.map((method) => (
-                  <option key={method.code} value={method.code}>
+                  <option
+                    key={method.code}
+                    value={method.code}
+                    disabled={
+                      method.code === CASH_PAYMENT_CODE &&
+                      !isCashAllowed(total) &&
+                      paymentMethod !== CASH_PAYMENT_CODE
+                    }
+                  >
                     {method.label}
                   </option>
                 ))}
               </select>
               <p className="text-xs text-muted-foreground">
                 Required by myDATA — how the payment was actually made is
-                part of the record sent to AADE.
+                part of the record sent to AADE. Cash is only allowed up to{" "}
+                {formatAmount(CASH_PAYMENT_LIMIT)}.
               </p>
+              {cashBlocked && (
+                <p role="alert" className="text-sm font-medium text-destructive">
+                  {CASH_LIMIT_MESSAGE}
+                </p>
+              )}
+              {sameDayCashWarning && (
+                <p className="text-sm text-amber-600">
+                  Cash receipts to this family today already add up to{" "}
+                  {formatAmount(sameDayCashTotal)}, above the{" "}
+                  {formatAmount(CASH_PAYMENT_LIMIT)} cash limit for one
+                  payment. Splitting a single payment across receipts
+                  doesn&apos;t make it legal.
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -626,7 +914,11 @@ export function TeacherReceipts({
               changed afterwards.
             </p>
 
-            <Button type="submit" className="w-full" disabled={isSubmitting}>
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={isSubmitting || cashBlocked}
+            >
               {isSubmitting ? "Issuing..." : "Issue receipt"}
             </Button>
           </form>
