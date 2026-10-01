@@ -4,6 +4,7 @@ import * as React from "react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import {
+  EyeIcon,
   PlusIcon,
   PrinterIcon,
   SendIcon,
@@ -113,6 +114,28 @@ export function TeacherReceipts({
     React.useState<ReceiptCoveragePreview | null>(null);
   const [coverageError, setCoverageError] = React.useState<string | null>(null);
   const previewRequestId = React.useRef(0);
+
+  // The row-level Print button opens the receipt and then prints it. A ref,
+  // not state: the flag is only read by the effect below, and the print
+  // itself is the side effect. It is cleared inside the timer callback (not
+  // before it) so React strict mode's dev double-run of the effect still
+  // prints exactly once.
+  const printOnOpen = React.useRef(false);
+  React.useEffect(() => {
+    if (!viewing || !printOnOpen.current) return;
+    // A short delay so the receipt (and its logo image) has rendered before
+    // the browser snapshots the page for the print preview.
+    const timer = window.setTimeout(() => {
+      printOnOpen.current = false;
+      window.print();
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [viewing]);
+
+  const handlePrintReceipt = (receipt: Receipt) => {
+    printOnOpen.current = true;
+    setViewing(receipt);
+  };
 
   const businessReady = Boolean(business?.business_name && business?.afm);
 
@@ -533,7 +556,16 @@ export function TeacherReceipts({
                       size="sm"
                       onClick={() => setViewing(receipt)}
                     >
-                      <PrinterIcon className="mr-1 h-3.5 w-3.5" /> View
+                      <EyeIcon className="mr-1 h-3.5 w-3.5" /> View
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      aria-label={`Print receipt ${receipt.series}-${receipt.receipt_number}`}
+                      onClick={() => handlePrintReceipt(receipt)}
+                    >
+                      <PrinterIcon className="mr-1 h-3.5 w-3.5" /> Print
                     </Button>
                     <Button
                       type="button"

@@ -53,7 +53,8 @@ describe("TeacherBusinessSettings demo receipt preview", () => {
     expect(
       screen.getByText(/ΔΕΙΓΜΑ — ΔΕΝ ΑΠΟΤΕΛΕΙ ΠΡΑΓΜΑΤΙΚΟ ΠΑΡΑΣΤΑΤΙΚΟ/),
     ).toBeInTheDocument();
-    expect(screen.getByText("Modus")).toBeInTheDocument();
+    // "Modus" appears twice: the logo wordmark and the business name line.
+    expect(screen.getAllByText("Modus")).toHaveLength(2);
     expect(screen.getByText(/ΑΦΜ: 123456789/)).toBeInTheDocument();
   });
 
