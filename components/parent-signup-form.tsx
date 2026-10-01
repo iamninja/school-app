@@ -1,5 +1,6 @@
 "use client";
 
+import { getErrorMessage } from "@/lib/expected-error";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -61,7 +62,7 @@ export function ParentSignUpForm({
       }
     } catch (error: unknown) {
       setError(
-        error instanceof Error ? error.message : "Παρουσιάστηκε σφάλμα",
+        getErrorMessage(error, "Παρουσιάστηκε σφάλμα"),
       );
       setEmailVerified(false);
     } finally {
@@ -108,7 +109,7 @@ export function ParentSignUpForm({
       }
     } catch (error: unknown) {
       setError(
-        error instanceof Error ? error.message : "Παρουσιάστηκε σφάλμα",
+        getErrorMessage(error, "Παρουσιάστηκε σφάλμα"),
       );
     } finally {
       setIsLoading(false);

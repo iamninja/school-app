@@ -1,5 +1,6 @@
 "use client";
 
+import { getErrorMessage } from "@/lib/expected-error";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -51,7 +52,7 @@ export function TeacherLoginForm({
         router.push("/protected/teacher");
       });
     } catch (error: unknown) {
-      setError(error instanceof Error ? error.message : "An error occurred");
+      setError(getErrorMessage(error, "An error occurred"));
     } finally {
       setIsSigningIn(false);
     }

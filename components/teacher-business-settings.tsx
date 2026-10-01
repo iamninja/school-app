@@ -1,5 +1,6 @@
 "use client";
 
+import { getErrorMessage } from "@/lib/expected-error";
 import * as React from "react";
 import { toast } from "sonner";
 import {
@@ -181,7 +182,7 @@ export function TeacherBusinessSettings({
       toast.success("Business details saved");
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to save details",
+        getErrorMessage(error, "Failed to save details"),
       );
     } finally {
       setIsSavingProfile(false);
@@ -204,7 +205,7 @@ export function TeacherBusinessSettings({
       toast.success("Integration updated");
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to update integration",
+        getErrorMessage(error, "Failed to update integration"),
       );
     }
   };
@@ -232,7 +233,7 @@ export function TeacherBusinessSettings({
       toast.success("Credential saved");
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to save credential",
+        getErrorMessage(error, "Failed to save credential"),
       );
     } finally {
       setIsSavingCredential(false);
@@ -264,7 +265,7 @@ export function TeacherBusinessSettings({
       toast.success("Credential removed");
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to remove credential",
+        getErrorMessage(error, "Failed to remove credential"),
       );
     }
   };
@@ -284,7 +285,7 @@ export function TeacherBusinessSettings({
       setMarkCheckResult(result);
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to check MARK",
+        getErrorMessage(error, "Failed to check MARK"),
       );
     } finally {
       setIsCheckingMark(false);

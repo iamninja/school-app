@@ -679,9 +679,11 @@ describe("verifyReceiptWithMyDataAction", () => {
     });
     vi.mocked(createClient).mockResolvedValue(client as never);
 
-    await expect(verifyReceiptWithMyDataAction("receipt-1")).rejects.toThrow(
-      /no record/i,
-    );
+    const rejection = verifyReceiptWithMyDataAction("receipt-1");
+    await expect(rejection).rejects.toThrow(/doesn't list MARK/i);
+    // It must steer away from re-sending, not toward it.
+    await expect(rejection).rejects.toThrow(/don't re-send/i);
+    await expect(rejection).rejects.not.toThrow(/may need to be re-sent/i);
 
     const logChain = client.from.mock.results[
       client.from.mock.calls.findIndex(([t]) => t === "mydata_submission_log")

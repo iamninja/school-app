@@ -1,5 +1,6 @@
 "use client";
 
+import { getErrorMessage } from "@/lib/expected-error";
 import * as React from "react";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -162,7 +163,7 @@ export function TeacherBilling({
       await refreshLists();
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to run charges",
+        getErrorMessage(error, "Failed to run charges"),
       );
     } finally {
       setIsRunning(false);
@@ -432,7 +433,7 @@ function FamilyBillingDetail({
       setLedger(data);
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to load ledger",
+        getErrorMessage(error, "Failed to load ledger"),
       );
     } finally {
       setIsLoading(false);
@@ -460,7 +461,7 @@ function FamilyBillingDetail({
       setPrepayPreview({ periods: preview.periods, total: preview.total });
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to preview prepayment",
+        getErrorMessage(error, "Failed to preview prepayment"),
       );
     } finally {
       setIsPreviewing(false);
@@ -490,7 +491,7 @@ function FamilyBillingDetail({
       await onChanged();
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to log payment",
+        getErrorMessage(error, "Failed to log payment"),
       );
     } finally {
       setIsSubmittingPayment(false);
@@ -516,7 +517,7 @@ function FamilyBillingDetail({
       await onChanged();
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to record prepayment",
+        getErrorMessage(error, "Failed to record prepayment"),
       );
     } finally {
       setIsPrepaying(false);
@@ -549,7 +550,7 @@ function FamilyBillingDetail({
       await onChanged();
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to record adjustment",
+        getErrorMessage(error, "Failed to record adjustment"),
       );
     } finally {
       setIsAdjusting(false);
@@ -567,7 +568,7 @@ function FamilyBillingDetail({
       await onChanged();
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to delete entry",
+        getErrorMessage(error, "Failed to delete entry"),
       );
     }
   };

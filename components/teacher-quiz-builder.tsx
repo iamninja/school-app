@@ -1,5 +1,6 @@
 "use client";
 
+import { getErrorMessage } from "@/lib/expected-error";
 import * as React from "react";
 import { toast } from "sonner";
 import {
@@ -57,7 +58,6 @@ import { QuizQuestionImage } from "@/components/quiz-question-image";
 import { QuizReviewAnswers } from "@/components/quiz-review-answers";
 import {
   parseQuizMarkdown,
-  QuizMarkdownParseError,
   type ParsedQuizMarkdown,
 } from "@/lib/quiz-markdown";
 import { QUIZ_MARKDOWN_TEMPLATE } from "@/lib/quiz-markdown-template";
@@ -217,11 +217,8 @@ export function TeacherQuizBuilder({
       const text = await file.text();
       applyParsedQuiz(parseQuizMarkdown(text));
     } catch (error: unknown) {
-      toast.error(
-        error instanceof QuizMarkdownParseError || error instanceof Error
-          ? error.message
-          : "Failed to parse the file",
-      );
+      // QuizMarkdownParseError is an Error, so the helper covers it.
+      toast.error(getErrorMessage(error, "Failed to parse the file"));
     }
   };
 
@@ -247,10 +244,8 @@ export function TeacherQuizBuilder({
     } catch (error: unknown) {
       return {
         ok: false,
-        message:
-          error instanceof QuizMarkdownParseError || error instanceof Error
-            ? error.message
-            : "Failed to parse the text",
+        // QuizMarkdownParseError is an Error, so the helper covers it.
+        message: getErrorMessage(error, "Failed to parse the text"),
       };
     }
   }, [validateText]);
@@ -304,7 +299,7 @@ export function TeacherQuizBuilder({
       toast.success("Quiz created");
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to create quiz",
+        getErrorMessage(error, "Failed to create quiz"),
       );
     } finally {
       setIsSubmitting(false);
@@ -320,7 +315,7 @@ export function TeacherQuizBuilder({
       setResults(data);
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to load results",
+        getErrorMessage(error, "Failed to load results"),
       );
     } finally {
       setIsLoadingResults(false);
@@ -345,7 +340,7 @@ export function TeacherQuizBuilder({
       setStudentReview(review);
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to load answers",
+        getErrorMessage(error, "Failed to load answers"),
       );
     } finally {
       setIsLoadingAttempt(false);
@@ -386,7 +381,7 @@ export function TeacherQuizBuilder({
       });
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to save comment",
+        getErrorMessage(error, "Failed to save comment"),
       );
     }
   };
@@ -420,7 +415,7 @@ export function TeacherQuizBuilder({
       });
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to save comment",
+        getErrorMessage(error, "Failed to save comment"),
       );
     }
   };
@@ -467,7 +462,7 @@ export function TeacherQuizBuilder({
       );
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to update assignment",
+        getErrorMessage(error, "Failed to update assignment"),
       );
     } finally {
       setIsTogglingAssignment(false);
@@ -511,7 +506,7 @@ export function TeacherQuizBuilder({
       );
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to update max attempts",
+        getErrorMessage(error, "Failed to update max attempts"),
       );
     } finally {
       setIsTogglingAssignment(false);
@@ -541,7 +536,7 @@ export function TeacherQuizBuilder({
       );
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to update shuffle setting",
+        getErrorMessage(error, "Failed to update shuffle setting"),
       );
     } finally {
       setIsTogglingAssignment(false);
@@ -562,7 +557,7 @@ export function TeacherQuizBuilder({
       editDraft.setQuestions(questionInputsToDrafts(data.questions));
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to load quiz",
+        getErrorMessage(error, "Failed to load quiz"),
       );
       setEditQuizId(null);
     } finally {
@@ -612,7 +607,7 @@ export function TeacherQuizBuilder({
       closeEditDialog();
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to update quiz",
+        getErrorMessage(error, "Failed to update quiz"),
       );
     } finally {
       setIsSavingEdit(false);
@@ -628,7 +623,7 @@ export function TeacherQuizBuilder({
       setBreakdown(data);
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to load breakdown",
+        getErrorMessage(error, "Failed to load breakdown"),
       );
     } finally {
       setIsLoadingBreakdown(false);
@@ -650,7 +645,7 @@ export function TeacherQuizBuilder({
       toast.success("Quiz deleted");
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to delete quiz",
+        getErrorMessage(error, "Failed to delete quiz"),
       );
     } finally {
       setDeletingQuizId(null);
@@ -666,7 +661,7 @@ export function TeacherQuizBuilder({
       closeEditDialog();
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to copy quiz",
+        getErrorMessage(error, "Failed to copy quiz"),
       );
     } finally {
       setDuplicatingQuizId(null);
