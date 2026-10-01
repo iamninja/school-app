@@ -672,7 +672,7 @@ describe("TeacherReceipts", () => {
     expect(screen.getByText(/myDATA verified/)).toBeInTheDocument();
   });
 
-  it("flags a receipt AADE has no record of, without pretending it wasn't checked", async () => {
+  it("flags a receipt AADE doesn't list yet, without pretending it wasn't checked", async () => {
     const user = userEvent.setup();
     const submitted = {
       ...existingReceipt,
@@ -682,7 +682,7 @@ describe("TeacherReceipts", () => {
     };
     vi.mocked(receiptActions.verifyReceiptWithMyDataAction).mockRejectedValue(
       new Error(
-        "AADE has no record of MARK 400001968145986 in sandbox. This receipt may need to be re-sent.",
+        "AADE doesn't list MARK 400001968145986 in sandbox yet. New documents can take several hours to appear (sometimes until the next day) - check again later, and don't re-send this receipt: a second send creates a second MARK.",
       ),
     );
 
@@ -700,7 +700,7 @@ describe("TeacherReceipts", () => {
 
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith(
-        expect.stringContaining("no record"),
+        expect.stringContaining("doesn't list MARK"),
       );
     });
     expect(screen.getByText(/myDATA sent — not confirmed/)).toBeInTheDocument();

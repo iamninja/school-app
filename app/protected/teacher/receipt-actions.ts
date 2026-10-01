@@ -447,8 +447,14 @@ export async function verifyReceiptWithMyDataAction(
   ]);
 
   if (!verifiedOk) {
+    // Deliberately NOT "this may need to be re-sent": a freshly filed
+    // document can be missing from AADE's lists for hours (receipt A-1 was
+    // not findable 1h21m after sending, found by the next morning), and a
+    // re-send of the same receipt returns a second MARK rather than fixing
+    // anything (A-1's re-send on 2026-09-02 did exactly that). Telling the
+    // teacher to re-send invites duplicate filings.
     throw new ExpectedError(
-      `AADE has no record of MARK ${receipt.mydata_mark} in ${receipt.mydata_environment}. This receipt may need to be re-sent.`,
+      `AADE doesn't list MARK ${receipt.mydata_mark} in ${receipt.mydata_environment} yet. New documents can take several hours to appear (sometimes until the next day) - check again later, and don't re-send this receipt: a second send creates a second MARK.`,
     );
   }
 
