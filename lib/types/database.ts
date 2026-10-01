@@ -657,6 +657,14 @@ export interface Receipt {
   // post a credit to their running tuition balance (see
   // post_receipt_balance_row()).
   counts_toward_balance: boolean;
+  // Multi-month receipt: the billable months it pre-charged and paid for, at
+  // covers_agreed_amount (null = full price). All null for an ordinary
+  // receipt. See post_receipt_coverage(). Optional only so the many
+  // fixtures/demo receipts that predate the feature stay valid - real
+  // queries (RECEIPT_COLUMNS) always return them, null when unused.
+  covers_period_start?: string | null;
+  covers_period_end?: string | null;
+  covers_agreed_amount?: number | null;
   lineItems: ReceiptLineItem[];
 }
 
@@ -675,7 +683,23 @@ export interface CreateReceiptInput {
   familyId?: string | null;
   notes?: string;
   countsTowardBalance?: boolean;
+  // Both set (first-of-month) to make this a multi-month receipt.
+  coversPeriodStart?: string | null;
+  coversPeriodEnd?: string | null;
+  // Agreed price for the whole range; omitted = full price, no discount.
+  agreedAmount?: number | null;
   lineItems: ReceiptLineItemInput[];
+}
+
+export interface ReceiptCoveragePreview {
+  periods: string[];
+  monthlyAmount: number;
+  alreadyPostedTotal: number;
+  newChargesTotal: number;
+  // Full price of the range: charges already posted + charges this receipt
+  // would post.
+  grossTotal: number;
+  balance: number;
 }
 
 // Business expenses - internal bookkeeping, no myDATA transmission (see

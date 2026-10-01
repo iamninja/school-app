@@ -5,6 +5,11 @@ import { requireTeacher } from "@/lib/auth/require-teacher";
 import { ExpectedError } from "@/lib/expected-error";
 import { runMonthlyChargeRun } from "@/lib/billing/monthly-charge-run";
 import { addMonthsToPeriod, currentPeriod } from "@/lib/billing/school-year";
+import {
+  CASH_LIMIT_MESSAGE,
+  CASH_PAYMENT_CODE,
+  isCashAllowed,
+} from "@/lib/payment-methods";
 import type {
   ChargeRun,
   FamilyBalanceSummary,
@@ -269,6 +274,10 @@ export async function logFamilyPaymentAction(
   if (input.period && !isFirstOfMonth(input.period)) {
     throw new ExpectedError("Period must be the first day of a month");
   }
+  const paymentMethod = input.paymentMethod ?? CASH_PAYMENT_CODE;
+  if (paymentMethod === CASH_PAYMENT_CODE && !isCashAllowed(input.amount)) {
+    throw new ExpectedError(CASH_LIMIT_MESSAGE);
+  }
 
   const description = input.notes?.trim()
     ? `Πληρωμή — ${input.notes.trim()}`
@@ -284,7 +293,7 @@ export async function logFamilyPaymentAction(
       amount: -input.amount,
       period: input.period ?? null,
       description,
-      payment_method: input.paymentMethod ?? 3,
+      payment_method: paymentMethod,
       source: "manual",
       created_by: userId,
     })
@@ -360,6 +369,10 @@ export async function prepayFamilyMonthsAction(
   if (preview.periods.length === 0) {
     throw new ExpectedError("Could not determine which months this covers");
   }
+  const paymentMethod = input.paymentMethod ?? CASH_PAYMENT_CODE;
+  if (paymentMethod === CASH_PAYMENT_CODE && !isCashAllowed(total)) {
+    throw new ExpectedError(CASH_LIMIT_MESSAGE);
+  }
 
   const first = preview.periods[0];
   const last = preview.periods[preview.periods.length - 1];
@@ -378,7 +391,7 @@ export async function prepayFamilyMonthsAction(
       period_end: last,
       covers_months: input.months,
       description,
-      payment_method: input.paymentMethod ?? 3,
+      payment_method: paymentMethod,
       source: "manual",
       created_by: userId,
     })

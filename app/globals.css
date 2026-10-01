@@ -277,18 +277,56 @@ body.theme-console {
     visibility: visible;
   }
 
+  /* The receipt is an A5 portrait sheet (148 x 210 mm). The page has no
+     margin of its own; the sheet carries its own 10 mm padding (set on the
+     component), so the printed area is exactly the designed layout. */
   .receipt-print {
     position: absolute;
     left: 0;
     top: 0;
-    width: 100%;
+    width: 148mm;
     max-width: none;
-    padding: 0;
+    min-height: 210mm;
+    box-sizing: border-box;
     color: #000;
     background: #fff;
+    box-shadow: none;
   }
+}
 
-  @page {
-    margin: 18mm;
-  }
+/* Top level, not inside @media print: @page is a page-context rule, and
+   some engines ignore it when it is nested in a media block (the printed
+   receipt came out on Letter paper). Only receipts are ever printed from
+   this app, so the A5 page size can apply to every print job. */
+@page {
+  size: A5 portrait;
+  margin: 0;
+}
+
+/* The Modus logo's own typeface: Commissioner Bold, the two subsets that
+   were embedded in public/branding/modus-logo-horizontal-commissioner.svg,
+   split into files (Latin for "Modus", Greek for the tagline). Used for the
+   receipt's wordmark, where the app-wide font is not Commissioner (the
+   console theme uses the system UI stack). font-display: block so a printed
+   receipt never falls back to another face while the font loads. */
+@font-face {
+  font-family: 'Commissioner Logo';
+  font-style: normal;
+  font-weight: 700;
+  font-display: block;
+  src: url('/branding/fonts/commissioner-logo-latin-700.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+2000-206F;
+}
+
+@font-face {
+  font-family: 'Commissioner Logo';
+  font-style: normal;
+  font-weight: 700;
+  font-display: block;
+  src: url('/branding/fonts/commissioner-logo-greek-700.woff2') format('woff2');
+  unicode-range: U+0370-03FF;
+}
+
+.font-logo {
+  font-family: 'Commissioner Logo', 'Commissioner', sans-serif;
 }

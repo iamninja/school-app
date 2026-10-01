@@ -57,8 +57,12 @@ describe("ReceiptDocument", () => {
       <ReceiptDocument receipt={receipt} business={business} />,
     );
     expect(
-      container.querySelector('img[src="/branding/modus-logo-horizontal.svg"]'),
+      container.querySelector('img[src="/branding/modus-mark.svg"]'),
     ).not.toBeNull();
+    expect(screen.getByTestId("receipt-wordmark")).toHaveTextContent("Modus");
+    expect(
+      screen.getByText("ΦΡΟΝΤΙΣΤΗΡΙΟ ΜΑΘΗΜΑΤΙΚΩΝ"),
+    ).toBeInTheDocument();
   });
 
   it("does not show a demo band for a real receipt", () => {

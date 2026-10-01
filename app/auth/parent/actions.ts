@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { RECEIPT_COLUMNS, attachLineItems } from "@/lib/receipts";
+import { toParentHistory } from "@/lib/billing/parent-history";
 import { isAssessmentAssignmentLate } from "@/lib/assessment-status";
 import type {
   ParentEmailCheckResult,
@@ -130,7 +131,9 @@ export async function getParentDashboardDataAction(): Promise<
 
   const { data: recentTransactionRows } = await supabase
     .from("family_balance_transactions")
-    .select("id, type, amount, description, receipt_id, created_at")
+    .select(
+      "id, type, amount, description, receipt_id, created_at, period, covering_receipt_id",
+    )
     .eq("family_id", parent.family_id)
     .order("created_at", { ascending: false })
     .limit(200);
@@ -502,14 +505,20 @@ export async function getParentDashboardDataAction(): Promise<
       balance: {
         amount: Number(familyRow?.balance ?? 0),
         monthlyAmount,
-        recentTransactions: (recentTransactionRows ?? []).map((row) => ({
-          id: row.id,
-          type: row.type,
-          amount: Number(row.amount),
-          description: row.description,
-          createdAt: row.created_at,
-          receiptId: row.receipt_id,
-        })),
+        // Receipt-tagged charges of a multi-month receipt are folded into
+        // one line - see lib/billing/parent-history.ts.
+        recentTransactions: toParentHistory(
+          (recentTransactionRows ?? []).map((row) => ({
+            id: row.id,
+            type: row.type,
+            amount: Number(row.amount),
+            description: row.description,
+            receipt_id: row.receipt_id,
+            created_at: row.created_at,
+            period: row.period,
+            covering_receipt_id: row.covering_receipt_id,
+          })),
+        ),
       },
       receipts,
       business: businessRow ?? null,

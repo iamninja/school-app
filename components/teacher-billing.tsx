@@ -35,7 +35,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatEuro } from "@/lib/format-currency";
-import { PAYMENT_METHODS } from "@/lib/payment-methods";
+import {
+  CASH_LIMIT_MESSAGE,
+  CASH_PAYMENT_CODE,
+  PAYMENT_METHODS,
+  isCashAllowed,
+} from "@/lib/payment-methods";
 import { currentPeriod, isBillableMonth } from "@/lib/billing/school-year";
 import {
   deriveTuitionStatus,
@@ -400,6 +405,19 @@ function FamilyBillingDetail({
   const [adjustmentDescription, setAdjustmentDescription] = React.useState("");
   const [isAdjusting, setIsAdjusting] = React.useState(false);
 
+  // Cash above the legal limit is refused by the server actions too; here
+  // the option is disabled and submit blocked so it's visible up front.
+  // The prepay button shares the method selector above it.
+  const parsedPaymentAmount = Number.parseFloat(paymentAmount);
+  const paymentCashBlocked =
+    paymentMethod === String(CASH_PAYMENT_CODE) &&
+    Number.isFinite(parsedPaymentAmount) &&
+    !isCashAllowed(parsedPaymentAmount);
+  const prepayCashBlocked =
+    paymentMethod === String(CASH_PAYMENT_CODE) &&
+    prepayPreview !== null &&
+    !isCashAllowed(prepayPreview.total);
+
   const lessonChargeTotalThisMonth = React.useMemo(() => {
     const period = currentPeriod();
     return (ledger?.transactions ?? [])
@@ -605,17 +623,35 @@ function FamilyBillingDetail({
             className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
           >
             {PAYMENT_METHODS.map((method) => (
-              <option key={method.code} value={method.code}>
+              <option
+                key={method.code}
+                value={method.code}
+                disabled={
+                  method.code === CASH_PAYMENT_CODE &&
+                  paymentMethod !== String(CASH_PAYMENT_CODE) &&
+                  Number.isFinite(parsedPaymentAmount) &&
+                  !isCashAllowed(parsedPaymentAmount)
+                }
+              >
                 {method.label}
               </option>
             ))}
           </select>
+          {(paymentCashBlocked || prepayCashBlocked) && (
+            <p role="alert" className="text-xs font-medium text-destructive">
+              {CASH_LIMIT_MESSAGE}
+            </p>
+          )}
           <Input
             placeholder="Note (optional)"
             value={paymentNotes}
             onChange={(event) => setPaymentNotes(event.target.value)}
           />
-          <Button type="submit" size="sm" disabled={isSubmittingPayment}>
+          <Button
+            type="submit"
+            size="sm"
+            disabled={isSubmittingPayment || paymentCashBlocked}
+          >
             {isSubmittingPayment ? "Saving…" : "Log payment"}
           </Button>
           {justLoggedPayment && (
@@ -687,7 +723,7 @@ function FamilyBillingDetail({
             type="button"
             size="sm"
             onClick={() => void handlePrepay()}
-            disabled={isPrepaying}
+            disabled={isPrepaying || prepayCashBlocked}
           >
             {isPrepaying ? "Saving…" : "Prepay"}
           </Button>

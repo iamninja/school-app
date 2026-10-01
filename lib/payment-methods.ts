@@ -15,3 +15,16 @@ export const PAYMENT_METHODS = [
 export const PAYMENT_METHOD_LABELS: Record<number, string> = Object.fromEntries(
   PAYMENT_METHODS.map((method) => [method.code, method.label]),
 );
+
+// Greek law: a payment above 500 EUR may not be made in cash - 500 or less
+// is fine. One constant and one predicate, shared by every server action,
+// the forms, and mirrored by the receipts_cash_limit DB check.
+export const CASH_PAYMENT_CODE = 3;
+export const CASH_PAYMENT_LIMIT = 500;
+
+export function isCashAllowed(amount: number): boolean {
+  return amount <= CASH_PAYMENT_LIMIT;
+}
+
+export const CASH_LIMIT_MESSAGE =
+  "Πληρωμές άνω των 500 € δεν επιτρέπονται σε μετρητά – επιλέξτε κάρτα, έμβασμα ή IRIS.";
