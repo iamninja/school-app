@@ -92,6 +92,24 @@ const CATEGORY_LABELS: Record<string, string> = Object.fromEntries(
   EXPENSE_CATEGORIES.map((c) => [c.code, c.label]),
 );
 
+// "2.4 — Γενικά Έξοδα (με έκπτωση ΦΠΑ)": the number AADE itself uses for the
+// classification in its FAQ and screens ("χαρακτηρισμός 2.4 …"), shown next to
+// the description so the choice can be matched against myDATA and the
+// accountant's paperwork. It is derived from the stored identifier
+// (category2_4 -> 2.4); the stored value does not change. Note this "2.4" is
+// the EXPENSE CLASSIFICATION number - not the myDATA invoice type 2.4 shown in
+// the documents table below, which is a separate list. An unknown or older
+// stored value falls back to the raw code, as before.
+function shortCategoryCode(code: string): string {
+  const match = /^category(\d+)_(\d+)$/.exec(code);
+  return match ? `${match[1]}.${match[2]}` : code;
+}
+
+function formatCategory(code: string): string {
+  const label = CATEGORY_LABELS[code];
+  return label ? `${shortCategoryCode(code)} — ${label}` : code;
+}
+
 const formatAmount = formatEuro;
 
 type ExpenseForm = {
@@ -278,7 +296,7 @@ export function TeacherExpenses({
                         {" · "}
                         {expense.description}
                         {expense.category &&
-                          ` · ${CATEGORY_LABELS[expense.category] ?? expense.category}`}
+                          ` · ${formatCategory(expense.category)}`}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -585,7 +603,7 @@ export function TeacherExpenses({
                   <option value="">—</option>
                   {EXPENSE_CATEGORIES.map((cat) => (
                     <option key={cat.code} value={cat.code}>
-                      {cat.label}
+                      {formatCategory(cat.code)}
                     </option>
                   ))}
                 </select>
