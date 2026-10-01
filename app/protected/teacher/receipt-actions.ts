@@ -313,13 +313,17 @@ export async function submitReceiptToMyDataAction(
 
   // Logged before the receipt update, and on both paths: the attempt
   // history is the thing you need when reconciling with AADE, so it must
-  // survive even if the status write below fails.
+  // survive even if the status write below fails. Both halves of the
+  // exchange are kept verbatim - the XML we sent and the body AADE answered
+  // with - so a "Success" that AADE later cannot find can be compared
+  // against a receipt that did register (see the request_xml migration).
   await supabase.from("mydata_submission_log").insert({
     receipt_id: receipt.id,
     environment,
     success: result.ok,
     mark: result.ok ? result.mark : null,
     error: result.ok ? result.warning : result.error,
+    request_xml: xml.slice(0, 20000),
     raw_response: result.raw.slice(0, 10000),
   });
 
