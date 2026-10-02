@@ -1316,7 +1316,8 @@ function MarkEntryDialog({
   );
 }
 
-function MarkEntryForm({
+// Exported only so the link-check indicator can be tested on its own.
+export function MarkEntryForm({
   assignment,
   maxScore,
   onSaved,
@@ -1339,37 +1340,49 @@ function MarkEntryForm({
   );
   const [isSaving, setIsSaving] = React.useState(false);
 
-  const [linkCheck, setLinkCheck] = React.useState<
+  // Only a FINISHED check is stored, together with the URL it was for. The
+  // "idle" (empty field) and "checking" (no finished result for the current
+  // URL yet) states are derived below instead of being set from inside the
+  // effect, which is what react-hooks/set-state-in-effect objects to: an
+  // effect that sets state synchronously renders twice for every keystroke.
+  const [finishedCheck, setFinishedCheck] = React.useState<{
+    url: string;
+    result: { status: "ok" } | { status: "bad"; reason: string };
+  } | null>(null);
+
+  const trimmedUrl = gradedPaperUrl.trim();
+  const linkCheck:
     | { status: "idle" }
     | { status: "checking" }
     | { status: "ok" }
-    | { status: "bad"; reason: string }
-  >({ status: "idle" });
+    | { status: "bad"; reason: string } = !trimmedUrl
+    ? { status: "idle" }
+    : finishedCheck?.url === trimmedUrl
+      ? finishedCheck.result
+      : { status: "checking" };
 
   React.useEffect(() => {
-    const url = gradedPaperUrl.trim();
-    if (!url) {
-      setLinkCheck({ status: "idle" });
-      return;
-    }
+    if (!trimmedUrl) return;
 
     let cancelled = false;
-    setLinkCheck({ status: "checking" });
+    // Debounced, so a check only fires once typing pauses. State is set from
+    // the timer's async callback, never synchronously in the effect body.
     const timer = setTimeout(async () => {
-      const result = await checkGradedPaperLinkAction(url);
+      const result = await checkGradedPaperLinkAction(trimmedUrl);
       if (cancelled) return;
-      setLinkCheck(
-        result.ok
+      setFinishedCheck({
+        url: trimmedUrl,
+        result: result.ok
           ? { status: "ok" }
           : { status: "bad", reason: result.reason },
-      );
+      });
     }, 500);
 
     return () => {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [gradedPaperUrl]);
+  }, [trimmedUrl]);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
