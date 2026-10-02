@@ -53,6 +53,77 @@ describe("TeacherExpenses", () => {
     expect(screen.getByText(/Total: 45,50/)).toBeInTheDocument();
   });
 
+  it("shows AADE's classification number (2.4) next to its description in the expense list", () => {
+    render(<TeacherExpenses initialExpenses={[existingExpense]} />);
+
+    expect(
+      screen.getByText(/· 2\.4 — Γενικά Έξοδα \(με έκπτωση ΦΠΑ\)/),
+    ).toBeInTheDocument();
+  });
+
+  it("falls back to the raw code in the list for a category it does not know", () => {
+    render(
+      <TeacherExpenses
+        initialExpenses={[{ ...existingExpense, category: "category2_99" }]}
+      />,
+    );
+
+    expect(screen.getByText(/· category2_99$/)).toBeInTheDocument();
+  });
+
+  it("shows the code with the description for every category in the form's dropdown", async () => {
+    const user = userEvent.setup();
+    render(<TeacherExpenses initialExpenses={[]} />);
+
+    await user.click(screen.getByRole("button", { name: /new expense/i }));
+    await screen.findByRole("dialog");
+
+    const select = screen.getByLabelText(/category/i);
+    const options = Array.from(
+      (select as HTMLSelectElement).options,
+    ).map((option) => option.textContent);
+
+    // The empty choice is untouched.
+    expect(options[0]).toBe("—");
+    // Spot checks on the ones this tutoring business is likely to pick.
+    expect(options).toContain("2.3 — Λήψη Υπηρεσιών");
+    expect(options).toContain("2.4 — Γενικά Έξοδα (με έκπτωση ΦΠΑ)");
+    expect(options).toContain("2.5 — Γενικά Έξοδα (χωρίς έκπτωση ΦΠΑ)");
+    // Two-digit codes are not mangled (category2_10 is 2.10, not 2.1).
+    expect(options).toContain("2.10 — Έξοδα προηγούμενων χρήσεων");
+    // And every real option leads with its number, never a bare description.
+    expect(options).toHaveLength(16);
+    for (const text of options.slice(1)) {
+      expect(text).toMatch(/^2\.\d+ — /);
+    }
+  });
+
+  it("still saves the bare identifier, not the display text", async () => {
+    const user = userEvent.setup();
+    vi.mocked(expenseActions.createExpenseAction).mockResolvedValue({
+      ...existingExpense,
+      id: "expense-3",
+    });
+    render(<TeacherExpenses initialExpenses={[]} />);
+
+    await user.click(screen.getByRole("button", { name: /new expense/i }));
+    await screen.findByRole("dialog");
+    await user.type(screen.getByLabelText(/paid to/i), "ΔΕΗ");
+    await user.type(screen.getByLabelText(/what for/i), "Ρεύμα");
+    await user.type(screen.getByLabelText(/amount paid/i), "10");
+    await user.selectOptions(
+      screen.getByLabelText(/category/i),
+      "category2_4",
+    );
+    await user.click(screen.getByRole("button", { name: /log expense/i }));
+
+    await waitFor(() => {
+      expect(expenseActions.createExpenseAction).toHaveBeenCalledWith(
+        expect.objectContaining({ category: "category2_4" }),
+      );
+    });
+  });
+
   it("logs a new expense", async () => {
     const user = userEvent.setup();
     const created = { ...existingExpense, id: "expense-2" };
