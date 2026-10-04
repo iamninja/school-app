@@ -27,8 +27,9 @@ export interface AssessmentDueAtInput {
 
 /**
  * The instant an assessment assignment is due. short_assessment uses its
- * deadline (null = open, never due). mock_exam uses its scheduled date, at
- * the given time if one is set, else end-of-day local time.
+ * deadline (null = open, never due). mock_exam is due at end-of-day local
+ * time on its scheduled date - the scheduled time is when the exam starts,
+ * not a deadline, so marking it taken once it finishes is never late.
  */
 export function computeDueAt(input: AssessmentDueAtInput): Date | null {
   if (input.kind === "short_assessment") {
@@ -39,12 +40,7 @@ export function computeDueAt(input: AssessmentDueAtInput): Date | null {
     return null;
   }
   const day = fromIsoDate(input.effectiveScheduledDate);
-  if (input.effectiveScheduledTime) {
-    const [hours, minutes] = input.effectiveScheduledTime.split(":").map(Number);
-    day.setHours(hours, minutes, 0, 0);
-  } else {
-    day.setHours(23, 59, 59, 999);
-  }
+  day.setHours(23, 59, 59, 999);
   return day;
 }
 
