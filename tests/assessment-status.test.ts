@@ -39,15 +39,15 @@ describe("computeDueAt", () => {
     expect(due?.getMinutes()).toBe(59);
   });
 
-  it("returns the exact scheduled time for a mock_exam with a time set", () => {
+  it("still returns end-of-day for a mock_exam with a start time set", () => {
     const due = computeDueAt({
       kind: "mock_exam",
       effectiveScheduledDate: "2026-09-10",
       effectiveScheduledTime: "09:30",
       effectiveDeadlineAt: null,
     });
-    expect(due?.getHours()).toBe(9);
-    expect(due?.getMinutes()).toBe(30);
+    expect(due?.getHours()).toBe(23);
+    expect(due?.getMinutes()).toBe(59);
   });
 });
 
@@ -127,7 +127,7 @@ describe("isAssessmentAssignmentLate", () => {
     expect(isAssessmentAssignmentLate(input, NOW)).toBe(true);
   });
 
-  it("applies the same taken-late permanence to a mock_exam", () => {
+  it("applies the same taken-late permanence to a mock_exam taken a day after", () => {
     expect(
       isAssessmentAssignmentLate(
         {
@@ -135,11 +135,39 @@ describe("isAssessmentAssignmentLate", () => {
           effectiveScheduledDate: "2026-09-01",
           effectiveScheduledTime: "09:00",
           effectiveDeadlineAt: null,
-          takenAt: "2026-09-01T12:00:00.000Z",
+          takenAt: "2026-09-02T12:00:00.000Z",
         },
         new Date("2028-01-01"),
       ),
     ).toBe(true);
+  });
+
+  it("is not late when a mock_exam is marked taken later the same day it started", () => {
+    const takenAt = new Date(2026, 8, 1, 14, 0).toISOString();
+    const input = {
+      kind: "mock_exam" as const,
+      effectiveScheduledDate: "2026-09-01",
+      effectiveScheduledTime: "09:00",
+      effectiveDeadlineAt: null,
+      takenAt,
+    };
+    expect(isAssessmentAssignmentLate(input, new Date(2026, 8, 1, 15, 0))).toBe(false);
+    expect(isAssessmentAssignmentLate(input, new Date(2028, 0, 1))).toBe(false);
+  });
+
+  it("is not late mid-day for a not-yet-taken mock_exam whose start time has passed", () => {
+    expect(
+      isAssessmentAssignmentLate(
+        {
+          kind: "mock_exam",
+          effectiveScheduledDate: "2026-09-01",
+          effectiveScheduledTime: "09:00",
+          effectiveDeadlineAt: null,
+          takenAt: null,
+        },
+        new Date(2026, 8, 1, 14, 0),
+      ),
+    ).toBe(false);
   });
 });
 
