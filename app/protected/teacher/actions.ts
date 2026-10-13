@@ -4,6 +4,8 @@ import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { requireTeacher } from "@/lib/auth/require-teacher";
 import { ExpectedError } from "@/lib/expected-error";
 import { SCHEDULE_ROWS, slotWindow, timeToMinutes } from "@/lib/schedule-grid";
+import { runAfterResponse } from "@/lib/push/hooks";
+import { handleAttendanceChange } from "@/lib/push/absences";
 
 // The (day, time) one grid row below - null when `time` is that day's last
 // SCHEDULE_ROWS entry, since a 2-hour lesson can't extend past it.
@@ -1273,7 +1275,8 @@ export async function setAttendanceAction(data: {
       throw error;
     }
 
-    // The FK cascade already removed any lesson_charge with the record.
+    // The FK cascade already removed any lesson_charge with the record -
+    // and any absence notice still waiting to be sent.
     return { studentId: data.studentId, status: "", chargedAmount: null };
   }
 
@@ -1296,6 +1299,21 @@ export async function setAttendanceAction(data: {
   if (error) {
     throw error;
   }
+
+  // Absence notices (lib/push/absences.ts): sent or queued for "absent",
+  // withdrawn if a waiting one is corrected to anything else.
+  const attendanceRecordId = row.id as string;
+  runAfterResponse(() =>
+    handleAttendanceChange(createServiceRoleClient(), {
+      attendanceRecordId,
+      classId: data.classId,
+      className: data.className,
+      studentId: data.studentId,
+      attendanceDate: data.attendanceDate,
+      status: data.status,
+      triggeredBy: user.id,
+    }),
+  );
 
   // Read back what post_lesson_charge_row() actually posted (or removed)
   // for this mark, rather than computing a guess from the class's

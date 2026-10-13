@@ -205,6 +205,7 @@ export default async function TeacherPage() {
       name: string;
       shuffleQuestions: boolean;
       maxAttempts: number | null;
+      dueDate: string | null;
     }[]
   >();
   const quizzesWithAttempts = new Set<string>();
@@ -218,7 +219,7 @@ export default async function TeacherPage() {
         supabase.from("quiz_questions").select("quiz_id").in("quiz_id", quizIds),
         supabase
           .from("quiz_assignments")
-          .select("quiz_id, class_id, shuffle_questions, max_attempts")
+          .select("quiz_id, class_id, shuffle_questions, max_attempts, due_date")
           .in("quiz_id", quizIds),
         supabase.from("quiz_attempts").select("quiz_id").in("quiz_id", quizIds),
       ]);
@@ -237,6 +238,7 @@ export default async function TeacherPage() {
         name: classNameById.get(row.class_id) ?? "",
         shuffleQuestions: row.shuffle_questions,
         maxAttempts: row.max_attempts,
+        dueDate: row.due_date,
       });
       assignedClassesByQuiz.set(row.quiz_id, list);
     }

@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/monthly-charges",
       "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/evening-reminders",
+      "schedule": "0 17 * * *"
     }
   ],
   "ignoreCommand": "git diff --quiet HEAD^ HEAD -- . ':!TODO.md' ':!README.md' ':!STUDENT_AUTH.md' ':!AGENTS.md' ':!CLAUDE.md' ':!docs' ':!.claude' ':!tests' ':!supabase'"

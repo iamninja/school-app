@@ -56,6 +56,7 @@ export default defineConfig({
       "tests/notifications-actions.test.ts",
       "tests/push-school-hooks.test.ts",
       "tests/push-scheduled.test.ts",
+      "tests/push-absences-reminders.test.ts",
     ],
     // isolate: false previously let files sharing a worker reuse the same
     // jsdom environment and module graph (React/Radix/KaTeX etc.) instead of

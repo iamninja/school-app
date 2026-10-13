@@ -26,6 +26,7 @@ import {
   getStudentQuizAttemptAction,
   setAnswerCommentAction,
   setQuizAssignmentMaxAttemptsAction,
+  setQuizAssignmentDueDateAction,
   setQuizAssignmentShuffleAction,
   unassignQuizFromClassAction,
   updateQuizAction,
@@ -461,6 +462,7 @@ export function TeacherQuizBuilder({
                 name: classOption?.name ?? "",
                 shuffleQuestions: false,
                 maxAttempts: 1,
+                dueDate: null,
               },
             ],
           };
@@ -470,6 +472,31 @@ export function TeacherQuizBuilder({
       toast.error(
         getErrorMessage(error, "Failed to update assignment"),
       );
+    } finally {
+      setIsTogglingAssignment(false);
+    }
+  };
+
+  const handleSetDueDate = async (classId: string, raw: string) => {
+    if (!manageQuizId) return;
+    const dueDate = raw || null;
+    setIsTogglingAssignment(true);
+    try {
+      await setQuizAssignmentDueDateAction(manageQuizId, classId, dueDate);
+      setQuizzes((prev) =>
+        prev.map((quiz) =>
+          quiz.id !== manageQuizId
+            ? quiz
+            : {
+                ...quiz,
+                assignedClasses: quiz.assignedClasses.map((c) =>
+                  c.id === classId ? { ...c, dueDate } : c,
+                ),
+              },
+        ),
+      );
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, "Failed to update the due date"));
     } finally {
       setIsTogglingAssignment(false);
     }
@@ -1404,6 +1431,19 @@ export function TeacherQuizBuilder({
                               classOption.id,
                               event.target.value,
                             )
+                          }
+                        />
+                      </label>
+                      <label className="flex items-center gap-2">
+                        Due
+                        <Input
+                          type="date"
+                          className="h-7 w-36"
+                          aria-label={`Due date for ${classOption.name}`}
+                          disabled={isTogglingAssignment}
+                          value={assignedClass.dueDate ?? ""}
+                          onChange={(event) =>
+                            handleSetDueDate(classOption.id, event.target.value)
                           }
                         />
                       </label>

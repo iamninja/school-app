@@ -128,7 +128,7 @@ async function buildQuizListItem(
       supabase
         .from("quiz_assignments")
         .select(
-          "class_id, shuffle_questions, max_attempts, classes:class_id (id, name)",
+          "class_id, shuffle_questions, max_attempts, due_date, classes:class_id (id, name)",
         )
         .eq("quiz_id", quiz.id),
       supabase
@@ -148,6 +148,7 @@ async function buildQuizListItem(
       name: classRow?.name ?? "",
       shuffleQuestions: assignment.shuffle_questions,
       maxAttempts: assignment.max_attempts,
+      dueDate: assignment.due_date,
     };
   });
 
@@ -345,6 +346,44 @@ export async function setQuizAssignmentMaxAttemptsAction(
   const { error } = await supabase
     .from("quiz_assignments")
     .update({ max_attempts: maxAttempts })
+    .eq("quiz_id", quizId)
+    .eq("class_id", classId);
+
+  if (error) {
+    throw error;
+  }
+}
+
+/**
+ * The quiz's deadline for one class (or none). Shown to students and used
+ * by the evening-before reminder; a quiz can still be taken after it.
+ */
+export async function setQuizAssignmentDueDateAction(
+  quizId: string,
+  classId: string,
+  dueDate: string | null,
+): Promise<void> {
+  if (dueDate !== null && !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
+    throw new ExpectedError("Pick a valid due date.");
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error("Not authenticated");
+  }
+
+  await requireTeacher(supabase, user.id);
+
+  await requireOwnedQuiz(supabase, quizId, user.id);
+
+  const { error } = await supabase
+    .from("quiz_assignments")
+    // A new date gets its own reminder.
+    .update({ due_date: dueDate, reminder_sent_at: null })
     .eq("quiz_id", quizId)
     .eq("class_id", classId);
 

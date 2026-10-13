@@ -111,6 +111,7 @@ export interface QuizAssignment {
   shuffle_questions: boolean;
   // Number of attempts a student gets under this assignment; null = unlimited.
   max_attempts: number | null;
+  due_date?: string | null;
 }
 
 export type QuizQuestionType = "multiple_choice" | "true_false" | "short_answer";
@@ -272,6 +273,8 @@ export interface QuizSummary {
   attemptsUsed: number;
   maxAttempts: number | null;
   canRetake: boolean;
+  // Earliest due date across the viewer's classes (YYYY-MM-DD), if any.
+  dueDate?: string | null;
 }
 
 // Teacher-side: authoring input
@@ -334,6 +337,9 @@ export interface TeacherQuizListItem {
     name: string;
     shuffleQuestions: boolean;
     maxAttempts: number | null;
+    // Optional deadline for this class (YYYY-MM-DD) - shown to students and
+    // used by the evening-before reminder. Not enforced.
+    dueDate?: string | null;
   }[];
   title: string;
   description: string | null;
