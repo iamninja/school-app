@@ -70,7 +70,10 @@ export function PortalShell({
       )}
       <header className="sticky top-0 z-40 border-b border-border/70 bg-background/85 backdrop-blur">
         <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-5">
-          <Link href="/" aria-label={labels.homeAriaLabel}>
+          {/* /start sends a signed-in user to their own portal, so the logo
+              is a "home" button inside the installed app rather than a way
+              out to the public landing page. The demo has no session. */}
+          <Link href={demoMode ? "/" : "/start"} aria-label={labels.homeAriaLabel}>
             <ModusLogo size={30} variant="compact" priority />
           </Link>
           <div className="flex items-center gap-3">
