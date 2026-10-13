@@ -63,6 +63,24 @@ const ICONS = [
   { file: "apple-touch-icon.png", size: 180, fraction: 0.6 },
 ];
 
+/**
+ * The small status-bar icon on Android notifications. Android draws it from
+ * the alpha channel only (one colour), so it's the three dots in white on a
+ * transparent background - no gold, no dark square.
+ */
+function badgeSvg(size) {
+  const fraction = 0.86;
+  const scale = (size * fraction) / MARK.width;
+  const offsetX = (size - MARK.width * scale) / 2 - MARK.minX * scale;
+  const offsetY = (size - MARK.height * scale) / 2 - MARK.minY * scale;
+  const dots = CIRCLES.map(
+    (c) => `<circle cx="${c.cx}" cy="${c.cy}" r="${c.r}" fill="#FFFFFF"/>`,
+  ).join("");
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+  <g transform="translate(${offsetX} ${offsetY}) scale(${scale})">${dots}</g>
+</svg>`;
+}
+
 await mkdir(outDir, { recursive: true });
 for (const icon of ICONS) {
   const target = path.join(outDir, icon.file);
@@ -72,3 +90,6 @@ for (const icon of ICONS) {
     .toFile(target);
   console.log(`wrote public/icons/${icon.file} (${icon.size}x${icon.size})`);
 }
+
+await sharp(Buffer.from(badgeSvg(96))).png().toFile(path.join(outDir, "badge-96.png"));
+console.log("wrote public/icons/badge-96.png (96x96)");

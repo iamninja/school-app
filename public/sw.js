@@ -9,7 +9,10 @@
 //
 // Registered by components/register-service-worker.tsx (production only).
 // Served with no-cache headers (next.config.ts) so updates apply on the next
-// visit. The notifications phase will add its push handlers here.
+// visit.
+//
+// It also shows push notifications (lib/push/notify.ts sends them) and opens
+// the right portal page when one is tapped.
 
 const OFFLINE_CACHE = "modus-offline-v1";
 const OFFLINE_URL = "/offline.html";
@@ -60,6 +63,90 @@ self.addEventListener("fetch", (event) => {
         const offline = await cache.match(OFFLINE_URL);
         return offline ?? Response.error();
       }
+    })(),
+  );
+});
+
+// ---- Push notifications ----
+
+/** Only ever open pages of this site - never a URL from the payload's host. */
+function sameOriginPath(url) {
+  try {
+    const target = new URL(url || "/start", self.location.origin);
+    return target.origin === self.location.origin ? target.pathname + target.search : "/start";
+  } catch {
+    return "/start";
+  }
+}
+
+self.addEventListener("push", (event) => {
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch {
+    payload = { body: event.data ? event.data.text() : "" };
+  }
+  const title = payload.title || "Modus";
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body: payload.body || "",
+      icon: "/icons/icon-192.png",
+      badge: "/icons/badge-96.png",
+      tag: payload.tag || undefined,
+      lang: "el",
+      data: { url: sameOriginPath(payload.url) },
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const path = sameOriginPath(event.notification.data && event.notification.data.url);
+  event.waitUntil(
+    (async () => {
+      const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      const open = windows.find((client) => new URL(client.url).origin === self.location.origin);
+      if (open) {
+        await open.focus();
+        if ("navigate" in open) return open.navigate(path);
+        return undefined;
+      }
+      return self.clients.openWindow(path);
+    })(),
+  );
+});
+
+// The browser replaced this device's subscription (keys rotated, push
+// service change). Subscribe again and tell the server, or this device would
+// silently stop getting notifications. The session cookie identifies the
+// user; the server only swaps a subscription that user already owns.
+self.addEventListener("pushsubscriptionchange", (event) => {
+  event.waitUntil(
+    (async () => {
+      const oldEndpoint = event.oldSubscription ? event.oldSubscription.endpoint : null;
+      let subscription = event.newSubscription;
+      if (!subscription) {
+        let key =
+          event.oldSubscription &&
+          event.oldSubscription.options &&
+          event.oldSubscription.options.applicationServerKey;
+        if (!key) {
+          const response = await fetch("/api/push/resubscribe", { credentials: "same-origin" });
+          if (!response.ok) return;
+          key = (await response.json()).publicKey;
+        }
+        if (!key) return;
+        subscription = await self.registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: key,
+        });
+      }
+      await fetch("/api/push/resubscribe", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ oldEndpoint, subscription: subscription.toJSON() }),
+      });
     })(),
   );
 });

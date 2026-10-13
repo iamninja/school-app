@@ -2,6 +2,8 @@
 
 import { getErrorMessage } from "@/lib/expected-error";
 import * as React from "react";
+import { TeacherAppSettings } from "@/components/teacher-app-settings";
+import type { AppSettingsData } from "@/app/protected/teacher/app-settings-actions";
 import {
   DndContext,
   PointerSensor,
@@ -29,6 +31,7 @@ import {
   ReceiptTextIcon,
   RotateCcwIcon,
   SearchIcon,
+  SmartphoneIcon,
   Trash2Icon,
   UsersIcon,
   WalletIcon,
@@ -199,6 +202,12 @@ const SECTIONS = [
     description: "Tax details and integrations",
     icon: Building2Icon,
   },
+  {
+    value: "app",
+    label: "App",
+    description: "Notifications for families and you",
+    icon: SmartphoneIcon,
+  },
 ] as const;
 
 const COLOR_CLASSES = [
@@ -293,6 +302,7 @@ type TeacherDashboardProps = {
   initialFamilyBalances?: FamilyBalanceSummary[];
   initialChargeRuns?: ChargeRun[];
   initialCalendarEvents?: CalendarEvent[];
+  appSettings?: AppSettingsData | null;
   loadErrors?: string[];
 };
 
@@ -550,6 +560,7 @@ export function TeacherDashboard({
   initialFamilyBalances = [],
   initialChargeRuns = [],
   initialCalendarEvents = [],
+  appSettings = null,
   loadErrors = [],
 }: TeacherDashboardProps) {
   const sensors = useSensors(
@@ -4207,6 +4218,10 @@ export function TeacherDashboard({
             initialIntegrations={integrationSettings}
             initialCredentialStatuses={credentialStatuses}
           />
+        </TabsContent>
+
+        <TabsContent value="app" className="mt-0">
+          <TeacherAppSettings initialData={appSettings} />
         </TabsContent>
           </main>
         </div>

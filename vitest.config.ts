@@ -51,6 +51,9 @@ export default defineConfig({
       "tests/assessments-actions.test.ts",
       "tests/billing-actions.test.ts",
       "tests/cron-monthly-charges-route.test.ts",
+      "tests/push-notify.test.ts",
+      "tests/app-settings-actions.test.ts",
+      "tests/notifications-actions.test.ts",
     ],
     // isolate: false previously let files sharing a worker reuse the same
     // jsdom environment and module graph (React/Radix/KaTeX etc.) instead of

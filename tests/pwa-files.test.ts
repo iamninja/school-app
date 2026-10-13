@@ -98,4 +98,19 @@ describe("files the installed app needs before anyone signs in", () => {
     expect(sw.match(/cache\.(add|addAll|put)\(/g)).toEqual(["cache.add("]);
     expect(sw).toContain('const OFFLINE_URL = "/offline.html"');
   });
+
+  it("shows push notifications and only ever opens pages of this site", () => {
+    const sw = readFileSync(path.join(publicDir, "sw.js"), "utf8");
+    expect(sw).toContain('addEventListener("push"');
+    expect(sw).toContain('addEventListener("notificationclick"');
+    expect(sw).toContain('addEventListener("pushsubscriptionchange"');
+    expect(sw).toContain("target.origin === self.location.origin");
+  });
+
+  it("ships a 96x96 monochrome badge for Android's status bar", () => {
+    const badge = path.join(publicDir, "icons", "badge-96.png");
+    expect(pngSize(badge)).toEqual({ width: 96, height: 96 });
+    // Colour type 6 (RGBA): Android draws the badge from its transparency.
+    expect(readFileSync(badge)[25]).toBe(6);
+  });
 });

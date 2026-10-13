@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { TeacherDashboard } from "@/components/teacher-dashboard";
 import { createClient } from "@/lib/supabase/server";
 import { getBusinessSettingsAction } from "@/app/protected/teacher/business-settings-actions";
+import { getAppSettingsAction } from "@/app/protected/teacher/app-settings-actions";
 import { listReceiptsAction } from "@/app/protected/teacher/receipt-actions";
 import { listExpensesAction } from "@/app/protected/teacher/expense-actions";
 import {
@@ -275,6 +276,7 @@ export default async function TeacherPage() {
     initialAssessments,
     initialAssessmentAssignments,
     initialHomework,
+    appSettings,
   ] = await Promise.all([
     getBusinessSettingsAction(),
     listReceiptsAction(),
@@ -284,6 +286,9 @@ export default async function TeacherPage() {
     listAssessmentsAction(),
     listAssessmentAssignmentsAction(),
     listHomeworkAction(),
+    // Null (the App tab offers "try again") rather than failing the whole
+    // console if the notifications tables are missing or unreachable.
+    getAppSettingsAction().catch(() => null),
   ]);
 
   return (
@@ -305,6 +310,7 @@ export default async function TeacherPage() {
       initialFamilyBalances={initialFamilyBalances}
       initialChargeRuns={initialChargeRuns}
       initialCalendarEvents={calendarEvents ?? []}
+      appSettings={appSettings}
       loadErrors={loadErrors}
     />
   );

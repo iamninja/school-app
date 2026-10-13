@@ -9,6 +9,7 @@ import { ThemeSwitcher } from "@/components/theme-switcher";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
+import { forgetPushDeviceBeforeSignOut } from "@/components/use-push-device";
 
 const PORTAL_SHELL_LABELS = {
   el: {
@@ -56,6 +57,7 @@ export function PortalShell({
       router.push("/");
       return;
     }
+    await forgetPushDeviceBeforeSignOut();
     const supabase = createClient();
     await supabase.auth.signOut();
     router.push("/");
