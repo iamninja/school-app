@@ -54,6 +54,7 @@ import {
   EditableComment,
 } from "@/components/editable-comment";
 import { MathText } from "@/components/math-text";
+import { NotifyCheckbox } from "@/components/notify-checkbox";
 import { QuizQuestionImage } from "@/components/quiz-question-image";
 import { QuizReviewAnswers } from "@/components/quiz-review-answers";
 import {
@@ -98,6 +99,7 @@ export function TeacherQuizBuilder({
   const [title, setTitle] = React.useState("");
   const [description, setDescription] = React.useState("");
   const [timeLimitMinutes, setTimeLimitMinutes] = React.useState("");
+  const [notificationsDisabled, setNotificationsDisabled] = React.useState(false);
   const createDraft = useQuestionDrafts();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [selectedQuizId, setSelectedQuizId] = React.useState<string | null>(
@@ -124,6 +126,8 @@ export function TeacherQuizBuilder({
   const [editTitle, setEditTitle] = React.useState("");
   const [editDescription, setEditDescription] = React.useState("");
   const [editTimeLimitMinutes, setEditTimeLimitMinutes] = React.useState("");
+  const [editNotificationsDisabled, setEditNotificationsDisabled] =
+    React.useState(false);
   const [editLocked, setEditLocked] = React.useState(false);
   const [isLoadingEdit, setIsLoadingEdit] = React.useState(false);
   const [isSavingEdit, setIsSavingEdit] = React.useState(false);
@@ -153,6 +157,7 @@ export function TeacherQuizBuilder({
     setTitle("");
     setDescription("");
     setTimeLimitMinutes("");
+    setNotificationsDisabled(false);
     setClassIds([]);
     createDraft.setQuestions([createBlankQuestion()]);
   };
@@ -291,6 +296,7 @@ export function TeacherQuizBuilder({
           ? Number.parseInt(timeLimitMinutes, 10)
           : undefined,
         questions: draftsToQuestionInputs(resolvedQuestions),
+        notificationsDisabled,
       });
 
       setQuizzes((prev) => [created, ...prev]);
@@ -554,6 +560,7 @@ export function TeacherQuizBuilder({
         data.timeLimitMinutes !== null ? String(data.timeLimitMinutes) : "",
       );
       setEditLocked(data.locked);
+      setEditNotificationsDisabled(data.notificationsDisabled);
       editDraft.setQuestions(questionInputsToDrafts(data.questions));
     } catch (error: unknown) {
       toast.error(
@@ -599,6 +606,7 @@ export function TeacherQuizBuilder({
         questions: resolvedQuestions
           ? draftsToQuestionInputs(resolvedQuestions)
           : undefined,
+        notificationsDisabled: editNotificationsDisabled,
       });
       setQuizzes((prev) =>
         prev.map((quiz) => (quiz.id === updated.id ? updated : quiz)),
@@ -1274,6 +1282,12 @@ export function TeacherQuizBuilder({
                 placeholder="No time limit"
               />
             </div>
+            <NotifyCheckbox
+              id="quiz-notify"
+              checked={!notificationsDisabled}
+              onChange={(checked) => setNotificationsDisabled(!checked)}
+              label="Notify students (new quiz and deadline reminder)"
+            />
 
             <div className="space-y-2">
               <Label>Assign to classes (optional)</Label>
@@ -1456,6 +1470,12 @@ export function TeacherQuizBuilder({
                   placeholder="No time limit"
                 />
               </div>
+              <NotifyCheckbox
+                id="edit-quiz-notify"
+                checked={!editNotificationsDisabled}
+                onChange={(checked) => setEditNotificationsDisabled(!checked)}
+                label="Notify students (new quiz and deadline reminder)"
+              />
 
               {editLocked && (
                 <p className="text-xs text-muted-foreground">

@@ -84,7 +84,7 @@ describe("renderMessage", () => {
 
   it("renders a missing value as nothing, never as a raw {placeholder}", () => {
     const message = renderMessage("assessment", { title: "Όρια" });
-    expect(message.body).toBe("«Όρια» -");
+    expect(message.body).toBe("«Όρια»");
     expect(message.title + message.body).not.toContain("{");
   });
 

@@ -3,6 +3,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { requireTeacher } from "@/lib/auth/require-teacher";
 import { ExpectedError } from "@/lib/expected-error";
+import { notifyAfterResponse } from "@/lib/push/hooks";
+import { assessmentWhen } from "@/lib/push/values";
+import { athensToday } from "@/lib/push/athens-time";
 import { isAssessmentAssignmentLate } from "@/lib/assessment-status";
 import type {
   Assessment,
@@ -16,7 +19,7 @@ type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
 const ASSESSMENT_COLUMNS =
   "id, kind, title, description, max_score, duration_minutes, scheduled_date, " +
-  "scheduled_time, deadline_at, class_id, class_name, grade, created_at";
+  "scheduled_time, deadline_at, class_id, class_name, grade, notifications_disabled, created_at";
 
 // Kept in sync with lib/class-grades.ts's CLASS_GRADES codes (also the
 // DB's own CHECK constraint) - validated here so an invalid value comes
@@ -363,6 +366,7 @@ export async function createAssessmentAction(input: AssessmentInput): Promise<{
   row.teacher_id = userId;
   row.class_id = null;
   row.class_name = null;
+  row.notifications_disabled = input.notificationsDisabled === true;
 
   // Ownership re-validation: ownership of class_id/studentIds is never
   // trusted from the client - both branches re-fetch scoped by
@@ -428,6 +432,23 @@ export async function createAssessmentAction(input: AssessmentInput): Promise<{
     .select(ASSIGNMENT_COLUMNS_WITH_STUDENT);
   if (assignmentsError) throw assignmentsError;
 
+  if (input.notificationsDisabled !== true) {
+    const when = assessmentWhen({
+      kind: row.kind as string,
+      scheduledDate: row.scheduled_date as string | null,
+      scheduledTime: row.scheduled_time as string | null,
+      deadlineAt: row.deadline_at as string | null,
+    });
+    notifyAfterResponse({
+      event: "assessment",
+      to: { kind: "students", studentIds },
+      classId: (row.class_id as string | null) ?? null,
+      values: { title: assessment.title, date: when.date, time: when.time },
+      tag: `assessment-${assessment.id}`,
+      triggeredBy: userId,
+    });
+  }
+
   return {
     assessment,
     assignments: ((assignments ?? []) as unknown as RawAssignmentRow[]).map(
@@ -461,6 +482,9 @@ export async function updateAssessmentAction(
   }
 
   const row = validateAssessmentFields(input);
+  if (input.notificationsDisabled !== undefined) {
+    row.notifications_disabled = input.notificationsDisabled;
+  }
 
   const { data, error } = await supabase
     .from("assessments")
@@ -501,7 +525,7 @@ export async function addStudentToAssessmentAction(
 
   const { data: assessment, error: assessmentError } = await supabase
     .from("assessments")
-    .select("id, kind, scheduled_date, scheduled_time, deadline_at")
+    .select("id, kind, title, scheduled_date, scheduled_time, deadline_at, notifications_disabled")
     .eq("id", assessmentId)
     .eq("teacher_id", userId)
     .maybeSingle();
@@ -542,6 +566,22 @@ export async function addStudentToAssessmentAction(
     throw error;
   }
 
+  if (!assessment.notifications_disabled) {
+    const when = assessmentWhen({
+      kind: assessment.kind,
+      scheduledDate: assessment.scheduled_date,
+      scheduledTime: assessment.scheduled_time,
+      deadlineAt: assessment.deadline_at,
+    });
+    notifyAfterResponse({
+      event: "assessment",
+      to: { kind: "students", studentIds: [student.id] },
+      values: { title: assessment.title, date: when.date, time: when.time },
+      tag: `assessment-${assessment.id}`,
+      triggeredBy: userId,
+    });
+  }
+
   return toTeacherAssignmentRow(data as unknown as RawAssignmentRow);
 }
 
@@ -573,7 +613,9 @@ export async function editAssessmentAssignmentScheduleAction(
 
   const { data: existing, error: fetchError } = await supabase
     .from("assessment_assignments")
-    .select("id, kind")
+    .select(
+      "id, kind, student_id, effective_scheduled_date, effective_scheduled_time, effective_deadline_at, assessments:assessment_id (title, notifications_disabled)",
+    )
     .eq("id", assignmentId)
     .eq("teacher_id", userId)
     .maybeSingle();
@@ -581,7 +623,8 @@ export async function editAssessmentAssignmentScheduleAction(
     throw new ExpectedError("That assessment assignment no longer exists");
   }
 
-  const row: Record<string, unknown> = {};
+  // A new date gets its own evening-before reminder.
+  const row: Record<string, unknown> = { reminder_sent_at: null };
   if (existing.kind === "mock_exam") {
     if (!input.scheduledDate || !isValidDateString(input.scheduledDate)) {
       throw new ExpectedError("Pick a valid exam date");
@@ -606,6 +649,40 @@ export async function editAssessmentAssignmentScheduleAction(
     .select(ASSIGNMENT_COLUMNS_WITH_STUDENT)
     .single();
   if (error) throw error;
+
+  const parent = (
+    existing as unknown as {
+      assessments: { title: string; notifications_disabled: boolean } | null;
+    }
+  ).assessments;
+  const before = assessmentWhen({
+    kind: existing.kind,
+    scheduledDate: existing.effective_scheduled_date,
+    scheduledTime: existing.effective_scheduled_time,
+    deadlineAt: existing.effective_deadline_at,
+  });
+  const moved = assessmentWhen({
+    kind: existing.kind,
+    scheduledDate: (row.effective_scheduled_date as string | undefined) ?? null,
+    scheduledTime: (row.effective_scheduled_time as string | undefined) ?? null,
+    deadlineAt: (row.effective_deadline_at as string | undefined) ?? null,
+  });
+  // Only a date that's still ahead is news; correcting the past isn't.
+  if (
+    (before.date !== moved.date || before.time !== moved.time) &&
+    parent &&
+    !parent.notifications_disabled &&
+    moved.day &&
+    moved.day >= athensToday()
+  ) {
+    notifyAfterResponse({
+      event: "assessment_moved",
+      to: { kind: "students", studentIds: [existing.student_id] },
+      values: { title: parent.title, new_date: moved.date, new_time: moved.time },
+      tag: `assessment-${assignmentId}`,
+      triggeredBy: userId,
+    });
+  }
 
   return toTeacherAssignmentRow(data as unknown as RawAssignmentRow);
 }
@@ -651,13 +728,17 @@ export async function enterAssessmentMarkAction(
     teacherComment?: string;
     gradedPaperUrl?: string;
     takenAt?: string;
+    /** Tell the student (default true). Only the first mark notifies. */
+    notify?: boolean;
   },
 ): Promise<TeacherAssessmentAssignmentRow> {
   const { supabase, userId } = await requireTeacherSession();
 
   const { data: existing, error: fetchError } = await supabase
     .from("assessment_assignments")
-    .select("id, taken_at, assessment_id, assessments:assessment_id (max_score)")
+    .select(
+      "id, status, student_id, taken_at, assessment_id, assessments:assessment_id (max_score, title, notifications_disabled)",
+    )
     .eq("id", assignmentId)
     .eq("teacher_id", userId)
     .maybeSingle();
@@ -665,9 +746,12 @@ export async function enterAssessmentMarkAction(
     throw new ExpectedError("That assessment assignment no longer exists");
   }
 
-  const maxScore = (
-    existing as unknown as { assessments: { max_score: number } }
-  ).assessments.max_score;
+  const parent = (
+    existing as unknown as {
+      assessments: { max_score: number; title: string; notifications_disabled: boolean };
+    }
+  ).assessments;
+  const maxScore = parent.max_score;
   if (input.score < 0 || input.score > maxScore) {
     throw new ExpectedError(`Score must be between 0 and ${maxScore}`);
   }
@@ -699,6 +783,21 @@ export async function enterAssessmentMarkAction(
     .select(ASSIGNMENT_COLUMNS_WITH_STUDENT)
     .single();
   if (error) throw error;
+
+  // Re-editing an existing mark (a typo fix) doesn't notify again.
+  if (
+    existing.status !== "marked" &&
+    input.notify !== false &&
+    !parent.notifications_disabled
+  ) {
+    notifyAfterResponse({
+      event: "mark_entered",
+      to: { kind: "students", studentIds: [existing.student_id] },
+      values: { title: parent.title },
+      tag: `mark-${assignmentId}`,
+      triggeredBy: userId,
+    });
+  }
 
   return toTeacherAssignmentRow(data as unknown as RawAssignmentRow);
 }

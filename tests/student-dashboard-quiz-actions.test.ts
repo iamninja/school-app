@@ -21,6 +21,11 @@ vi.mock("@/lib/ai-explanation", () => ({
   explainWrongAnswer: vi.fn(),
 }));
 
+vi.mock("@/lib/push/notify", () => ({
+  notify: vi.fn(async () => ({ outcome: "sent", recipients: 1, delivered: 1, failed: 0 })),
+}));
+import { notify } from "@/lib/push/notify";
+
 // after() runs its callback once the response is already sent - captured
 // here instead of invoked immediately so tests can assert nothing AI-related
 // happens during submitQuizAttemptAction itself, then run it explicitly.
@@ -449,6 +454,12 @@ describe("submitQuizAttemptAction - AI grading on submit", () => {
         ([table]) => table === "quiz_attempt_best_answers",
       ),
     ).toHaveLength(2);
+    // Every written answer graded: the student hears the quiz is graded.
+    expect(notify).toHaveBeenCalledWith({
+      event: "quiz_graded",
+      to: { kind: "students", studentIds: ["student-1"] },
+      values: { title: "T" },
+    });
   });
 
   it("leaves the answer ungraded when AI grading is unavailable, without failing the submission", async () => {
@@ -489,9 +500,12 @@ describe("submitQuizAttemptAction - AI grading on submit", () => {
     vi.mocked(createClient).mockResolvedValue(client as never);
     vi.mocked(createServiceRoleClient).mockReturnValueOnce(client as never);
 
-    const serviceClient = createMockSupabaseClient({});
+    const serviceClient = createMockSupabaseClient({
+      students: { data: { first_name: "Μαρία", last_name: "Π." }, error: null },
+    });
     vi.mocked(createServiceRoleClient).mockReturnValue(serviceClient as never);
     vi.mocked(gradeShortAnswerWithAI).mockResolvedValue(null);
+    vi.mocked(notify).mockClear();
 
     const review = await submitQuizAttemptAction("quiz-1", [
       { questionId: "q1", textAnswer: "four" },
@@ -502,8 +516,15 @@ describe("submitQuizAttemptAction - AI grading on submit", () => {
 
     await afterCallbacks[0]();
 
-    // Nothing was written - no table was ever touched on the service client.
-    expect(serviceClient.from).not.toHaveBeenCalled();
+    // No grade was written - only the student's name was read, for the alert.
+    expect(serviceClient.from.mock.calls.map(([table]) => table)).toEqual(["students"]);
+    // The answer still needs a human: the teacher is told, not the student.
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(notify).toHaveBeenCalledWith({
+      event: "teacher_quiz_review",
+      to: { kind: "teachers" },
+      values: { title: "T", student: "Μαρία Π." },
+    });
   });
 
   it("resolves an ambiguous retry's short answer synchronously so a real improvement isn't discarded", async () => {

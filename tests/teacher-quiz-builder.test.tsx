@@ -641,6 +641,7 @@ describe("TeacherQuizBuilder", () => {
       title: "Chapter 3 Quiz",
       description: null,
       timeLimitMinutes: null,
+      notificationsDisabled: false,
       locked: false,
       assignedClassIds: ["class-1"],
       questions: [
@@ -707,6 +708,7 @@ describe("TeacherQuizBuilder", () => {
       title: "Chapter 3 Quiz",
       description: null,
       timeLimitMinutes: null,
+      notificationsDisabled: false,
       locked: false,
       assignedClassIds: ["class-1"],
       questions: [
@@ -767,6 +769,7 @@ describe("TeacherQuizBuilder", () => {
       title: "Chapter 3 Quiz",
       description: null,
       timeLimitMinutes: null,
+      notificationsDisabled: false,
       locked: true,
       assignedClassIds: ["class-1"],
       questions: [

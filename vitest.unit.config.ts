@@ -33,6 +33,7 @@ export default defineConfig({
       "tests/push-notify.test.ts",
       "tests/app-settings-actions.test.ts",
       "tests/notifications-actions.test.ts",
+      "tests/push-school-hooks.test.ts",
       "tests/auth-confirm-route.test.ts",
       "tests/proxy.test.ts",
     ],

@@ -96,6 +96,14 @@ export function quietHoursEnd(now: Date, start: string, end: string): Date {
   return athensDateTimeToUtc(endsTomorrow ? addDaysToDate(today, 1) : today, end);
 }
 
+/** An instant as the Athens wall-clock date and 'HH:MM' time. */
+export function athensDateAndTime(at: Date | string): { date: string; time: string } {
+  const parts = athensParts(typeof at === "string" ? new Date(at) : at);
+  const hours = String(Math.floor(parts.minutes / 60)).padStart(2, "0");
+  const minutes = String(parts.minutes % 60).padStart(2, "0");
+  return { date: parts.date, time: `${hours}:${minutes}` };
+}
+
 /** 'YYYY-MM-DD' -> '14/10' (how dates read on a lock screen). */
 export function formatShortDateEl(date: string): string {
   const [, m, d] = date.split("-");

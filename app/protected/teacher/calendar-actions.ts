@@ -4,6 +4,15 @@ import { createClient } from "@/lib/supabase/server";
 import { requireTeacher } from "@/lib/auth/require-teacher";
 import { ExpectedError } from "@/lib/expected-error";
 import type { CalendarEvent, CalendarEventInput } from "@/lib/types/database";
+import { notifyAfterResponse } from "@/lib/push/hooks";
+import { athensToday } from "@/lib/push/athens-time";
+import {
+  noticeForCreated,
+  noticeForDeleted,
+  noticeForMove,
+  noticeForUpdated,
+  type CalendarRow,
+} from "@/lib/push/lesson-changes";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -196,6 +205,11 @@ export async function createCalendarEventAction(
     throw error;
   }
 
+  if (input.notify !== false) {
+    const notice = noticeForCreated(data as unknown as CalendarRow, athensToday());
+    if (notice) notifyAfterResponse({ ...notice, triggeredBy: userId });
+  }
+
   return data as unknown as CalendarEvent;
 }
 
@@ -207,7 +221,7 @@ export async function updateCalendarEventAction(
 
   const { data: existing, error: fetchError } = await supabase
     .from("calendar_events")
-    .select("event_type")
+    .select("event_type, event_date, start_time, class_id, class_name, student_id")
     .eq("id", eventId)
     .eq("teacher_id", userId)
     .maybeSingle();
@@ -238,13 +252,32 @@ export async function updateCalendarEventAction(
     throw error;
   }
 
+  if (input.notify !== false) {
+    const notice = noticeForUpdated(
+      existing as CalendarRow,
+      data as unknown as CalendarRow,
+      athensToday(),
+    );
+    if (notice) notifyAfterResponse({ ...notice, triggeredBy: userId });
+  }
+
   return data as unknown as CalendarEvent;
 }
 
 export async function deleteCalendarEventAction(
   eventId: string,
+  options: { notify?: boolean } = {},
 ): Promise<void> {
   const { supabase, userId } = await requireTeacherSession();
+
+  // Read first: deleting a cancellation puts the lesson back on, which the
+  // students should hear about.
+  const { data: existing } = await supabase
+    .from("calendar_events")
+    .select("event_type, event_date, start_time, class_id, class_name, student_id")
+    .eq("id", eventId)
+    .eq("teacher_id", userId)
+    .maybeSingle();
 
   const { error } = await supabase
     .from("calendar_events")
@@ -254,6 +287,11 @@ export async function deleteCalendarEventAction(
 
   if (error) {
     throw error;
+  }
+
+  if (existing && options.notify !== false) {
+    const notice = noticeForDeleted(existing as CalendarRow, athensToday());
+    if (notice) notifyAfterResponse({ ...notice, triggeredBy: userId });
   }
 }
 
@@ -272,6 +310,8 @@ export async function rescheduleClassOccurrenceAction(input: {
   toDate: string;
   toStartTime: string;
   toEndTime?: string | null;
+  /** Tell the students (default true) - one "moved" notice. */
+  notify?: boolean;
 }): Promise<{ extraSession: CalendarEvent; cancellation: CalendarEvent }> {
   const { supabase, userId } = await requireTeacherSession();
 
@@ -313,6 +353,15 @@ export async function rescheduleClassOccurrenceAction(input: {
     throw new ExpectedError(
       "Added the new time, but couldn't cancel the original slot - cancel it manually from the Calendar tab.",
     );
+  }
+
+  const today = athensToday();
+  if (input.notify !== false && (input.fromDate >= today || input.toDate >= today)) {
+    const notice = noticeForMove(
+      cancellation as unknown as CalendarRow,
+      extraSession as unknown as CalendarRow,
+    );
+    if (notice) notifyAfterResponse({ ...notice, triggeredBy: userId });
   }
 
   return {

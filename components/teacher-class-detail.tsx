@@ -47,6 +47,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { CLASS_GRADE_LABELS } from "@/lib/class-grades";
 import { fromIsoDate } from "@/lib/calendar-projection";
+import { NotifyCheckbox } from "@/components/notify-checkbox";
 import { lessonTimeLabel, slotWindow } from "@/lib/schedule-grid";
 import type {
   PendingGradingItem,
@@ -185,6 +186,7 @@ export function TeacherClassDetail({
   const [isAddHomeworkOpen, setIsAddHomeworkOpen] = React.useState(false);
   const [homeworkNote, setHomeworkNote] = React.useState("");
   const [homeworkDueDate, setHomeworkDueDate] = React.useState("");
+  const [homeworkNotify, setHomeworkNotify] = React.useState(true);
   const [isSavingHomework, setIsSavingHomework] = React.useState(false);
   const [deletingHomeworkId, setDeletingHomeworkId] = React.useState<
     string | null
@@ -198,11 +200,13 @@ export function TeacherClassDetail({
         classId: classItem.id,
         note: homeworkNote,
         dueDate: homeworkDueDate || null,
+        notify: homeworkNotify,
       });
       onHomeworkChange((prev) => [created, ...prev]);
       setIsAddHomeworkOpen(false);
       setHomeworkNote("");
       setHomeworkDueDate("");
+      setHomeworkNotify(true);
     } catch (error: unknown) {
       toast.error(
         getErrorMessage(error, "Failed to add homework"),
@@ -788,6 +792,11 @@ export function TeacherClassDetail({
                 onChange={(event) => setHomeworkDueDate(event.target.value)}
               />
             </div>
+            <NotifyCheckbox
+              id="homework-notify"
+              checked={homeworkNotify}
+              onChange={setHomeworkNotify}
+            />
             <DialogFooter>
               <Button type="submit" disabled={isSavingHomework}>
                 {isSavingHomework ? "Adding..." : "Add homework"}

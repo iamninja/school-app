@@ -3,6 +3,7 @@
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { requireTeacher } from "@/lib/auth/require-teacher";
 import { ExpectedError } from "@/lib/expected-error";
+import { notifyClassesAfterResponse } from "@/lib/push/hooks";
 import {
   copyQuizImage,
   deleteQuizImages,
@@ -35,7 +36,7 @@ async function requireOwnedQuiz(
 ) {
   const { data: quiz, error } = await supabase
     .from("quizzes")
-    .select("id, title, description, time_limit_minutes, created_at")
+    .select("id, title, description, time_limit_minutes, created_at, notifications_disabled")
     .eq("id", quizId)
     .eq("teacher_id", teacherId)
     .single();
@@ -183,6 +184,7 @@ export async function createQuizAction(
       title: data.title,
       description: data.description || null,
       time_limit_minutes: data.timeLimitMinutes ?? null,
+      notifications_disabled: data.notificationsDisabled === true,
     })
     .select("id, title, description, time_limit_minutes, created_at")
     .single();
@@ -206,6 +208,15 @@ export async function createQuizAction(
     if (assignError) {
       throw assignError;
     }
+
+    if (data.notificationsDisabled !== true) {
+      notifyClassesAfterResponse(data.classIds, {
+        event: "quiz",
+        values: { title: quiz.title },
+        tag: `quiz-${quiz.id}`,
+        triggeredBy: user.id,
+      });
+    }
   }
 
   return buildQuizListItem(supabase, quiz);
@@ -226,17 +237,29 @@ export async function assignQuizToClassAction(
 
   await requireTeacher(supabase, user.id);
 
-  await requireOwnedQuiz(supabase, quizId, user.id);
+  const quiz = await requireOwnedQuiz(supabase, quizId, user.id);
 
-  const { error } = await supabase
+  // .select() returns only rows actually inserted - an already-assigned
+  // class (ignoreDuplicates) comes back empty, so it isn't notified twice.
+  const { data: inserted, error } = await supabase
     .from("quiz_assignments")
     .upsert(
       { quiz_id: quizId, class_id: classId },
       { onConflict: "quiz_id,class_id", ignoreDuplicates: true },
-    );
+    )
+    .select("id");
 
   if (error) {
     throw error;
+  }
+
+  if ((inserted ?? []).length > 0 && !quiz.notifications_disabled) {
+    notifyClassesAfterResponse([classId], {
+      event: "quiz",
+      values: { title: quiz.title },
+      tag: `quiz-${quizId}`,
+      triggeredBy: user.id,
+    });
   }
 }
 
@@ -418,6 +441,7 @@ export async function getQuizForEditingAction(
     title: quiz.title,
     description: quiz.description,
     timeLimitMinutes: quiz.time_limit_minutes,
+    notificationsDisabled: quiz.notifications_disabled === true,
     locked: attemptCount > 0,
     assignedClassIds: (assignments ?? []).map((a) => a.class_id),
     questions,
@@ -446,6 +470,9 @@ export async function updateQuizAction(
       title: data.title,
       description: data.description || null,
       time_limit_minutes: data.timeLimitMinutes ?? null,
+      ...(data.notificationsDisabled === undefined
+        ? {}
+        : { notifications_disabled: data.notificationsDisabled }),
     })
     .eq("id", quiz.id)
     .select("id, title, description, time_limit_minutes, created_at")

@@ -31,6 +31,7 @@ import { getAttendanceAction } from "@/app/protected/teacher/actions";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { NotifyCheckbox } from "@/components/notify-checkbox";
 import { Calendar, CalendarDayButton } from "@/components/ui/calendar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -474,6 +475,8 @@ export function TeacherCalendar({
     blankForm("extra_session", selectedDate),
   );
   const [isSaving, setIsSaving] = React.useState(false);
+  // "Notify students" on the event and reschedule dialogs (ticked by default).
+  const [notifyStudents, setNotifyStudents] = React.useState(true);
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
   const [cancellingKey, setCancellingKey] = React.useState<string | null>(
     null,
@@ -675,11 +678,13 @@ export function TeacherCalendar({
 
   const openCreate = (type: AddableEventType) => {
     setForm(blankForm(type, selectedDate));
+    setNotifyStudents(true);
     setDialog({ mode: "create", type });
   };
 
   const openEdit = (event: CalendarEvent) => {
     setForm(formFromEvent(event));
+    setNotifyStudents(true);
     setDialog({ mode: "edit", event });
   };
 
@@ -747,6 +752,7 @@ export function TeacherCalendar({
     setRescheduleDate(occurrence.date);
     setRescheduleStartTime(occurrence.startTime ?? "");
     setRescheduleEndTime(occurrence.endTime ?? "");
+    setNotifyStudents(true);
   };
 
   const handleReschedule = async (event: React.FormEvent) => {
@@ -763,6 +769,7 @@ export function TeacherCalendar({
           toDate: rescheduleDate,
           toStartTime: rescheduleStartTime,
           toEndTime: rescheduleEndTime || null,
+          notify: notifyStudents,
         });
         onEventsChange((prev) => [
           ...prev,
@@ -779,6 +786,7 @@ export function TeacherCalendar({
           eventDate: rescheduleDate,
           startTime: rescheduleStartTime || null,
           endTime: rescheduleEndTime || null,
+          notify: notifyStudents,
         });
         onEventsChange((prev) =>
           prev.map((item) => (item.id === updated.id ? updated : item)),
@@ -826,7 +834,7 @@ export function TeacherCalendar({
     if (!dialog) return;
     setIsSaving(true);
     try {
-      const input = formToInput(form);
+      const input = { ...formToInput(form), notify: notifyStudents };
       if (dialog.mode === "create") {
         let coveredOccurrences: Occurrence[] = [];
         if (input.eventType === "block") {
@@ -860,6 +868,7 @@ export function TeacherCalendar({
               eventDate: occurrence.date,
               startTime: occurrence.slotTime,
               classId: occurrence.classId,
+              notify: notifyStudents,
             });
             createdEvents.push(cancellation);
             cancelledCount += 1;
@@ -1395,6 +1404,19 @@ export function TeacherCalendar({
               />
             </div>
 
+            {form.eventType !== "trial_lesson" ? (
+              <NotifyCheckbox
+                id="event-notify"
+                checked={notifyStudents}
+                onChange={setNotifyStudents}
+                label={
+                  form.eventType === "block"
+                    ? "Notify students about any lessons this cancels"
+                    : "Notify students"
+                }
+              />
+            ) : null}
+
             <DialogFooter>
               <Button type="submit" disabled={isSaving} className="w-full">
                 {isSaving ? "Saving..." : "Save"}
@@ -1444,6 +1466,11 @@ export function TeacherCalendar({
                 />
               </div>
             </div>
+            <NotifyCheckbox
+              id="reschedule-notify"
+              checked={notifyStudents}
+              onChange={setNotifyStudents}
+            />
             <DialogFooter>
               <Button
                 type="submit"

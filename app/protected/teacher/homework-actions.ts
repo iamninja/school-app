@@ -3,6 +3,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { requireTeacher } from "@/lib/auth/require-teacher";
 import { ExpectedError } from "@/lib/expected-error";
+import { notifyAfterResponse } from "@/lib/push/hooks";
+import { formatShortDateEl } from "@/lib/push/athens-time";
+import { shortNote } from "@/lib/push/values";
 import type { Homework, HomeworkInput, TeacherHomeworkListItem } from "@/lib/types/database";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
@@ -110,8 +113,24 @@ export async function createHomeworkAction(
     .single();
   if (insertError) throw insertError;
 
+  const homework = inserted as unknown as Homework;
+  if (input.notify !== false) {
+    notifyAfterResponse({
+      event: "homework",
+      to: { kind: "class_students", classId: classRow.id },
+      classId: classRow.id,
+      values: {
+        class: classRow.name,
+        note: shortNote(fields.note),
+        due_date: fields.due_date ? formatShortDateEl(fields.due_date) : null,
+      },
+      tag: `homework-${homework.id}`,
+      triggeredBy: userId,
+    });
+  }
+
   return {
-    ...(inserted as unknown as Homework),
+    ...homework,
     className: classRow.name,
   };
 }

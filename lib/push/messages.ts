@@ -274,6 +274,10 @@ function fill(template: string, values: MessageValues): string {
     )
     .replace(/\s{2,}/g, " ")
     .replace(/\s+([.,)])/g, "$1")
+    .replace(/\(\s*\)/g, "")
+    .trim()
+    // A separator left dangling by an empty value ("«Όρια» -").
+    .replace(/\s*[-·:]$/, "")
     .trim();
 }
 
