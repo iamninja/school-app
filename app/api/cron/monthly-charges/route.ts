@@ -2,6 +2,11 @@ import { timingSafeEqual } from "node:crypto";
 import * as Sentry from "@sentry/nextjs";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { runMonthlyChargeRun } from "@/lib/billing/monthly-charge-run";
+import {
+  notifyChargeRunFailed,
+  notifyMonthlyCharges,
+  runMorningJobs,
+} from "@/lib/push/scheduled";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -18,6 +23,9 @@ export const maxDuration = 60;
  * (runMonthlyChargesAction) calls the exact same runMonthlyChargeRun() -
  * this route is a thin, auth-gated wrapper around it, not a second
  * implementation.
+ *
+ * Runs at 07:00 UTC (09:00/10:00 in Athens) rather than at dawn, because it
+ * also sends the morning's notifications (lib/push/scheduled.ts).
  */
 export async function GET(request: Request): Promise<Response> {
   const secret = process.env.CRON_SECRET;
@@ -45,6 +53,7 @@ export async function GET(request: Request): Promise<Response> {
   }
 
   const supabase = createServiceRoleClient();
+  const startedAt = new Date();
 
   try {
     const result = await runMonthlyChargeRun({
@@ -52,17 +61,26 @@ export async function GET(request: Request): Promise<Response> {
       source: "cron",
       triggeredBy: null,
     });
+    if (result.familiesCharged > 0) {
+      await notifyMonthlyCharges(supabase, result.period, startedAt);
+    }
+    // The morning's notification work (held notices, greetings, balance
+    // reminder) rides on this same daily cron. Never throws.
+    await runMorningJobs(supabase);
     return Response.json(result, { status: 200 });
   } catch (error: unknown) {
     Sentry.captureException(error);
+    const period = new Date().toISOString().slice(0, 7) + "-01";
     await supabase.from("family_charge_runs").insert({
-      period: new Date().toISOString().slice(0, 7) + "-01",
+      period,
       source: "cron",
       billable: false,
       families_charged: 0,
       total_amount: 0,
       error: error instanceof Error ? error.message : "Unknown error",
     });
+    await notifyChargeRunFailed(supabase, period);
+    await runMorningJobs(supabase);
     return Response.json({ error: "Charge run failed" }, { status: 500 });
   }
 }

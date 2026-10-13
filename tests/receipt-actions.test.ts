@@ -28,6 +28,12 @@ vi.mock("@/lib/mydata/invoice-xml", () => ({
   buildInvoiceXml: vi.fn(() => "<InvoicesDoc />"),
 }));
 
+vi.mock("@/lib/push/hooks", () => ({
+  notifyAfterResponse: vi.fn(),
+  runAfterResponse: vi.fn(),
+}));
+import { notifyAfterResponse } from "@/lib/push/hooks";
+
 const businessProfile = { business_name: "Modus", afm: "123456789" };
 
 const receiptRow = {
@@ -98,6 +104,35 @@ describe("createReceiptAction", () => {
     expect(rpc).toHaveBeenCalledWith("next_receipt_number", {
       p_series: "Α",
     });
+  });
+
+  it("tells the family's parents a receipt exists - by number, never the amount", async () => {
+    const client = clientWith({
+      receipts: { data: { ...receiptRow, family_id: "family-1", receipt_number: 5 }, error: null },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await createReceiptAction({
+      recipientName: "Γιώργος Παπαδόπουλος",
+      familyId: "family-1",
+      lineItems: [{ description: "Δίδακτρα", amount: 150 }],
+    });
+
+    expect(notifyAfterResponse).toHaveBeenCalledWith({
+      event: "receipt",
+      to: { kind: "family_parents", familyIds: ["family-1"] },
+      values: { receipt: "Α-5" },
+      tag: "receipt-receipt-1",
+    });
+  });
+
+  it("doesn't notify anyone for a receipt with no family", async () => {
+    vi.mocked(createClient).mockResolvedValue(clientWith() as never);
+    await createReceiptAction({
+      recipientName: "Πελάτης",
+      lineItems: [{ description: "Μάθημα", amount: 20 }],
+    });
+    expect(notifyAfterResponse).not.toHaveBeenCalled();
   });
 
   it("sums the line items into total_amount", async () => {
@@ -535,6 +570,10 @@ describe("submitReceiptToMyDataAction", () => {
         request_xml: "<InvoicesDoc />",
         raw_response: "<ResponseDoc/>",
       }),
+    );
+    // And the teacher's other devices hear about the failure.
+    expect(notifyAfterResponse).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "teacher_mydata_failed", to: { kind: "teachers" } }),
     );
   });
 

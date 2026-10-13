@@ -1,6 +1,8 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
+import { runAfterResponse } from "@/lib/push/hooks";
+import { notifyMonthlyCharges } from "@/lib/push/scheduled";
 import { requireTeacher } from "@/lib/auth/require-teacher";
 import { ExpectedError } from "@/lib/expected-error";
 import { runMonthlyChargeRun } from "@/lib/billing/monthly-charge-run";
@@ -498,10 +500,17 @@ export async function runMonthlyChargesAction(input?: {
     throw new ExpectedError("You can't post charges more than a year ahead");
   }
 
-  return runMonthlyChargeRun({
+  const startedAt = new Date();
+  const result = await runMonthlyChargeRun({
     supabase,
     period,
     source: "manual",
     triggeredBy: userId,
   });
+  if (result.familiesCharged > 0) {
+    runAfterResponse(() =>
+      notifyMonthlyCharges(createServiceRoleClient(), result.period, startedAt),
+    );
+  }
+  return result;
 }
