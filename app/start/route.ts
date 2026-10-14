@@ -1,6 +1,7 @@
-import { NextResponse } from "next/server";
+import { NextResponse, userAgent, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { resolvePortalHome } from "@/lib/auth/portal-home";
+import { resolvePortalHome, TEACHER_HOME } from "@/lib/auth/portal-home";
+import { isPhone, teacherHomeFor, TEACHER_VIEW_COOKIE } from "@/lib/teacher-app/view";
 
 /**
  * The installed app's start page (manifest start_url). Sends whoever is
@@ -10,15 +11,24 @@ import { resolvePortalHome } from "@/lib/auth/portal-home";
  * this handler: the session proxy (lib/supabase/proxy.ts) redirects them to
  * "/", the login chooser, which is the right place for them.
  *
+ * A teacher on a phone goes to the phone companion instead of the console,
+ * unless they've switched to the console from its menu (lib/teacher-app/view.ts).
+ *
  * Not cached: route handlers aren't by default, and this one reads the
  * session cookie on every request.
  */
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const destination = await resolvePortalHome(supabase, user?.id);
+  let destination = await resolvePortalHome(supabase, user?.id);
+  if (destination === TEACHER_HOME) {
+    destination = teacherHomeFor({
+      isMobile: isPhone(userAgent(request).device.type),
+      cookie: request.cookies.get(TEACHER_VIEW_COOKIE)?.value,
+    });
+  }
   return NextResponse.redirect(new URL(destination, request.url));
 }

@@ -49,7 +49,8 @@ export function TeacherLoginForm({
       });
       if (error) throw error;
       startTransition(() => {
-        router.push("/protected/teacher");
+        // /start picks the console or, on a phone, the companion.
+        router.push("/start");
       });
     } catch (error: unknown) {
       setError(getErrorMessage(error, "An error occurred"));

@@ -1,4 +1,6 @@
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { userAgent } from "next/server";
 
 import { TeacherDashboard } from "@/components/teacher-dashboard";
 import { createClient } from "@/lib/supabase/server";
@@ -15,6 +17,12 @@ import {
   listAssessmentAssignmentsAction,
 } from "@/app/protected/teacher/assessments-actions";
 import { listHomeworkAction } from "@/app/protected/teacher/homework-actions";
+import {
+  isPhone,
+  teacherHomeFor,
+  TEACHER_APP_HOME,
+  TEACHER_VIEW_COOKIE,
+} from "@/lib/teacher-app/view";
 
 // The Supabase client has no Database generic here, so its select-string
 // parser can't determine embed cardinality and infers every embed as an
@@ -54,6 +62,17 @@ export default async function TeacherPage() {
 
   if (!teacherRow) {
     redirect("/");
+  }
+
+  // Phones open the companion unless the teacher chose the console from its
+  // menu (covers bookmarks and old links; /start applies the same rule).
+  const [requestHeaders, cookieStore] = await Promise.all([headers(), cookies()]);
+  const home = teacherHomeFor({
+    isMobile: isPhone(userAgent({ headers: requestHeaders }).device.type),
+    cookie: cookieStore.get(TEACHER_VIEW_COOKIE)?.value,
+  });
+  if (home === TEACHER_APP_HOME) {
+    redirect(TEACHER_APP_HOME);
   }
 
   const [
