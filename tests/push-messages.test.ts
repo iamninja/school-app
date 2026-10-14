@@ -39,11 +39,17 @@ describe("notification catalogue", () => {
   });
 
   it("matches the event list the database accepts for edited texts", () => {
+    // The newest definition wins: the original inline CHECK, or a later
+    // migration's re-added notification_templates_event_check.
     const dir = path.join(process.cwd(), "supabase", "migrations");
-    const file = readdirSync(dir).find((name) => name.endsWith("_push-notifications.sql"));
-    const sql = readFileSync(path.join(dir, file!), "utf8");
-    const check = sql.match(/event text primary key check \(event in \(([\s\S]*?)\)\)/);
-    const dbEvents = [...check![1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
+    const pattern =
+      /(?:event text primary key check|notification_templates_event_check check) \(event in \(([\s\S]*?)\)\)/g;
+    const definitions = readdirSync(dir)
+      .filter((name) => name.endsWith(".sql"))
+      .sort()
+      .flatMap((name) => [...readFileSync(path.join(dir, name), "utf8").matchAll(pattern)]);
+    const latest = definitions.at(-1)!;
+    const dbEvents = [...latest[1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
     expect(dbEvents.sort()).toEqual([...EDITABLE_EVENTS].sort());
   });
 

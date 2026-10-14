@@ -22,6 +22,7 @@ export const PLACEHOLDERS = {
   note: { label: "homework text", sample: "σελ. 42, ασκ. 1-10" },
   receipt: { label: "receipt number", sample: "Α-5" },
   month: { label: "month", sample: "Οκτώβριος" },
+  lessons: { label: "lessons without attendance", sample: "Άλγεβρα Β (16:15), Γεωμετρία Γ (18:15)" },
 } as const;
 
 export type Placeholder = keyof typeof PLACEHOLDERS;
@@ -43,7 +44,8 @@ export type NotificationSwitch =
   | "balance_reminder"
   | "teacher_quiz_review"
   | "teacher_charge_failed"
-  | "teacher_mydata_failed";
+  | "teacher_mydata_failed"
+  | "teacher_attendance_missing";
 
 export type EventGroup = "school" | "money" | "teacher";
 
@@ -253,6 +255,26 @@ export const EVENTS = {
     body: "Η απόδειξη {receipt} δεν διαβιβάστηκε στο myDATA.",
     placeholders: ["receipt"],
     url: teacherSection("receipts"),
+  },
+  // Both open the phone companion; the in-lesson alert's link is replaced
+  // with the exact lesson when it's sent (lib/push/attendance-alerts.ts).
+  teacher_attendance_missing: {
+    label: "Attendance not taken (during the lesson)",
+    group: "teacher",
+    switch: "teacher_attendance_missing",
+    title: "Παρουσίες: {class}",
+    body: "Το μάθημα των {time} ξεκίνησε και δεν έχουν περαστεί παρουσίες.",
+    placeholders: ["class", "time"],
+    url: "/teacher-app",
+  },
+  teacher_attendance_summary: {
+    label: "Attendance not taken (evening / morning summary)",
+    group: "teacher",
+    switch: "teacher_attendance_missing",
+    title: "Παρουσίες που λείπουν",
+    body: "{date}: {lessons}",
+    placeholders: ["date", "lessons"],
+    url: "/teacher-app",
   },
 } as const satisfies Record<string, EventDefinition>;
 
