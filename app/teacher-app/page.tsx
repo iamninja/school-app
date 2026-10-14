@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 
 import { DateStrip } from "@/components/teacher-app/date-strip";
+import { DeviceNotifications } from "@/components/teacher-app/device-notifications";
 import { formatCompanionDate } from "@/components/teacher-app/format";
 import { requireCompanionTeacher, parseDateParam } from "@/app/teacher-app/session";
 import { loadDay } from "@/lib/teacher-app/load";
@@ -96,6 +97,8 @@ export default async function TeacherAppTodayPage({
           })}
         </ul>
       )}
+
+      <DeviceNotifications />
     </div>
   );
 }
