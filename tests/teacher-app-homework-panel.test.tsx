@@ -41,7 +41,7 @@ function renderPanel(props: Partial<React.ComponentProps<typeof HomeworkPanel>> 
       todayClassIds={["c2"]}
       selectedClassId="c1"
       initialHomework={[EXISTING]}
-      nextLessonDate="2026-10-16"
+      nextLessonDates={["2026-10-16", "2026-10-19", "2026-10-23"]}
       today="2026-10-14"
       classPicker
       {...props}
@@ -79,6 +79,21 @@ describe("HomeworkPanel", () => {
     expect(screen.getByLabelText("New homework")).toHaveValue("");
   });
 
+  it("offers the 2nd and 3rd lessons as due dates too", async () => {
+    vi.mocked(createHomeworkAction).mockResolvedValue({ ...EXISTING, id: "h2" } as never);
+    renderPanel();
+
+    expect(screen.getByRole("button", { name: "Next lesson · Fri 16 Oct" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "2nd lesson · Mon 19 Oct" })).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText("New homework"), "Project");
+    await userEvent.click(screen.getByRole("button", { name: "3rd lesson · Fri 23 Oct" }));
+    await userEvent.click(screen.getByRole("button", { name: /Set homework/ }));
+
+    expect(createHomeworkAction).toHaveBeenCalledWith(
+      expect.objectContaining({ dueDate: "2026-10-23" }),
+    );
+  });
+
   it("can set homework quietly with no due date", async () => {
     vi.mocked(createHomeworkAction).mockResolvedValue({ ...EXISTING, id: "h2" } as never);
     renderPanel();
@@ -95,7 +110,7 @@ describe("HomeworkPanel", () => {
 
   it("offers 'in a week' relative to today", async () => {
     vi.mocked(createHomeworkAction).mockResolvedValue({ ...EXISTING, id: "h2" } as never);
-    renderPanel({ nextLessonDate: null });
+    renderPanel({ nextLessonDates: [] });
 
     expect(screen.queryByRole("button", { name: /Next lesson/ })).toBeNull();
     await userEvent.type(screen.getByLabelText("New homework"), "Revise");

@@ -21,7 +21,10 @@ import { addDays } from "@/lib/teacher-app/day";
 import { getErrorMessage } from "@/lib/expected-error";
 import { cn } from "@/lib/utils";
 
-type DueChoice = "next" | "week" | "pick" | "none";
+// "lesson-0" / "lesson-1" / "lesson-2" = the class's next, 2nd and 3rd lesson.
+type DueChoice = `lesson-${number}` | "week" | "pick" | "none";
+
+const LESSON_CHIP_LABELS = ["Next lesson", "2nd lesson", "3rd lesson"];
 
 /**
  * Phone homework: set homework for a class (due date via quick chips) and
@@ -35,7 +38,7 @@ export function HomeworkPanel({
   todayClassIds,
   selectedClassId,
   initialHomework,
-  nextLessonDate,
+  nextLessonDates,
   today,
   classPicker,
 }: {
@@ -43,14 +46,15 @@ export function HomeworkPanel({
   todayClassIds: string[];
   selectedClassId: string | null;
   initialHomework: CompanionHomework[];
-  nextLessonDate: string | null;
+  /** The class's next lesson days (up to three), one due-date chip each. */
+  nextLessonDates: string[];
   today: string;
   classPicker: boolean;
 }) {
   const router = useRouter();
   const [homework, setHomework] = useState(initialHomework);
   const [note, setNote] = useState("");
-  const [due, setDue] = useState<DueChoice>(nextLessonDate ? "next" : "none");
+  const [due, setDue] = useState<DueChoice>(nextLessonDates.length > 0 ? "lesson-0" : "none");
   const [pickedDate, setPickedDate] = useState("");
   const [notify, setNotify] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -61,10 +65,9 @@ export function HomeworkPanel({
     .filter((item): item is CompanionClass => Boolean(item));
   const otherClasses = classes.filter((item) => !todayClassIds.includes(item.id));
 
-  const dueDate =
-    due === "next"
-      ? nextLessonDate
-      : due === "week"
+  const dueDate = due.startsWith("lesson-")
+    ? (nextLessonDates[Number(due.slice("lesson-".length))] ?? null)
+    : due === "week"
         ? addDays(today, 7)
         : due === "pick"
           ? pickedDate || null
@@ -100,9 +103,10 @@ export function HomeworkPanel({
   }
 
   const chips: { value: DueChoice; label: string }[] = [
-    ...(nextLessonDate
-      ? [{ value: "next" as const, label: `Next lesson · ${formatCompanionDate(nextLessonDate)}` }]
-      : []),
+    ...nextLessonDates.slice(0, LESSON_CHIP_LABELS.length).map((date, index) => ({
+      value: `lesson-${index}` as const,
+      label: `${LESSON_CHIP_LABELS[index]} · ${formatCompanionDate(date)}`,
+    })),
     { value: "week", label: "In a week" },
     { value: "pick", label: "Pick a date" },
     { value: "none", label: "No due date" },

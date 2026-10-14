@@ -4,7 +4,7 @@ import {
   addDays,
   buildDayLessons,
   neighbouringLessonDays,
-  nextLessonDay,
+  nextLessonDays,
   type DayProjection,
 } from "@/lib/teacher-app/day";
 import { teacherHomeFor } from "@/lib/teacher-app/view";
@@ -143,10 +143,33 @@ describe("lesson days around a date", () => {
     expect(result.next).toBe("2026-09-10");
   });
 
-  it("finds a class's next lesson after a date", () => {
-    expect(nextLessonDay(CLASS_A.id, MONDAY, projection())).toBe("2026-09-10");
-    expect(nextLessonDay(CLASS_B.id, MONDAY, projection())).toBe("2026-09-14");
-    expect(nextLessonDay("unknown", MONDAY, projection())).toBeNull();
+  it("finds a class's next three lessons after a date", () => {
+    expect(nextLessonDays(CLASS_A.id, MONDAY, projection())).toEqual([
+      "2026-09-10",
+      "2026-09-14",
+      "2026-09-17",
+    ]);
+    expect(nextLessonDays(CLASS_B.id, MONDAY, projection())).toEqual([
+      "2026-09-14",
+      "2026-09-21",
+      "2026-09-28",
+    ]);
+    expect(nextLessonDays("unknown", MONDAY, projection())).toEqual([]);
+  });
+
+  it("skips cancelled lessons and counts a class meeting twice a day once", () => {
+    const days = nextLessonDays(
+      CLASS_A.id,
+      MONDAY,
+      projection({
+        slots: [
+          { classId: CLASS_A.id, day: "Thu", time: "14:30" },
+          { classId: CLASS_A.id, day: "Thu", time: "18:00" },
+        ],
+        events: [event({ event_date: "2026-09-10" })],
+      }),
+    );
+    expect(days).toEqual(["2026-09-17", "2026-09-24", "2026-10-01"]);
   });
 
   it("adds days across month ends", () => {

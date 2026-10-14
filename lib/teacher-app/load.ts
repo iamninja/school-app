@@ -9,7 +9,7 @@ import {
   buildDayLessons,
   classHasLessonOn,
   neighbouringLessonDays,
-  nextLessonDay,
+  nextLessonDays,
   type DayLesson,
   type DayProjection,
 } from "@/lib/teacher-app/day";
@@ -257,8 +257,8 @@ export type CompanionHomeworkView = {
   todayClassIds: string[];
   selectedClassId: string | null;
   homework: CompanionHomework[];
-  /** The selected class's next lesson day after today, for the due-date chip. */
-  nextLessonDate: string | null;
+  /** The selected class's next three lesson days after today, for the due-date chips. */
+  nextLessonDates: string[];
 };
 
 export async function loadHomeworkView(
@@ -305,6 +305,6 @@ export async function loadHomeworkView(
     todayClassIds,
     selectedClassId,
     homework,
-    nextLessonDate: selectedClassId ? nextLessonDay(selectedClassId, today, projection) : null,
+    nextLessonDates: selectedClassId ? nextLessonDays(selectedClassId, today, projection) : [],
   };
 }

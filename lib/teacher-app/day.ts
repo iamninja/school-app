@@ -149,20 +149,27 @@ export function classHasLessonOn(
   );
 }
 
-/** The class's first lesson day strictly after `date`, within `windowDays`. */
-export function nextLessonDay(
+/**
+ * The class's next `count` lesson days strictly after `date`, within
+ * `windowDays` (a class meeting twice the same day counts once).
+ */
+export function nextLessonDays(
   classId: string,
   date: string,
   projection: DayProjection,
+  count = 3,
   windowDays = 60,
-): string | null {
-  return (
-    projectOccurrences({
-      from: addDays(date, 1),
-      to: addDays(date, windowDays),
-      ...projection,
-      includeBlocks: false,
-    }).find((occurrence) => occurrence.classId === classId && isAttendanceLesson(occurrence))
-      ?.date ?? null
-  );
+): string[] {
+  const days: string[] = [];
+  for (const occurrence of projectOccurrences({
+    from: addDays(date, 1),
+    to: addDays(date, windowDays),
+    ...projection,
+    includeBlocks: false,
+  })) {
+    if (occurrence.classId !== classId || !isAttendanceLesson(occurrence)) continue;
+    if (days.at(-1) !== occurrence.date) days.push(occurrence.date);
+    if (days.length === count) break;
+  }
+  return days;
 }

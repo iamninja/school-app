@@ -29,7 +29,7 @@ export default async function TeacherAppHomeworkPage({
         todayClassIds={view.todayClassIds}
         selectedClassId={view.selectedClassId}
         initialHomework={view.homework}
-        nextLessonDate={view.nextLessonDate}
+        nextLessonDates={view.nextLessonDates}
         today={today}
         classPicker
       />
