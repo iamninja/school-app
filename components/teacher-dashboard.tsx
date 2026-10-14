@@ -1959,6 +1959,11 @@ export function TeacherDashboard({
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
+              {/* Back to the phone companion; a plain anchor because the
+                  switch route sets the view cookie and redirects. */}
+              <Button asChild variant="outline" size="sm" className="lg:hidden">
+                <a href="/teacher-app/switch?to=companion">Phone view</a>
+              </Button>
               <ThemeSwitcher />
               <LogoutButton />
             </div>

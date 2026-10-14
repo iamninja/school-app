@@ -7,6 +7,7 @@ import {
   resolvePortalHome,
 } from "@/lib/auth/portal-home";
 import { createClient } from "@/lib/supabase/server";
+import { NextRequest } from "next/server";
 import { GET } from "@/app/start/route";
 
 vi.mock("@/lib/supabase/server", () => ({
@@ -120,7 +121,7 @@ describe("GET /start", () => {
   ] as const)("redirects %o to %s", async (roles, path) => {
     vi.mocked(createClient).mockResolvedValue(fakeSupabase(roles).client as never);
 
-    const response = await GET(new Request("https://www.modusmath.gr/start"));
+    const response = await GET(new NextRequest("https://www.modusmath.gr/start"));
 
     expect(response.status).toBe(307);
     expect(response.headers.get("location")).toBe(`https://www.modusmath.gr${path}`);
@@ -131,8 +132,42 @@ describe("GET /start", () => {
       fakeSupabase({ teacher: true }, null).client as never,
     );
 
-    const response = await GET(new Request("https://www.modusmath.gr/start"));
+    const response = await GET(new NextRequest("https://www.modusmath.gr/start"));
 
     expect(response.headers.get("location")).toBe("https://www.modusmath.gr/");
+  });
+
+  const PHONE_UA =
+    "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Mobile Safari/537.36";
+  const IPAD_UA =
+    "Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
+
+  function startRequest(userAgent?: string, view?: string) {
+    const headers = new Headers();
+    if (userAgent) headers.set("user-agent", userAgent);
+    if (view) headers.set("cookie", `modus-teacher-view=${view}`);
+    return new NextRequest("https://www.modusmath.gr/start", { headers });
+  }
+
+  it.each([
+    ["a phone", PHONE_UA, undefined, "/teacher-app"],
+    ["a phone that chose the console", PHONE_UA, "console", "/protected/teacher"],
+    ["a tablet", IPAD_UA, undefined, "/protected/teacher"],
+    ["a desktop", undefined, undefined, "/protected/teacher"],
+    ["a desktop that chose the companion", undefined, "companion", "/teacher-app"],
+  ])("sends a teacher on %s to the right view", async (_label, userAgent, view, path) => {
+    vi.mocked(createClient).mockResolvedValue(fakeSupabase({ teacher: true }).client as never);
+
+    const response = await GET(startRequest(userAgent, view));
+
+    expect(response.headers.get("location")).toBe(`https://www.modusmath.gr${path}`);
+  });
+
+  it("keeps parents on their portal on a phone", async () => {
+    vi.mocked(createClient).mockResolvedValue(fakeSupabase({ parent: true }).client as never);
+
+    const response = await GET(startRequest(PHONE_UA, "companion"));
+
+    expect(response.headers.get("location")).toBe("https://www.modusmath.gr/parent-dashboard");
   });
 });
