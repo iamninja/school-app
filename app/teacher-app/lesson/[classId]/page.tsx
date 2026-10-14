@@ -3,28 +3,34 @@ import { notFound } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 
 import { LessonAttendance } from "@/components/teacher-app/lesson-attendance";
+import { HomeworkPanel } from "@/components/teacher-app/homework-panel";
 import { formatCompanionDate } from "@/components/teacher-app/format";
 import { requireCompanionTeacher, parseDateParam } from "@/app/teacher-app/session";
-import { loadLesson } from "@/lib/teacher-app/load";
+import { loadHomeworkView, loadLesson } from "@/lib/teacher-app/load";
 import { athensToday } from "@/lib/push/athens-time";
+import { cn } from "@/lib/utils";
 
-/** One lesson: take attendance (and, from the Homework segment, set homework). */
+/** One lesson: take attendance, or (Homework segment) set homework for its class. */
 export default async function TeacherAppLessonPage({
   params,
   searchParams,
 }: {
   params: Promise<{ classId: string }>;
-  searchParams: Promise<{ date?: string | string[] }>;
+  searchParams: Promise<{ date?: string | string[]; tab?: string | string[] }>;
 }) {
   const { supabase, teacherId } = await requireCompanionTeacher();
   const [{ classId }, query] = await Promise.all([params, searchParams]);
   const today = athensToday();
   const date = parseDateParam(query.date) ?? today;
+  const tab = query.tab === "homework" ? "homework" : "attendance";
 
   const lesson = await loadLesson(supabase, teacherId, classId, date);
   if (!lesson) notFound();
+  const homeworkView =
+    tab === "homework" ? await loadHomeworkView(supabase, teacherId, today, classId) : null;
 
   const backHref = date === today ? "/teacher-app" : `/teacher-app?date=${date}`;
+  const lessonHref = `/teacher-app/lesson/${classId}?date=${date}`;
 
   return (
     <div className="space-y-4">
@@ -45,7 +51,39 @@ export default async function TeacherAppLessonPage({
         </div>
       </div>
 
-      {lesson.hasLesson ? (
+      <nav aria-label="Lesson sections" className="grid grid-cols-2 rounded-lg bg-muted p-1">
+        {(
+          [
+            ["attendance", "Attendance", lessonHref],
+            ["homework", "Homework", `${lessonHref}&tab=homework`],
+          ] as const
+        ).map(([value, label, href]) => (
+          <Link
+            key={value}
+            href={href}
+            replace
+            aria-current={tab === value ? "page" : undefined}
+            className={cn(
+              "flex h-10 items-center justify-center rounded-md text-sm font-medium",
+              tab === value ? "bg-background shadow-sm" : "text-muted-foreground",
+            )}
+          >
+            {label}
+          </Link>
+        ))}
+      </nav>
+
+      {tab === "homework" && homeworkView ? (
+        <HomeworkPanel
+          classes={homeworkView.classes}
+          todayClassIds={homeworkView.todayClassIds}
+          selectedClassId={homeworkView.selectedClassId}
+          initialHomework={homeworkView.homework}
+          nextLessonDate={homeworkView.nextLessonDate}
+          today={today}
+          classPicker={false}
+        />
+      ) : lesson.hasLesson ? (
         <LessonAttendance
           classId={lesson.classItem.id}
           className={lesson.classItem.name}

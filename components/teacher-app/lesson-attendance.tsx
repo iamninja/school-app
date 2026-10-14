@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { setAttendanceAction } from "@/app/protected/teacher/actions";
 import { Button } from "@/components/ui/button";
+import { TOAST_TOP } from "@/components/teacher-app/format";
 import type { CompanionStudent } from "@/lib/teacher-app/load";
 import type { AttendanceStatus } from "@/lib/attendance-records";
 import { getErrorMessage } from "@/lib/expected-error";
@@ -83,7 +84,7 @@ export function LessonAttendance({
         else delete next[studentId];
         return next;
       });
-      toast.error(getErrorMessage(error, "Couldn't save attendance"));
+      toast.error(getErrorMessage(error, "Couldn't save attendance"), TOAST_TOP);
       return false;
     }
   };

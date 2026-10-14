@@ -10,3 +10,6 @@ const LONG = new Intl.DateTimeFormat("en-GB", {
 export function formatCompanionDate(date: string): string {
   return LONG.format(fromIsoDate(date));
 }
+
+/** The companion's toasts go to the top, clear of the bottom tab bar. */
+export const TOAST_TOP = { position: "top-center" } as const;
