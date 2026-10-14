@@ -92,6 +92,9 @@ export default async function TeacherAppLessonPage({
             homeworkHref={`${lessonHref}&tab=homework`}
           />
           <LessonAttendance
+            // Fresh server marks (e.g. after queued marks are sent and the
+            // page refreshes) restart the cards from the saved state.
+            key={JSON.stringify(lesson.statuses)}
             classId={lesson.classItem.id}
             className={lesson.classItem.name}
             date={date}

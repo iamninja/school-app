@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { CheckCheck } from "lucide-react";
+import { useMemo, useState, useSyncExternalStore } from "react";
+import { CheckCheck, CloudOff } from "lucide-react";
 import { toast } from "sonner";
 
 import { setAttendanceAction } from "@/app/protected/teacher/actions";
@@ -11,6 +11,14 @@ import { TOAST_TOP } from "@/components/teacher-app/format";
 import type { CompanionStudent } from "@/lib/teacher-app/load";
 import type { AttendanceStatus } from "@/lib/attendance-records";
 import { getErrorMessage } from "@/lib/expected-error";
+import {
+  dropQueuedMark,
+  enqueueMark,
+  getQueueSnapshot,
+  getServerQueueSnapshot,
+  isNetworkError,
+  subscribeToQueue,
+} from "@/lib/teacher-app/attendance-queue";
 import { formatEuro } from "@/lib/format-currency";
 import { cn } from "@/lib/utils";
 
@@ -27,8 +35,10 @@ const OPTIONS: { status: AttendanceStatus; label: string; active: string }[] = [
  * Phone attendance: one card per student with big Present / Late / Absent
  * (and 1+1 on two-hour lessons) buttons. Same write as the console's roster
  * (setAttendanceAction - billing, absence notices and all); tapping the
- * active status clears it. Each tap shows at once and rolls back if the save
- * fails.
+ * active status clears it. Each tap shows at once. If the server refuses it,
+ * it rolls back; if there's no signal, it stays and waits in the attendance
+ * queue (lib/teacher-app/attendance-queue.ts), which the companion shell
+ * sends as soon as the connection is back.
  */
 export function LessonAttendance({
   classId,
@@ -47,15 +57,31 @@ export function LessonAttendance({
   roster: CompanionStudent[];
   initialMarks: Record<string, Mark>;
 }) {
-  const [marks, setMarks] = useState<Record<string, Mark>>(initialMarks);
+  const [localMarks, setMarks] = useState<Record<string, Mark>>(initialMarks);
   const [markingRest, setMarkingRest] = useState(false);
+  const queue = useSyncExternalStore(subscribeToQueue, getQueueSnapshot, getServerQueueSnapshot);
+
+  // Marks still waiting for signal win over what the server last said, so
+  // they show again after the app is reopened.
+  const { marks, pending } = useMemo(() => {
+    const merged = { ...localMarks };
+    const waiting = new Set<string>();
+    for (const entry of queue) {
+      if (entry.classId !== classId || entry.date !== date) continue;
+      waiting.add(entry.studentId);
+      if (entry.status) merged[entry.studentId] = { status: entry.status, chargedAmount: null };
+      else delete merged[entry.studentId];
+    }
+    return { marks: merged, pending: waiting };
+  }, [localMarks, queue, classId, date]);
 
   const options = OPTIONS.filter((option) => option.status !== "split" || isTwoHour);
   const markedCount = roster.filter((student) => marks[student.id]).length;
   const absentCount = roster.filter((student) => marks[student.id]?.status === "absent").length;
   const unmarked = roster.filter((student) => !marks[student.id]);
 
-  const save = async (studentId: string, status: AttendanceStatus | ""): Promise<boolean> => {
+  const save = async (student: CompanionStudent, status: AttendanceStatus | ""): Promise<boolean> => {
+    const studentId = student.id;
     const previous = marks[studentId];
     setMarks((current) => {
       const next = { ...current };
@@ -63,6 +89,22 @@ export function LessonAttendance({
       else delete next[studentId];
       return next;
     });
+    const queueEntry = () =>
+      enqueueMark({
+        classId,
+        className,
+        date,
+        studentId,
+        studentName: `${student.firstName} ${student.lastName}`,
+        status,
+        queuedAt: Date.now(),
+      });
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      queueEntry();
+      return true;
+    }
+    // This tap is newer than anything still queued for the student.
+    dropQueuedMark({ classId, date, studentId });
     try {
       const result = await setAttendanceAction({
         classId,
@@ -79,6 +121,10 @@ export function LessonAttendance({
       }
       return true;
     } catch (error) {
+      if (isNetworkError(error)) {
+        queueEntry();
+        return true;
+      }
       setMarks((current) => {
         const next = { ...current };
         if (previous) next[studentId] = previous;
@@ -95,7 +141,7 @@ export function LessonAttendance({
     // One at a time through the same action, so billing and notices behave
     // exactly as if each student had been tapped.
     for (const student of unmarked) {
-      if (!(await save(student.id, "present"))) break;
+      if (!(await save(student, "present"))) break;
     }
     setMarkingRest(false);
   };
@@ -137,7 +183,12 @@ export function LessonAttendance({
             <li key={student.id} className="rounded-lg border border-border bg-card p-3">
               <div className="mb-2 flex items-center justify-between gap-2">
                 <span className="min-w-0 flex-1 truncate font-medium">{fullName}</span>
-                {isPerLesson && mark && (
+                {pending.has(student.id) ? (
+                  <span className="flex shrink-0 items-center gap-1 text-xs text-amber-700 dark:text-amber-400">
+                    <CloudOff className="size-3.5" aria-hidden="true" />
+                    Waiting for signal
+                  </span>
+                ) : isPerLesson && mark && (
                   <span className="shrink-0 text-xs text-muted-foreground">
                     {typeof mark.chargedAmount === "number"
                       ? `${formatEuro(mark.chargedAmount)} charged`
@@ -159,7 +210,7 @@ export function LessonAttendance({
                       type="button"
                       aria-pressed={active}
                       disabled={markingRest}
-                      onClick={() => save(student.id, active ? "" : option.status)}
+                      onClick={() => save(student, active ? "" : option.status)}
                       className={cn(
                         "h-11 rounded-md border text-sm font-medium transition-colors disabled:opacity-60",
                         active ? option.active : "border-border bg-background active:bg-muted",

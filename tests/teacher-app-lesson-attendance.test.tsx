@@ -7,6 +7,10 @@ import { toast } from "sonner";
 
 import { LessonAttendance } from "@/components/teacher-app/lesson-attendance";
 import { setAttendanceAction } from "@/app/protected/teacher/actions";
+import {
+  __resetAttendanceQueueForTests,
+  getQueueSnapshot,
+} from "@/lib/teacher-app/attendance-queue";
 
 vi.mock("@/app/protected/teacher/actions", () => ({
   setAttendanceAction: vi.fn(),
@@ -62,6 +66,8 @@ describe("LessonAttendance", () => {
         }) as Awaited<ReturnType<typeof setAttendanceAction>>,
     );
     vi.mocked(toast.error).mockReset();
+    window.localStorage.clear();
+    __resetAttendanceQueueForTests();
   });
 
   it("saves a status and shows it as pressed", async () => {
@@ -158,5 +164,33 @@ describe("LessonAttendance", () => {
       "https://wa.me/306912345678",
       "tel:+302441012345",
     ]);
+  });
+
+  it("keeps a mark that couldn't reach the server and queues it", async () => {
+    vi.mocked(setAttendanceAction).mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    renderAttendance();
+
+    await userEvent.click(card("Maya Carter").getByRole("button", { name: "Absent" }));
+
+    expect(card("Maya Carter").getByRole("button", { name: "Absent" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByText("Waiting for signal")).toBeInTheDocument();
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(getQueueSnapshot()).toEqual([
+      expect.objectContaining({ studentId: "s1", status: "absent", studentName: "Maya Carter" }),
+    ]);
+  });
+
+  it("queues straight away when the phone is offline", async () => {
+    const onLine = vi.spyOn(window.navigator, "onLine", "get").mockReturnValue(false);
+    renderAttendance();
+
+    await userEvent.click(card("Nikos Papas").getByRole("button", { name: "Present" }));
+
+    expect(setAttendanceAction).not.toHaveBeenCalled();
+    expect(getQueueSnapshot()).toEqual([expect.objectContaining({ studentId: "s2", status: "present" })]);
+    onLine.mockRestore();
   });
 });

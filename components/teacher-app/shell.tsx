@@ -6,6 +6,7 @@ import { CalendarCheck, LogOut, Monitor, MoreVertical, NotebookPen } from "lucid
 
 import { ModusLogo } from "@/components/brand";
 import { NotificationBell } from "@/components/notification-bell";
+import { AttendanceSync } from "@/components/teacher-app/attendance-sync";
 import { ThemeSwitcher } from "@/components/theme-switcher";
 import { Button } from "@/components/ui/button";
 import {
@@ -79,6 +80,7 @@ export function CompanionShell({ children }: { children: React.ReactNode }) {
             </DropdownMenu>
           </div>
         </div>
+        <AttendanceSync />
       </header>
 
       <main className="mx-auto w-full max-w-md flex-1 px-4 pb-24 pt-4">{children}</main>
