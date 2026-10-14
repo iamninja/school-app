@@ -16,6 +16,17 @@ vi.mock("@sentry/nextjs", () => ({
   captureException: vi.fn(),
 }));
 
+vi.mock("@/lib/push/scheduled", () => ({
+  notifyMonthlyCharges: vi.fn(async () => {}),
+  notifyChargeRunFailed: vi.fn(async () => {}),
+  runMorningJobs: vi.fn(async () => {}),
+}));
+import {
+  notifyChargeRunFailed,
+  notifyMonthlyCharges,
+  runMorningJobs,
+} from "@/lib/push/scheduled";
+
 function fakeServiceClient() {
   return {
     from: vi.fn(() => ({
@@ -84,6 +95,28 @@ describe("GET /api/cron/monthly-charges", () => {
     expect(runMonthlyChargeRun).toHaveBeenCalledWith(
       expect.objectContaining({ source: "cron", triggeredBy: null }),
     );
+    // The charged families hear about it, then the morning notifications run.
+    expect(notifyMonthlyCharges).toHaveBeenCalledWith(
+      expect.anything(),
+      "2026-10-01",
+      expect.any(Date),
+    );
+    expect(runMorningJobs).toHaveBeenCalledTimes(1);
+  });
+
+  it("notifies no family when the run charged nobody new", async () => {
+    vi.mocked(runMonthlyChargeRun).mockResolvedValue({
+      period: "2026-10-01",
+      billable: true,
+      familiesCharged: 0,
+      totalAmount: 0,
+      skippedReason: "no_families_with_charges",
+    });
+
+    await GET(request("Bearer test-secret-value"));
+
+    expect(notifyMonthlyCharges).not.toHaveBeenCalled();
+    expect(runMorningJobs).toHaveBeenCalledTimes(1);
   });
 
   it("returns 500 and reports to Sentry when the run throws", async () => {
@@ -95,5 +128,14 @@ describe("GET /api/cron/monthly-charges", () => {
     expect(Sentry.captureException).toHaveBeenCalledWith(
       expect.any(Error),
     );
+    // The teacher is alerted, and the morning notifications still go out.
+    expect(notifyChargeRunFailed).toHaveBeenCalledTimes(1);
+    expect(runMorningJobs).toHaveBeenCalledTimes(1);
+  });
+
+  it("never runs notification work for an unauthorized call", async () => {
+    await GET(request("Bearer wrong"));
+    expect(runMorningJobs).not.toHaveBeenCalled();
+    expect(notifyChargeRunFailed).not.toHaveBeenCalled();
   });
 });

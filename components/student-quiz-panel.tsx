@@ -65,6 +65,7 @@ const LABELS = {
     retakeQuiz: "Επανάληψη τεστ",
     retake: "Επανάληψη",
     startQuiz: "Έναρξη τεστ",
+    dueBy: "Προθεσμία",
     quizzesTitle: "Τεστ",
     history: "Ιστορικό",
     noQuizzesYet: "Δεν έχουν ανατεθεί τεστ ακόμα.",
@@ -92,6 +93,7 @@ const LABELS = {
     retakeQuiz: "Retake quiz",
     retake: "Retake",
     startQuiz: "Start quiz",
+    dueBy: "Due",
     quizzesTitle: "Quizzes",
     history: "History",
     noQuizzesYet: "No quizzes assigned yet.",
@@ -436,6 +438,11 @@ export function StudentQuizPanel({
                   locale: labels.dateFnsLocale,
                 })
               : "")}
+          {!quiz.completed && quiz.dueDate
+            ? ` · ${labels.dueBy} ${format(new Date(`${quiz.dueDate}T12:00:00`), "d MMMM", {
+                locale: labels.dateFnsLocale,
+              })}`
+            : ""}
         </p>
       </div>
       {quiz.quizDeleted ? (

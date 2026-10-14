@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { requireTeacher } from "@/lib/auth/require-teacher";
 import { ExpectedError } from "@/lib/expected-error";
+import { notifyAfterResponse } from "@/lib/push/hooks";
 import { buildInvoiceXml } from "@/lib/mydata/invoice-xml";
 import {
   getActiveMyDataEnvironment,
@@ -197,6 +198,17 @@ export async function createReceiptAction(
     throw itemsError;
   }
 
+  // The family's parents hear a receipt exists - never its amount, which
+  // stays inside the portal.
+  if (receipt.family_id) {
+    notifyAfterResponse({
+      event: "receipt",
+      to: { kind: "family_parents", familyIds: [receipt.family_id] },
+      values: { receipt: `${receipt.series}-${receipt.receipt_number}` },
+      tag: `receipt-${receipt.id}`,
+    });
+  }
+
   const [withItems] = await attachLineItems(supabase, [
     receipt as unknown as Omit<Receipt, "lineItems">,
   ]);
@@ -360,6 +372,14 @@ export async function submitReceiptToMyDataAction(
   ]);
 
   if (!result.ok) {
+    // On the teacher's other devices too (after() still runs when the
+    // action throws below).
+    notifyAfterResponse({
+      event: "teacher_mydata_failed",
+      to: { kind: "teachers" },
+      values: { receipt: `${receipt.series}-${receipt.receipt_number}` },
+      tag: `mydata-${receipt.id}`,
+    });
     // Surfaced to the teacher as a plain message rather than a crash - the
     // receipt itself is saved and retryable, this is not an app error.
     throw new ExpectedError(result.error);

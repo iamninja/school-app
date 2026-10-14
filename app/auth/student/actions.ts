@@ -177,7 +177,7 @@ export async function getStudentDashboardDataAction(): Promise<
   if (classIds.length > 0) {
     const { data: assignmentRows } = await supabase
       .from("quiz_assignments")
-      .select("quiz_id, class_id, max_attempts")
+      .select("quiz_id, class_id, max_attempts, due_date")
       .in("class_id", classIds);
 
     const quizIds = [...new Set((assignmentRows ?? []).map((a) => a.quiz_id))];
@@ -195,6 +195,13 @@ export async function getStudentDashboardDataAction(): Promise<
     // Most generous limit across every class this quiz is assigned to for
     // this student - null (unlimited) wins over any finite number,
     // mirroring is_quiz_shuffled_for_student's permissive-OR resolution.
+    const dueDateByQuiz = new Map<string, string>();
+    for (const row of assignmentRows ?? []) {
+      const current = dueDateByQuiz.get(row.quiz_id);
+      if (row.due_date && (!current || row.due_date < current)) {
+        dueDateByQuiz.set(row.quiz_id, row.due_date);
+      }
+    }
     const maxAttemptsByQuiz = new Map<string, number | null>();
     for (const [quizId, rows] of maxAttemptsRowsByQuiz) {
       maxAttemptsByQuiz.set(
@@ -264,6 +271,7 @@ export async function getStudentDashboardDataAction(): Promise<
           canRetake:
             Boolean(attempt) &&
             (maxAttempts === null || attemptsUsed < maxAttempts),
+          dueDate: dueDateByQuiz.get(quiz.id) ?? null,
         };
       });
     }

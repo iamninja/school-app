@@ -6,6 +6,7 @@ import { signQuizImageUrls } from "@/lib/quiz-images";
 import { gradeShortAnswerWithAI } from "@/lib/ai-grading";
 import { explainWrongAnswer } from "@/lib/ai-explanation";
 import { applyShortAnswerGrade } from "@/lib/quiz-grading";
+import { notify } from "@/lib/push/notify";
 import type {
   QuizForTaking,
   QuizQuestionForTaking,
@@ -35,12 +36,14 @@ interface AiGradingTask {
  * and this runs via `after()` once the response has already been sent, so
  * there's no student-facing latency either way.
  */
-async function runAiGradingPass(tasks: AiGradingTask[]): Promise<void> {
+async function runAiGradingPass(tasks: AiGradingTask[]): Promise<number> {
   if (tasks.length === 0) {
-    return;
+    return 0;
   }
 
   const supabase = createServiceRoleClient();
+  // Answers the AI couldn't grade stay in the teacher's manual queue.
+  let ungraded = 0;
 
   await Promise.all(
     tasks.map(async (task) => {
@@ -52,6 +55,7 @@ async function runAiGradingPass(tasks: AiGradingTask[]): Promise<void> {
       });
 
       if (!result) {
+        ungraded++;
         return;
       }
 
@@ -78,6 +82,43 @@ async function runAiGradingPass(tasks: AiGradingTask[]): Promise<void> {
       }
     }),
   );
+  return ungraded;
+}
+
+/**
+ * After the written answers have been through the AI: the student hears
+ * their quiz is graded, or - if some answers still need a human - the
+ * teacher gets a "waiting for review" alert. Fully auto-graded quizzes
+ * never come here (the score shows instantly), so they notify no one.
+ */
+async function notifyQuizGradingOutcome(input: {
+  ungraded: number;
+  studentId: string;
+  quizTitle: string;
+  notificationsDisabled: boolean;
+}) {
+  if (input.ungraded === 0) {
+    if (input.notificationsDisabled) return;
+    await notify({
+      event: "quiz_graded",
+      to: { kind: "students", studentIds: [input.studentId] },
+      values: { title: input.quizTitle },
+    });
+    return;
+  }
+  const { data: student } = await createServiceRoleClient()
+    .from("students")
+    .select("first_name, last_name")
+    .eq("id", input.studentId)
+    .maybeSingle();
+  await notify({
+    event: "teacher_quiz_review",
+    to: { kind: "teachers" },
+    values: {
+      title: input.quizTitle,
+      student: student ? `${student.first_name} ${student.last_name}`.trim() : "",
+    },
+  });
 }
 
 // One explanation call per wrong multiple_choice/true_false answer,
@@ -416,7 +457,7 @@ export async function submitQuizAttemptAction(
 
   const { data: quiz, error: quizError } = await supabase
     .from("quizzes")
-    .select("id, title")
+    .select("id, title, notifications_disabled")
     .eq("id", quizId)
     .single();
 
@@ -931,12 +972,20 @@ export async function submitQuizAttemptAction(
     .filter((task) => task.attemptAnswerId || task.bestAnswerId);
 
   if (aiGradingTasks.length > 0 || explanationTasks.length > 0) {
-    after(() =>
-      Promise.all([
+    after(async () => {
+      const [ungraded] = await Promise.all([
         runAiGradingPass(aiGradingTasks),
         runExplanationPass(explanationTasks),
-      ]),
-    );
+      ]);
+      if (aiGradingTasks.length > 0) {
+        await notifyQuizGradingOutcome({
+          ungraded,
+          studentId,
+          quizTitle: quiz.title,
+          notificationsDisabled: quiz.notifications_disabled === true,
+        });
+      }
+    });
   }
 
   return {
@@ -978,7 +1027,7 @@ export async function getQuizReviewAction(
 
   const { data: quiz, error: quizError } = await supabase
     .from("quizzes")
-    .select("id, title")
+    .select("id, title, notifications_disabled")
     .eq("id", quizId)
     .single();
 

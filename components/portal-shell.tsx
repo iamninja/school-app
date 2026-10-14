@@ -9,6 +9,8 @@ import { ThemeSwitcher } from "@/components/theme-switcher";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
+import { forgetPushDeviceBeforeSignOut } from "@/components/use-push-device";
+import { NotificationBell } from "@/components/notification-bell";
 
 const PORTAL_SHELL_LABELS = {
   el: {
@@ -56,6 +58,7 @@ export function PortalShell({
       router.push("/");
       return;
     }
+    await forgetPushDeviceBeforeSignOut();
     const supabase = createClient();
     await supabase.auth.signOut();
     router.push("/");
@@ -80,6 +83,7 @@ export function PortalShell({
             <span className="hidden rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-muted-foreground sm:inline-flex">
               {roleLabel}
             </span>
+            <NotificationBell demoMode={demoMode} locale={locale} />
             <ThemeSwitcher />
             <Button variant="outline" size="sm" onClick={handleSignOut}>
               <LogOut className="size-3.5" aria-hidden="true" />

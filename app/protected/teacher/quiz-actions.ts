@@ -3,6 +3,7 @@
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { requireTeacher } from "@/lib/auth/require-teacher";
 import { ExpectedError } from "@/lib/expected-error";
+import { notifyClassesAfterResponse } from "@/lib/push/hooks";
 import {
   copyQuizImage,
   deleteQuizImages,
@@ -35,7 +36,7 @@ async function requireOwnedQuiz(
 ) {
   const { data: quiz, error } = await supabase
     .from("quizzes")
-    .select("id, title, description, time_limit_minutes, created_at")
+    .select("id, title, description, time_limit_minutes, created_at, notifications_disabled")
     .eq("id", quizId)
     .eq("teacher_id", teacherId)
     .single();
@@ -127,7 +128,7 @@ async function buildQuizListItem(
       supabase
         .from("quiz_assignments")
         .select(
-          "class_id, shuffle_questions, max_attempts, classes:class_id (id, name)",
+          "class_id, shuffle_questions, max_attempts, due_date, classes:class_id (id, name)",
         )
         .eq("quiz_id", quiz.id),
       supabase
@@ -147,6 +148,7 @@ async function buildQuizListItem(
       name: classRow?.name ?? "",
       shuffleQuestions: assignment.shuffle_questions,
       maxAttempts: assignment.max_attempts,
+      dueDate: assignment.due_date,
     };
   });
 
@@ -183,6 +185,7 @@ export async function createQuizAction(
       title: data.title,
       description: data.description || null,
       time_limit_minutes: data.timeLimitMinutes ?? null,
+      notifications_disabled: data.notificationsDisabled === true,
     })
     .select("id, title, description, time_limit_minutes, created_at")
     .single();
@@ -206,6 +209,15 @@ export async function createQuizAction(
     if (assignError) {
       throw assignError;
     }
+
+    if (data.notificationsDisabled !== true) {
+      notifyClassesAfterResponse(data.classIds, {
+        event: "quiz",
+        values: { title: quiz.title },
+        tag: `quiz-${quiz.id}`,
+        triggeredBy: user.id,
+      });
+    }
   }
 
   return buildQuizListItem(supabase, quiz);
@@ -226,17 +238,29 @@ export async function assignQuizToClassAction(
 
   await requireTeacher(supabase, user.id);
 
-  await requireOwnedQuiz(supabase, quizId, user.id);
+  const quiz = await requireOwnedQuiz(supabase, quizId, user.id);
 
-  const { error } = await supabase
+  // .select() returns only rows actually inserted - an already-assigned
+  // class (ignoreDuplicates) comes back empty, so it isn't notified twice.
+  const { data: inserted, error } = await supabase
     .from("quiz_assignments")
     .upsert(
       { quiz_id: quizId, class_id: classId },
       { onConflict: "quiz_id,class_id", ignoreDuplicates: true },
-    );
+    )
+    .select("id");
 
   if (error) {
     throw error;
+  }
+
+  if ((inserted ?? []).length > 0 && !quiz.notifications_disabled) {
+    notifyClassesAfterResponse([classId], {
+      event: "quiz",
+      values: { title: quiz.title },
+      tag: `quiz-${quizId}`,
+      triggeredBy: user.id,
+    });
   }
 }
 
@@ -322,6 +346,44 @@ export async function setQuizAssignmentMaxAttemptsAction(
   const { error } = await supabase
     .from("quiz_assignments")
     .update({ max_attempts: maxAttempts })
+    .eq("quiz_id", quizId)
+    .eq("class_id", classId);
+
+  if (error) {
+    throw error;
+  }
+}
+
+/**
+ * The quiz's deadline for one class (or none). Shown to students and used
+ * by the evening-before reminder; a quiz can still be taken after it.
+ */
+export async function setQuizAssignmentDueDateAction(
+  quizId: string,
+  classId: string,
+  dueDate: string | null,
+): Promise<void> {
+  if (dueDate !== null && !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
+    throw new ExpectedError("Pick a valid due date.");
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error("Not authenticated");
+  }
+
+  await requireTeacher(supabase, user.id);
+
+  await requireOwnedQuiz(supabase, quizId, user.id);
+
+  const { error } = await supabase
+    .from("quiz_assignments")
+    // A new date gets its own reminder.
+    .update({ due_date: dueDate, reminder_sent_at: null })
     .eq("quiz_id", quizId)
     .eq("class_id", classId);
 
@@ -418,6 +480,7 @@ export async function getQuizForEditingAction(
     title: quiz.title,
     description: quiz.description,
     timeLimitMinutes: quiz.time_limit_minutes,
+    notificationsDisabled: quiz.notifications_disabled === true,
     locked: attemptCount > 0,
     assignedClassIds: (assignments ?? []).map((a) => a.class_id),
     questions,
@@ -446,6 +509,9 @@ export async function updateQuizAction(
       title: data.title,
       description: data.description || null,
       time_limit_minutes: data.timeLimitMinutes ?? null,
+      ...(data.notificationsDisabled === undefined
+        ? {}
+        : { notifications_disabled: data.notificationsDisabled }),
     })
     .eq("id", quiz.id)
     .select("id, title, description, time_limit_minutes, created_at")

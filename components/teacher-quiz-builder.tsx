@@ -26,6 +26,7 @@ import {
   getStudentQuizAttemptAction,
   setAnswerCommentAction,
   setQuizAssignmentMaxAttemptsAction,
+  setQuizAssignmentDueDateAction,
   setQuizAssignmentShuffleAction,
   unassignQuizFromClassAction,
   updateQuizAction,
@@ -54,6 +55,7 @@ import {
   EditableComment,
 } from "@/components/editable-comment";
 import { MathText } from "@/components/math-text";
+import { NotifyCheckbox } from "@/components/notify-checkbox";
 import { QuizQuestionImage } from "@/components/quiz-question-image";
 import { QuizReviewAnswers } from "@/components/quiz-review-answers";
 import {
@@ -98,6 +100,7 @@ export function TeacherQuizBuilder({
   const [title, setTitle] = React.useState("");
   const [description, setDescription] = React.useState("");
   const [timeLimitMinutes, setTimeLimitMinutes] = React.useState("");
+  const [notificationsDisabled, setNotificationsDisabled] = React.useState(false);
   const createDraft = useQuestionDrafts();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [selectedQuizId, setSelectedQuizId] = React.useState<string | null>(
@@ -124,6 +127,8 @@ export function TeacherQuizBuilder({
   const [editTitle, setEditTitle] = React.useState("");
   const [editDescription, setEditDescription] = React.useState("");
   const [editTimeLimitMinutes, setEditTimeLimitMinutes] = React.useState("");
+  const [editNotificationsDisabled, setEditNotificationsDisabled] =
+    React.useState(false);
   const [editLocked, setEditLocked] = React.useState(false);
   const [isLoadingEdit, setIsLoadingEdit] = React.useState(false);
   const [isSavingEdit, setIsSavingEdit] = React.useState(false);
@@ -153,6 +158,7 @@ export function TeacherQuizBuilder({
     setTitle("");
     setDescription("");
     setTimeLimitMinutes("");
+    setNotificationsDisabled(false);
     setClassIds([]);
     createDraft.setQuestions([createBlankQuestion()]);
   };
@@ -291,6 +297,7 @@ export function TeacherQuizBuilder({
           ? Number.parseInt(timeLimitMinutes, 10)
           : undefined,
         questions: draftsToQuestionInputs(resolvedQuestions),
+        notificationsDisabled,
       });
 
       setQuizzes((prev) => [created, ...prev]);
@@ -455,6 +462,7 @@ export function TeacherQuizBuilder({
                 name: classOption?.name ?? "",
                 shuffleQuestions: false,
                 maxAttempts: 1,
+                dueDate: null,
               },
             ],
           };
@@ -464,6 +472,31 @@ export function TeacherQuizBuilder({
       toast.error(
         getErrorMessage(error, "Failed to update assignment"),
       );
+    } finally {
+      setIsTogglingAssignment(false);
+    }
+  };
+
+  const handleSetDueDate = async (classId: string, raw: string) => {
+    if (!manageQuizId) return;
+    const dueDate = raw || null;
+    setIsTogglingAssignment(true);
+    try {
+      await setQuizAssignmentDueDateAction(manageQuizId, classId, dueDate);
+      setQuizzes((prev) =>
+        prev.map((quiz) =>
+          quiz.id !== manageQuizId
+            ? quiz
+            : {
+                ...quiz,
+                assignedClasses: quiz.assignedClasses.map((c) =>
+                  c.id === classId ? { ...c, dueDate } : c,
+                ),
+              },
+        ),
+      );
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, "Failed to update the due date"));
     } finally {
       setIsTogglingAssignment(false);
     }
@@ -554,6 +587,7 @@ export function TeacherQuizBuilder({
         data.timeLimitMinutes !== null ? String(data.timeLimitMinutes) : "",
       );
       setEditLocked(data.locked);
+      setEditNotificationsDisabled(data.notificationsDisabled);
       editDraft.setQuestions(questionInputsToDrafts(data.questions));
     } catch (error: unknown) {
       toast.error(
@@ -599,6 +633,7 @@ export function TeacherQuizBuilder({
         questions: resolvedQuestions
           ? draftsToQuestionInputs(resolvedQuestions)
           : undefined,
+        notificationsDisabled: editNotificationsDisabled,
       });
       setQuizzes((prev) =>
         prev.map((quiz) => (quiz.id === updated.id ? updated : quiz)),
@@ -1274,6 +1309,12 @@ export function TeacherQuizBuilder({
                 placeholder="No time limit"
               />
             </div>
+            <NotifyCheckbox
+              id="quiz-notify"
+              checked={!notificationsDisabled}
+              onChange={(checked) => setNotificationsDisabled(!checked)}
+              label="Notify students (new quiz and deadline reminder)"
+            />
 
             <div className="space-y-2">
               <Label>Assign to classes (optional)</Label>
@@ -1393,6 +1434,19 @@ export function TeacherQuizBuilder({
                           }
                         />
                       </label>
+                      <label className="flex items-center gap-2">
+                        Due
+                        <Input
+                          type="date"
+                          className="h-7 w-36"
+                          aria-label={`Due date for ${classOption.name}`}
+                          disabled={isTogglingAssignment}
+                          value={assignedClass.dueDate ?? ""}
+                          onChange={(event) =>
+                            handleSetDueDate(classOption.id, event.target.value)
+                          }
+                        />
+                      </label>
                     </div>
                   )}
                 </div>
@@ -1456,6 +1510,12 @@ export function TeacherQuizBuilder({
                   placeholder="No time limit"
                 />
               </div>
+              <NotifyCheckbox
+                id="edit-quiz-notify"
+                checked={!editNotificationsDisabled}
+                onChange={(checked) => setEditNotificationsDisabled(!checked)}
+                label="Notify students (new quiz and deadline reminder)"
+              />
 
               {editLocked && (
                 <p className="text-xs text-muted-foreground">

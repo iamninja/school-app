@@ -50,6 +50,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { NotifyCheckbox } from "@/components/notify-checkbox";
 import {
   Tooltip,
   TooltipContent,
@@ -132,6 +133,7 @@ type AssessmentFormState = {
   targetType: "class" | "students";
   classId: string;
   studentIds: string[];
+  notify: boolean;
 };
 
 function emptyForm(): AssessmentFormState {
@@ -149,6 +151,7 @@ function emptyForm(): AssessmentFormState {
     targetType: "class",
     classId: "",
     studentIds: [],
+    notify: true,
   };
 }
 
@@ -171,6 +174,7 @@ function assessmentToForm(
     targetType: "class",
     classId: assessment.class_id ?? "",
     studentIds: [],
+    notify: !assessment.notifications_disabled,
   };
 }
 
@@ -191,6 +195,7 @@ function formToInput(form: AssessmentFormState): AssessmentInput {
     grade: form.grade || null,
     classId: form.targetType === "class" ? form.classId || undefined : undefined,
     studentIds: form.targetType === "students" ? form.studentIds : undefined,
+    notificationsDisabled: !form.notify,
   };
 }
 
@@ -845,6 +850,13 @@ export function TeacherAssessments({
               </div>
             ) : null}
 
+            <NotifyCheckbox
+              id="assessment-notify"
+              checked={form.notify}
+              onChange={(notify) => setForm((prev) => ({ ...prev, notify }))}
+              label="Notify students (new test, date changes, reminder, mark)"
+            />
+
             <DialogFooter>
               <Button type="submit" disabled={isSaving}>
                 {isSaving ? "Saving…" : "Save"}
@@ -1330,6 +1342,7 @@ export function MarkEntryForm({
     assignment.score !== null ? String(assignment.score) : "",
   );
   const [comment, setComment] = React.useState(assignment.teacher_comment ?? "");
+  const [notifyStudent, setNotifyStudent] = React.useState(true);
   const [gradedPaperUrl, setGradedPaperUrl] = React.useState(
     assignment.graded_paper_url ?? "",
   );
@@ -1393,6 +1406,7 @@ export function MarkEntryForm({
         teacherComment: comment || undefined,
         gradedPaperUrl: gradedPaperUrl.trim() || undefined,
         takenAt: takenAtLocal ? new Date(takenAtLocal).toISOString() : undefined,
+        notify: notifyStudent,
       });
       onSaved(updated);
       toast.success("Mark saved");
@@ -1480,6 +1494,10 @@ export function MarkEntryForm({
           ) : null}
         </div>
       </div>
+      {/* Only the first mark notifies - correcting one never does. */}
+      {assignment.status !== "marked" ? (
+        <NotifyCheckbox id="mark-notify" checked={notifyStudent} onChange={setNotifyStudent} label="Notify the student" />
+      ) : null}
       <DialogFooter>
         <Button type="submit" disabled={isSaving}>
           {isSaving ? "Saving…" : "Save"}

@@ -21,6 +21,7 @@ import {
   StatTile,
 } from "@/components/portal-shell";
 import { InstallAppCard } from "@/components/install-app-card";
+import { NotificationsCard } from "@/components/notifications-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -312,6 +313,7 @@ export function StudentDashboard(props: StudentDashboardProps) {
     <PortalShell roleLabel="Πύλη μαθητή" demoMode={props.demoMode}>
       <div className="flex w-full flex-col gap-8">
         <InstallAppCard demoMode={props.demoMode} />
+        <NotificationsCard demoMode={props.demoMode} />
 
         {/* Greeting */}
         <div className="space-y-2">

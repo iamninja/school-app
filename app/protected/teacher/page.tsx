@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { TeacherDashboard } from "@/components/teacher-dashboard";
 import { createClient } from "@/lib/supabase/server";
 import { getBusinessSettingsAction } from "@/app/protected/teacher/business-settings-actions";
+import { getAppSettingsAction } from "@/app/protected/teacher/app-settings-actions";
 import { listReceiptsAction } from "@/app/protected/teacher/receipt-actions";
 import { listExpensesAction } from "@/app/protected/teacher/expense-actions";
 import {
@@ -204,6 +205,7 @@ export default async function TeacherPage() {
       name: string;
       shuffleQuestions: boolean;
       maxAttempts: number | null;
+      dueDate: string | null;
     }[]
   >();
   const quizzesWithAttempts = new Set<string>();
@@ -217,7 +219,7 @@ export default async function TeacherPage() {
         supabase.from("quiz_questions").select("quiz_id").in("quiz_id", quizIds),
         supabase
           .from("quiz_assignments")
-          .select("quiz_id, class_id, shuffle_questions, max_attempts")
+          .select("quiz_id, class_id, shuffle_questions, max_attempts, due_date")
           .in("quiz_id", quizIds),
         supabase.from("quiz_attempts").select("quiz_id").in("quiz_id", quizIds),
       ]);
@@ -236,6 +238,7 @@ export default async function TeacherPage() {
         name: classNameById.get(row.class_id) ?? "",
         shuffleQuestions: row.shuffle_questions,
         maxAttempts: row.max_attempts,
+        dueDate: row.due_date,
       });
       assignedClassesByQuiz.set(row.quiz_id, list);
     }
@@ -275,6 +278,7 @@ export default async function TeacherPage() {
     initialAssessments,
     initialAssessmentAssignments,
     initialHomework,
+    appSettings,
   ] = await Promise.all([
     getBusinessSettingsAction(),
     listReceiptsAction(),
@@ -284,6 +288,9 @@ export default async function TeacherPage() {
     listAssessmentsAction(),
     listAssessmentAssignmentsAction(),
     listHomeworkAction(),
+    // Null (the App tab offers "try again") rather than failing the whole
+    // console if the notifications tables are missing or unreachable.
+    getAppSettingsAction().catch(() => null),
   ]);
 
   return (
@@ -305,6 +312,7 @@ export default async function TeacherPage() {
       initialFamilyBalances={initialFamilyBalances}
       initialChargeRuns={initialChargeRuns}
       initialCalendarEvents={calendarEvents ?? []}
+      appSettings={appSettings}
       loadErrors={loadErrors}
     />
   );

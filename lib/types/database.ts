@@ -111,6 +111,7 @@ export interface QuizAssignment {
   shuffle_questions: boolean;
   // Number of attempts a student gets under this assignment; null = unlimited.
   max_attempts: number | null;
+  due_date?: string | null;
 }
 
 export type QuizQuestionType = "multiple_choice" | "true_false" | "short_answer";
@@ -272,6 +273,8 @@ export interface QuizSummary {
   attemptsUsed: number;
   maxAttempts: number | null;
   canRetake: boolean;
+  // Earliest due date across the viewer's classes (YYYY-MM-DD), if any.
+  dueDate?: string | null;
 }
 
 // Teacher-side: authoring input
@@ -301,6 +304,8 @@ export interface CreateQuizInput {
   description?: string;
   timeLimitMinutes?: number;
   questions: QuizQuestionInput[];
+  /** «Χωρίς ειδοποιήσεις»: no new-quiz notice and no deadline reminder. */
+  notificationsDisabled?: boolean;
 }
 
 // questions omitted means "don't touch questions" - the server rejects a
@@ -311,6 +316,7 @@ export interface UpdateQuizInput {
   description?: string;
   timeLimitMinutes?: number;
   questions?: QuizQuestionInput[];
+  notificationsDisabled?: boolean;
 }
 
 export interface QuizForEditing {
@@ -318,6 +324,7 @@ export interface QuizForEditing {
   title: string;
   description: string | null;
   timeLimitMinutes: number | null;
+  notificationsDisabled: boolean;
   locked: boolean;
   assignedClassIds: string[];
   questions: QuizQuestionInput[];
@@ -330,6 +337,9 @@ export interface TeacherQuizListItem {
     name: string;
     shuffleQuestions: boolean;
     maxAttempts: number | null;
+    // Optional deadline for this class (YYYY-MM-DD) - shown to students and
+    // used by the evening-before reminder. Not enforced.
+    dueDate?: string | null;
   }[];
   title: string;
   description: string | null;
@@ -774,6 +784,8 @@ export interface CalendarEventInput {
   contactPhone?: string;
   title?: string;
   notes?: string;
+  /** Tell the students about this change (default true). */
+  notify?: boolean;
 }
 
 // The narrowed shape the parent/student portals receive - "block" and
@@ -816,6 +828,8 @@ export interface Assessment {
   // filtering, and (app-layer only) for suggesting which classes/students
   // to assign the assessment to. Not a foreign key - just a label.
   grade: string | null;
+  // «Χωρίς ειδοποιήσεις» - no new-test, moved or reminder notices.
+  notifications_disabled?: boolean;
   created_at: string;
 }
 
@@ -833,6 +847,8 @@ export interface AssessmentInput {
   classId?: string | null; // exactly one of classId/studentIds on create
   studentIds?: string[];
   grade?: string | null;
+  /** No new-test, date-moved or reminder notices for this test. */
+  notificationsDisabled?: boolean;
 }
 
 export interface AssessmentAssignment {
@@ -920,6 +936,8 @@ export interface HomeworkInput {
   classId: string;
   note: string;
   dueDate?: string | null;
+  /** Send the "new homework" notice (default true). */
+  notify?: boolean;
 }
 
 export interface TeacherHomeworkListItem extends Homework {

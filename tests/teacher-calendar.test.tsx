@@ -771,7 +771,7 @@ describe("TeacherCalendar", () => {
     await user.click(screen.getByRole("menuitem", { name: /one-off lesson/i }));
     await screen.findByRole("dialog");
 
-    await user.selectOptions(screen.getByLabelText(/student/i), studentA.id);
+    await user.selectOptions(screen.getByLabelText(/^student/i), studentA.id);
     await user.type(screen.getByLabelText(/start time/i), "16:00");
     await user.click(screen.getByRole("button", { name: /^save$/i }));
 
@@ -893,6 +893,7 @@ describe("TeacherCalendar", () => {
         toDate: "2026-09-12",
         toStartTime: "11:00",
         toEndTime: null,
+        notify: true,
       });
     });
     expect(onEventsChange).toHaveBeenCalled();
