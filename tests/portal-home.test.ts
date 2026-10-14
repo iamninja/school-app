@@ -150,11 +150,11 @@ describe("GET /start", () => {
   }
 
   it.each([
-    ["a phone", PHONE_UA, undefined, "/teacher-app"],
+    ["a phone", PHONE_UA, undefined, "/teacher-app?open=1"],
     ["a phone that chose the console", PHONE_UA, "console", "/protected/teacher"],
     ["a tablet", IPAD_UA, undefined, "/protected/teacher"],
     ["a desktop", undefined, undefined, "/protected/teacher"],
-    ["a desktop that chose the companion", undefined, "companion", "/teacher-app"],
+    ["a desktop that chose the companion", undefined, "companion", "/teacher-app?open=1"],
   ])("sends a teacher on %s to the right view", async (_label, userAgent, view, path) => {
     vi.mocked(createClient).mockResolvedValue(fakeSupabase({ teacher: true }).client as never);
 

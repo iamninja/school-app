@@ -184,6 +184,8 @@ export type CompanionLesson = {
   timeLabel: string | null;
   roster: CompanionStudent[];
   statuses: Record<string, { status: AttendanceStatus; chargedAmount: number | null }>;
+  /** The class's most recently set homework, shown above the roster. */
+  lastHomework: CompanionHomework | null;
 };
 
 // family_balance_transactions is the "many" side of the embed, so it comes
@@ -204,13 +206,23 @@ export async function loadLesson(
   const classRow = classes.find((row) => row.id === classId && !row.archived_at);
   if (!classRow) return null;
 
-  const { data: rows, error } = await supabase
-    .from("attendance_records")
-    .select("student_id, status, family_balance_transactions(amount)")
-    .eq("teacher_id", teacherId)
-    .eq("class_id", classId)
-    .eq("attendance_date", date);
+  const [{ data: rows, error }, { data: homeworkRows, error: homeworkError }] = await Promise.all([
+    supabase
+      .from("attendance_records")
+      .select("student_id, status, family_balance_transactions(amount)")
+      .eq("teacher_id", teacherId)
+      .eq("class_id", classId)
+      .eq("attendance_date", date),
+    supabase
+      .from("homework")
+      .select("id, class_id, note, due_date, created_at")
+      .eq("teacher_id", teacherId)
+      .eq("class_id", classId)
+      .order("created_at", { ascending: false })
+      .limit(1),
+  ]);
   if (error) throw error;
+  if (homeworkError) throw homeworkError;
 
   const occurrence = classHasLessonOn(classId, date, projection);
   const lessons = buildDayLessons({
@@ -246,6 +258,7 @@ export async function loadLesson(
         },
       ]),
     ),
+    lastHomework: ((homeworkRows ?? []) as CompanionHomework[])[0] ?? null,
   };
 }
 
