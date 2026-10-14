@@ -59,7 +59,10 @@ export type EventDefinition = {
 
 const STUDENT_URL = "/student-dashboard";
 const PARENT_URL = "/parent-dashboard";
+// Teacher alerts open the console tab they're about; the console skips its
+// phone redirect when a section is asked for (app/protected/teacher/page.tsx).
 const TEACHER_URL = "/protected/teacher";
+const teacherSection = (section: string) => `${TEACHER_URL}?section=${section}`;
 
 export const EVENTS = {
   homework: {
@@ -231,7 +234,7 @@ export const EVENTS = {
     title: "Κουίζ προς έλεγχο",
     body: "{student} υπέβαλε το «{title}» - υπάρχουν απαντήσεις ανάπτυξης.",
     placeholders: ["student", "title"],
-    url: TEACHER_URL,
+    url: teacherSection("quizzes"),
   },
   teacher_charge_failed: {
     label: "Monthly charge run failed",
@@ -240,7 +243,7 @@ export const EVENTS = {
     title: "Η μηνιαία χρέωση απέτυχε",
     body: "Οι χρεώσεις του μήνα {month} δεν καταχωρήθηκαν. Ελέγξτε τα Οικονομικά.",
     placeholders: ["month"],
-    url: TEACHER_URL,
+    url: teacherSection("billing"),
   },
   teacher_mydata_failed: {
     label: "myDATA submission failed",
@@ -249,7 +252,7 @@ export const EVENTS = {
     title: "Αποτυχία myDATA",
     body: "Η απόδειξη {receipt} δεν διαβιβάστηκε στο myDATA.",
     placeholders: ["receipt"],
-    url: TEACHER_URL,
+    url: teacherSection("receipts"),
   },
 } as const satisfies Record<string, EventDefinition>;
 

@@ -23,6 +23,7 @@ import {
   TEACHER_APP_HOME,
   TEACHER_VIEW_COOKIE,
 } from "@/lib/teacher-app/view";
+import { parseTeacherSection } from "@/lib/teacher-sections";
 
 // The Supabase client has no Database generic here, so its select-string
 // parser can't determine embed cardinality and infers every embed as an
@@ -44,7 +45,11 @@ type FamilyParentRow = {
 };
 type StudentFamilyEmbed = { id: string; family_parents: FamilyParentRow[] } | null;
 
-export default async function TeacherPage() {
+export default async function TeacherPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ section?: string | string[] }>;
+}) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -65,13 +70,20 @@ export default async function TeacherPage() {
   }
 
   // Phones open the companion unless the teacher chose the console from its
-  // menu (covers bookmarks and old links; /start applies the same rule).
-  const [requestHeaders, cookieStore] = await Promise.all([headers(), cookies()]);
+  // menu (covers bookmarks and old links; /start applies the same rule). A
+  // link to a specific tab (`?section=`, e.g. from a teacher alert) always
+  // opens the console, since the companion has no such screen.
+  const [requestHeaders, cookieStore, query] = await Promise.all([
+    headers(),
+    cookies(),
+    searchParams,
+  ]);
+  const initialSection = parseTeacherSection(query.section);
   const home = teacherHomeFor({
     isMobile: isPhone(userAgent({ headers: requestHeaders }).device.type),
     cookie: cookieStore.get(TEACHER_VIEW_COOKIE)?.value,
   });
-  if (home === TEACHER_APP_HOME) {
+  if (home === TEACHER_APP_HOME && !initialSection) {
     redirect(TEACHER_APP_HOME);
   }
 
@@ -333,6 +345,7 @@ export default async function TeacherPage() {
       initialCalendarEvents={calendarEvents ?? []}
       appSettings={appSettings}
       loadErrors={loadErrors}
+      initialSection={initialSection}
     />
   );
 }

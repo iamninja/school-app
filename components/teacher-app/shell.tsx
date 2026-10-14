@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { CalendarCheck, LogOut, Monitor, MoreVertical, NotebookPen } from "lucide-react";
 
 import { ModusLogo } from "@/components/brand";
+import { NotificationBell } from "@/components/notification-bell";
 import { ThemeSwitcher } from "@/components/theme-switcher";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,8 +25,9 @@ const NAV = [
 ];
 
 /**
- * Phone chrome for the teacher companion: a slim top bar (logo, theme, menu
- * with "Full console" and sign out) and a bottom tab bar within thumb reach.
+ * Phone chrome for the teacher companion: a slim top bar (logo, alerts
+ * bell, theme, menu with "Full console" and sign out) and a bottom tab bar
+ * within thumb reach.
  * Padding respects the notch/home-indicator safe areas of an installed app.
  */
 export function CompanionShell({ children }: { children: React.ReactNode }) {
@@ -51,6 +53,8 @@ export function CompanionShell({ children }: { children: React.ReactNode }) {
             <ModusLogo size={26} variant="compact" priority />
           </Link>
           <div className="flex items-center gap-1">
+            {/* Teacher alerts land here too, so a swiped-away one stays findable. */}
+            <NotificationBell locale="en" />
             <ThemeSwitcher />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

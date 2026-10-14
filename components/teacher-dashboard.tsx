@@ -88,6 +88,7 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LogoutButton } from "@/components/logout-button";
+import type { TeacherSectionId } from "@/lib/teacher-sections";
 import { TeacherClassDetail } from "@/components/teacher-class-detail";
 import { TeacherQuizBuilder } from "@/components/teacher-quiz-builder";
 import { TeacherAssessments } from "@/components/teacher-assessments";
@@ -135,7 +136,14 @@ import type {
 } from "@/lib/types/database";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
-const SECTIONS = [
+// Values must match lib/teacher-sections.ts (the console's ?section= links).
+type Section = {
+  value: TeacherSectionId;
+  label: string;
+  description: string;
+  icon: React.ComponentType<{ className?: string }>;
+};
+const SECTIONS: readonly Section[] = [
   {
     value: "schedule",
     label: "Schedule",
@@ -304,6 +312,8 @@ type TeacherDashboardProps = {
   initialCalendarEvents?: CalendarEvent[];
   appSettings?: AppSettingsData | null;
   loadErrors?: string[];
+  /** The tab to open first (a `?section=` deep link, e.g. from a teacher alert). */
+  initialSection?: TeacherSectionId | null;
 };
 
 function createSlotId(day: string, time: string) {
@@ -562,6 +572,7 @@ export function TeacherDashboard({
   initialCalendarEvents = [],
   appSettings = null,
   loadErrors = [],
+  initialSection = null,
 }: TeacherDashboardProps) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -587,7 +598,7 @@ export function TeacherDashboard({
     },
     [familyBalanceById],
   );
-  const [section, setSection] = React.useState<string>("schedule");
+  const [section, setSection] = React.useState<string>(initialSection ?? "schedule");
   // Hand-off from Billing's "Issue a receipt for this" to the Receipts
   // tab's create-form - see TeacherReceipts' prefill prop.
   const [receiptPrefill, setReceiptPrefill] =

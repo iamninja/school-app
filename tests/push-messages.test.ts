@@ -51,7 +51,9 @@ describe("notification catalogue", () => {
     expect(EVENTS.homework.url).toBe("/student-dashboard");
     expect(EVENTS.absence_parent.url).toBe("/parent-dashboard");
     expect(EVENTS.receipt.url).toBe("/parent-dashboard");
-    expect(EVENTS.teacher_charge_failed.url).toBe("/protected/teacher");
+    expect(EVENTS.teacher_charge_failed.url).toBe("/protected/teacher?section=billing");
+    expect(EVENTS.teacher_quiz_review.url).toBe("/protected/teacher?section=quizzes");
+    expect(EVENTS.teacher_mydata_failed.url).toBe("/protected/teacher?section=receipts");
   });
 });
 
