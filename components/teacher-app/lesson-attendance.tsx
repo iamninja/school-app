@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { setAttendanceAction } from "@/app/protected/teacher/actions";
 import { Button } from "@/components/ui/button";
+import { ContactMenu } from "@/components/teacher-app/contact-menu";
 import { TOAST_TOP } from "@/components/teacher-app/format";
 import type { CompanionStudent } from "@/lib/teacher-app/load";
 import type { AttendanceStatus } from "@/lib/attendance-records";
@@ -134,8 +135,8 @@ export function LessonAttendance({
           const fullName = `${student.firstName} ${student.lastName}`;
           return (
             <li key={student.id} className="rounded-lg border border-border bg-card p-3">
-              <div className="mb-2 flex items-baseline justify-between gap-2">
-                <span className="truncate font-medium">{fullName}</span>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span className="min-w-0 flex-1 truncate font-medium">{fullName}</span>
                 {isPerLesson && mark && (
                   <span className="shrink-0 text-xs text-muted-foreground">
                     {typeof mark.chargedAmount === "number"
@@ -143,6 +144,7 @@ export function LessonAttendance({
                       : "Not charged"}
                   </span>
                 )}
+                <ContactMenu studentName={fullName} contacts={student.contacts ?? []} />
               </div>
               <div
                 role="group"

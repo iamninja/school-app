@@ -15,7 +15,16 @@ vi.mock("@/app/protected/teacher/actions", () => ({
 vi.mock("sonner", () => ({ toast: { error: vi.fn() } }));
 
 const ROSTER = [
-  { id: "s1", firstName: "Maya", lastName: "Carter", gradeLevel: "B" },
+  {
+    id: "s1",
+    firstName: "Maya",
+    lastName: "Carter",
+    gradeLevel: "B",
+    contacts: [
+      { name: "Anna Carter", role: "parent" as const, phone: "+306912345678" },
+      { name: "Home", role: "parent" as const, phone: "+302441012345" },
+    ],
+  },
   { id: "s2", firstName: "Nikos", lastName: "Papas", gradeLevel: "B" },
   { id: "s3", firstName: "Eleni", lastName: "Dima", gradeLevel: "B" },
 ];
@@ -130,5 +139,24 @@ describe("LessonAttendance", () => {
     await userEvent.click(card("Maya Carter").getByRole("button", { name: "Present" }));
 
     expect(await screen.findByText(/12,00\s€ charged|€12\.00 charged/)).toBeInTheDocument();
+  });
+
+  it("lists the family's numbers with call and message links", async () => {
+    renderAttendance();
+
+    expect(
+      screen.queryByRole("button", { name: "Contact Nikos Papas's family" }),
+    ).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Contact Maya Carter's family" }));
+
+    expect(await screen.findByText("+30 691 234 5678")).toBeInTheDocument();
+    const links = screen.getAllByRole("menuitem").map((item) => item.getAttribute("href"));
+    expect(links).toEqual([
+      "tel:+306912345678",
+      "sms:+306912345678",
+      "viber://chat?number=%2B306912345678",
+      "https://wa.me/306912345678",
+      "tel:+302441012345",
+    ]);
   });
 });

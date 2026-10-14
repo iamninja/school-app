@@ -13,6 +13,7 @@ import {
   type DayLesson,
   type DayProjection,
 } from "@/lib/teacher-app/day";
+import { normalizeGreekPhone } from "@/lib/teacher-app/phone";
 
 /**
  * Small, focused reads for the phone companion (/teacher-app) - instead of
@@ -28,11 +29,21 @@ export type CompanionClass = {
   billingType: string | null;
 };
 
+export type CompanionContact = {
+  /** "Mother", "Parent", "Student" … - the parent's name when there is one. */
+  name: string;
+  role: "parent" | "student";
+  /** E.164, e.g. +306912345678. */
+  phone: string;
+};
+
 export type CompanionStudent = {
   id: string;
   firstName: string;
   lastName: string;
   gradeLevel: string;
+  /** Primary parent first, then other parents, then the student; only usable numbers. */
+  contacts?: CompanionContact[];
 };
 
 type ClassRow = {
@@ -57,8 +68,14 @@ type StudentRow = {
   first_name: string;
   last_name: string;
   grade_level: string | null;
+  phone: string | null;
   withdrawn_at: string | null;
   student_class_assignments: { class_id: string }[] | null;
+  // A forward embed (many students → one family): an object, not an array,
+  // at runtime - see the same note in app/protected/teacher/page.tsx.
+  families: {
+    family_parents: { name: string | null; phone: string | null; is_primary: boolean }[] | null;
+  } | null;
 };
 
 async function loadSchool(
@@ -87,7 +104,9 @@ async function loadSchool(
       .lte("event_date", to),
     supabase
       .from("students")
-      .select("id, first_name, last_name, grade_level, withdrawn_at, student_class_assignments(class_id)")
+      .select(
+        "id, first_name, last_name, grade_level, phone, withdrawn_at, student_class_assignments(class_id), families(family_parents(name, phone, is_primary))",
+      )
       .eq("teacher_id", teacherId)
       .is("withdrawn_at", null)
       .order("last_name", { ascending: true }),
@@ -130,6 +149,20 @@ function rostersByClass(students: StudentRow[]): Map<string, Set<string>> {
     }
   }
   return map;
+}
+
+function contactsFor(student: StudentRow): CompanionContact[] {
+  const parents = [...(student.families?.family_parents ?? [])].sort(
+    (a, b) => Number(b.is_primary) - Number(a.is_primary),
+  );
+  const contacts: CompanionContact[] = [];
+  for (const parent of parents) {
+    const phone = normalizeGreekPhone(parent.phone);
+    if (phone) contacts.push({ name: parent.name?.trim() || "Parent", role: "parent", phone });
+  }
+  const own = normalizeGreekPhone(student.phone);
+  if (own) contacts.push({ name: student.first_name, role: "student", phone: own });
+  return contacts;
 }
 
 function activeClasses(classes: ClassRow[]): CompanionClass[] {
@@ -248,6 +281,7 @@ export async function loadLesson(
         firstName: student.first_name,
         lastName: student.last_name,
         gradeLevel: student.grade_level ?? "",
+        contacts: contactsFor(student),
       })),
     statuses: Object.fromEntries(
       (rows ?? []).map((row) => [
