@@ -5,6 +5,7 @@ import { notify, pushToUsers } from "@/lib/push/notify";
 import { loadNotificationSettings } from "@/lib/push/settings";
 import { sendDueAnnouncements } from "@/lib/push/announcements";
 import { athensToday } from "@/lib/push/athens-time";
+import { sendYesterdayAttendanceSummary } from "@/lib/push/attendance-alerts";
 
 /**
  * Time-based notification work, called by the cron routes. Every function
@@ -158,7 +159,8 @@ export async function pruneInbox(supabase: SupabaseClient, now: Date) {
 
 /**
  * Everything the morning cron does besides the charge run itself:
- * held notices, greetings, the balance reminder, housekeeping.
+ * held notices, greetings, the balance reminder, yesterday's late lessons
+ * still without attendance, housekeeping.
  */
 export async function runMorningJobs(supabase: SupabaseClient, now: Date = new Date()) {
   await flushQuietHoursQueue(supabase, now);
@@ -166,6 +168,7 @@ export async function runMorningJobs(supabase: SupabaseClient, now: Date = new D
     await sendDueAnnouncements(supabase, { now, force: true });
   });
   await sendBalanceReminders(supabase, now);
+  await sendYesterdayAttendanceSummary(supabase, now);
   await pruneInbox(supabase, now);
   await guard("record_run", () => recordJobRun(supabase, "morning", true));
 }

@@ -140,6 +140,7 @@ const SWITCHES: SwitchDefinition[] = [
   { key: "teacher_quiz_review", group: "teacher", label: "Quiz waiting for review", description: "A submitted quiz has written answers to check." },
   { key: "teacher_charge_failed", group: "teacher", label: "Monthly charge run failed", description: "The automatic charge run hit an error." },
   { key: "teacher_mydata_failed", group: "teacher", label: "myDATA submission failed", description: "A receipt couldn't be sent to AADE." },
+  { key: "teacher_attendance_missing", group: "teacher", label: "Attendance not taken", description: "A lesson has run 20 minutes with nobody marked (needs the frequent scheduler: Mon-Fri ~13:00-23:00, Sat ~07:00-18:00), plus an evening and next-morning summary of lessons still unmarked." },
 ];
 
 const GROUP_TITLES: Record<EventGroup, string> = {

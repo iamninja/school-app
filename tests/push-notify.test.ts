@@ -125,6 +125,39 @@ describe("notify", () => {
     ).toBe("class_muted");
   });
 
+  it("opens a teacher alert at its console tab, or at a given page", async () => {
+    const client = makeClient({ teachers: { data: [{ user_id: "teacher-1" }], error: null } });
+    await notify({ event: "teacher_quiz_review", to: { kind: "teachers" }, values: {}, supabase: asClient(client) });
+    expect(sendPush).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ url: "/protected/teacher?section=quizzes" }),
+    );
+
+    await notify({
+      event: "teacher_charge_failed",
+      to: { kind: "teachers" },
+      values: {},
+      url: "/teacher-app/lesson/c1?date=2026-10-14",
+      supabase: asClient(client),
+    });
+    expect(sendPush).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ url: "/teacher-app/lesson/c1?date=2026-10-14" }),
+    );
+  });
+
+  it.each(["https://evil.example/x", "//evil.example/x", "javascript:alert(1)", ""])(
+    "ignores an unsafe page %j and keeps the default",
+    async (url) => {
+      const client = makeClient({ teachers: { data: [{ user_id: "teacher-1" }], error: null } });
+      await notify({ event: "teacher_charge_failed", to: { kind: "teachers" }, values: {}, url, supabase: asClient(client) });
+      expect(sendPush).toHaveBeenLastCalledWith(
+        expect.anything(),
+        expect.objectContaining({ url: "/protected/teacher?section=billing" }),
+      );
+    },
+  );
+
   it("does not use parent fallback when it's switched off", async () => {
     const client = makeClient({
       notification_settings: { data: { ...DEFAULT_NOTIFICATION_SETTINGS, parent_fallback: false }, error: null },

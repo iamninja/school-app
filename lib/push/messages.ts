@@ -22,6 +22,7 @@ export const PLACEHOLDERS = {
   note: { label: "homework text", sample: "σελ. 42, ασκ. 1-10" },
   receipt: { label: "receipt number", sample: "Α-5" },
   month: { label: "month", sample: "Οκτώβριος" },
+  lessons: { label: "lessons without attendance", sample: "Άλγεβρα Β (16:15), Γεωμετρία Γ (18:15)" },
 } as const;
 
 export type Placeholder = keyof typeof PLACEHOLDERS;
@@ -43,7 +44,8 @@ export type NotificationSwitch =
   | "balance_reminder"
   | "teacher_quiz_review"
   | "teacher_charge_failed"
-  | "teacher_mydata_failed";
+  | "teacher_mydata_failed"
+  | "teacher_attendance_missing";
 
 export type EventGroup = "school" | "money" | "teacher";
 
@@ -59,7 +61,10 @@ export type EventDefinition = {
 
 const STUDENT_URL = "/student-dashboard";
 const PARENT_URL = "/parent-dashboard";
+// Teacher alerts open the console tab they're about; the console skips its
+// phone redirect when a section is asked for (app/protected/teacher/page.tsx).
 const TEACHER_URL = "/protected/teacher";
+const teacherSection = (section: string) => `${TEACHER_URL}?section=${section}`;
 
 export const EVENTS = {
   homework: {
@@ -231,7 +236,7 @@ export const EVENTS = {
     title: "Κουίζ προς έλεγχο",
     body: "{student} υπέβαλε το «{title}» - υπάρχουν απαντήσεις ανάπτυξης.",
     placeholders: ["student", "title"],
-    url: TEACHER_URL,
+    url: teacherSection("quizzes"),
   },
   teacher_charge_failed: {
     label: "Monthly charge run failed",
@@ -240,7 +245,7 @@ export const EVENTS = {
     title: "Η μηνιαία χρέωση απέτυχε",
     body: "Οι χρεώσεις του μήνα {month} δεν καταχωρήθηκαν. Ελέγξτε τα Οικονομικά.",
     placeholders: ["month"],
-    url: TEACHER_URL,
+    url: teacherSection("billing"),
   },
   teacher_mydata_failed: {
     label: "myDATA submission failed",
@@ -249,7 +254,27 @@ export const EVENTS = {
     title: "Αποτυχία myDATA",
     body: "Η απόδειξη {receipt} δεν διαβιβάστηκε στο myDATA.",
     placeholders: ["receipt"],
-    url: TEACHER_URL,
+    url: teacherSection("receipts"),
+  },
+  // Both open the phone companion; the in-lesson alert's link is replaced
+  // with the exact lesson when it's sent (lib/push/attendance-alerts.ts).
+  teacher_attendance_missing: {
+    label: "Attendance not taken (during the lesson)",
+    group: "teacher",
+    switch: "teacher_attendance_missing",
+    title: "Παρουσίες: {class}",
+    body: "Το μάθημα των {time} ξεκίνησε και δεν έχουν περαστεί παρουσίες.",
+    placeholders: ["class", "time"],
+    url: "/teacher-app",
+  },
+  teacher_attendance_summary: {
+    label: "Attendance not taken (evening / morning summary)",
+    group: "teacher",
+    switch: "teacher_attendance_missing",
+    title: "Παρουσίες που λείπουν",
+    body: "{date}: {lessons}",
+    placeholders: ["date", "lessons"],
+    url: "/teacher-app",
   },
 } as const satisfies Record<string, EventDefinition>;
 

@@ -202,10 +202,24 @@ export type NotifyInput = {
   classId?: string | null;
   /** Groups repeated notices on the phone (a newer one replaces the older). */
   tag?: string;
+  /**
+   * Opens this page instead of the event's default (e.g. the exact lesson
+   * an attendance alert is about). Same-origin paths only; anything else
+   * falls back to the default.
+   */
+  url?: string;
   triggeredBy?: string | null;
   supabase?: SupabaseClient;
   now?: Date;
 };
+
+/** A same-origin path ("/teacher-app/..."), or undefined for anything else. */
+export function safeNoticeUrl(url: string | undefined): string | undefined {
+  if (!url || !url.startsWith("/") || url.startsWith("//") || url.includes("\\")) {
+    return undefined;
+  }
+  return url;
+}
 
 function combine(results: NotifyResult[]): NotifyResult {
   if (results.length === 0) return skipped("no_recipients");
@@ -284,10 +298,11 @@ export async function notify(input: NotifyInput): Promise<NotifyResult> {
       now,
     };
     const results: NotifyResult[] = [];
+    const urlOverride = safeNoticeUrl(input.url);
 
     if (recipients.students.length > 0) {
       results.push(
-        await deliver(supabase, notice(input.event), recipients.students, {
+        await deliver(supabase, notice(input.event, urlOverride), recipients.students, {
           ...common,
           audience: "students",
         }),
@@ -308,7 +323,7 @@ export async function notify(input: NotifyInput): Promise<NotifyResult> {
     }
     if (recipients.teachers.length > 0) {
       results.push(
-        await deliver(supabase, notice(input.event), recipients.teachers, {
+        await deliver(supabase, notice(input.event, urlOverride), recipients.teachers, {
           ...common,
           holdUntil: null,
           audience: "teacher",

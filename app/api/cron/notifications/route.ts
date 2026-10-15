@@ -4,16 +4,19 @@ import { sendDueAbsenceNotices } from "@/lib/push/absences";
 import { sendEveningReminders } from "@/lib/push/reminders";
 import { sendDueAnnouncements } from "@/lib/push/announcements";
 import { flushQuietHoursQueue, recordJobRun } from "@/lib/push/scheduled";
+import { sendInLessonAttendanceAlerts } from "@/lib/push/attendance-alerts";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /**
- * Time-based notifications for a frequent scheduler (every ~10 minutes -
- * Supabase pg_cron, GitHub Actions, Vercel Pro...). Not called by anything
- * yet: Vercel Hobby only runs daily crons, which cover the morning
+ * Time-based notifications for the frequent scheduler: Supabase pg_cron
+ * calls this every 10 minutes during teaching hours (see the
+ * attendance-alerts migration; it needs the Vault secrets app_base_url and
+ * cron_secret). Vercel Hobby only runs daily crons, which cover the morning
  * (/api/cron/monthly-charges) and the evening reminders
- * (/api/cron/evening-reminders). Calling this adds:
+ * (/api/cron/evening-reminders). This adds:
+ *   - "attendance not taken" alerts while a lesson is running,
  *   - "2 hours after the lesson" absence notices,
  *   - greetings at their exact time, and held notices as soon as quiet
  *     hours end,
@@ -33,6 +36,7 @@ export async function GET(request: Request): Promise<Response> {
   await flushQuietHoursQueue(supabase, now);
   const announcements = await sendDueAnnouncements(supabase, { now });
   const reminders = await sendEveningReminders(supabase, { now });
+  const attendanceAlerts = await sendInLessonAttendanceAlerts(supabase, now);
   await recordJobRun(supabase, "frequent", false);
-  return Response.json({ absences, announcements, reminders });
+  return Response.json({ absences, announcements, reminders, attendanceAlerts });
 }

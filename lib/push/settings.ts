@@ -30,6 +30,7 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   teacher_quiz_review: true,
   teacher_charge_failed: true,
   teacher_mydata_failed: true,
+  teacher_attendance_missing: true,
   parent_fallback: true,
   paused: false,
   quiet_hours_enabled: false,

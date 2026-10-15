@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { ChevronRight } from "lucide-react";
 
 import { DateStrip } from "@/components/teacher-app/date-strip";
@@ -6,19 +7,28 @@ import { DeviceNotifications } from "@/components/teacher-app/device-notificatio
 import { formatCompanionDate } from "@/components/teacher-app/format";
 import { requireCompanionTeacher, parseDateParam } from "@/app/teacher-app/session";
 import { loadDay } from "@/lib/teacher-app/load";
-import { athensToday } from "@/lib/push/athens-time";
+import { athensMinutesNow, athensToday } from "@/lib/push/athens-time";
+import { lessonInProgress } from "@/lib/teacher-app/day";
 import { cn } from "@/lib/utils";
 
 /** Today: the day's lessons, each opening its attendance and homework. */
 export default async function TeacherAppTodayPage({
   searchParams,
 }: {
-  searchParams: Promise<{ date?: string | string[] }>;
+  searchParams: Promise<{ date?: string | string[]; open?: string | string[] }>;
 }) {
   const { supabase, teacherId } = await requireCompanionTeacher();
+  const query = await searchParams;
   const today = athensToday();
-  const date = parseDateParam((await searchParams).date) ?? today;
+  const date = parseDateParam(query.date) ?? today;
   const day = await loadDay(supabase, teacherId, date);
+  const now = date === today ? lessonInProgress(day.lessons, athensMinutesNow()) : null;
+
+  // Opening the app (/start adds ?open=1) during a lesson goes straight to
+  // it; the tab bar and "back" link to plain /teacher-app, so they never jump.
+  if (query.open === "1" && now) {
+    redirect(`/teacher-app/lesson/${now.classId}?date=${date}`);
+  }
 
   return (
     <div className="space-y-4">
@@ -53,8 +63,15 @@ export default async function TeacherAppTodayPage({
                   {lesson.timeLabel ?? "—"}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className={cn("truncate font-medium", cancelled && "line-through")}>
-                    {lesson.className}
+                  <div className="flex items-center gap-2">
+                    <span className={cn("truncate font-medium", cancelled && "line-through")}>
+                      {lesson.className}
+                    </span>
+                    {now?.classId === lesson.classId && (
+                      <span className="shrink-0 rounded-full bg-brand px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand-foreground">
+                        Now
+                      </span>
+                    )}
                   </div>
                   <div className="text-xs text-muted-foreground">
                     {cancelled

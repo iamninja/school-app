@@ -1,13 +1,14 @@
 import {
   fromIsoDate,
   projectOccurrences,
+  weekdayLabelFromDate,
   toIsoDate,
   type Occurrence,
   type ProjectionClass,
   type ProjectionEvent,
   type ProjectionSlot,
 } from "@/lib/calendar-projection";
-import { lessonTimeLabel } from "@/lib/schedule-grid";
+import { lessonTimeLabel, recurringLessonWindow, timeToMinutes } from "@/lib/schedule-grid";
 
 /**
  * Pure building blocks for the phone companion's "Today" screen: which
@@ -26,6 +27,9 @@ export type DayLesson = {
   startTime: string | null;
   isTwoHour: boolean;
   kind: "recurring" | "extra_session" | "cancelled";
+  /** The real teaching window, minutes since midnight (null without a start time). */
+  startMinutes: number | null;
+  endMinutes: number | null;
   rosterSize: number;
   marked: number;
   absent: number;
@@ -43,6 +47,34 @@ export function addDays(date: string, days: number): string {
   const next = fromIsoDate(date);
   next.setDate(next.getDate() + days);
   return toIsoDate(next);
+}
+
+/**
+ * An occurrence's real teaching window in minutes. A customised slot already
+ * carries its real start/end; a plain template slot only has its grid anchor,
+ * so the window comes from recurringLessonWindow() (the 15-minute break
+ * rule); an event uses its own times, or 1 h / 2 h when it has no end.
+ */
+export function occurrenceWindow(
+  occurrence: Occurrence,
+): { start: number; end: number } | null {
+  if (!occurrence.startTime) return null;
+  if (occurrence.endTime) {
+    return {
+      start: timeToMinutes(occurrence.startTime),
+      end: timeToMinutes(occurrence.endTime),
+    };
+  }
+  if (occurrence.slotTime && occurrence.eventId === null) {
+    const window = recurringLessonWindow(
+      weekdayLabelFromDate(fromIsoDate(occurrence.date)),
+      occurrence.slotTime,
+      occurrence.isTwoHour,
+    );
+    return { start: timeToMinutes(window.start), end: timeToMinutes(window.end) };
+  }
+  const start = timeToMinutes(occurrence.startTime);
+  return { start, end: start + (occurrence.isTwoHour ? 120 : 60) };
 }
 
 function isAttendanceLesson(occurrence: Occurrence): boolean {
@@ -82,6 +114,7 @@ export function buildDayLessons({
     // was cancelled but the 18:00 still happens).
     if (existing && (existing.kind !== "cancelled" || isCancelled)) continue;
 
+    const window = occurrenceWindow(occurrence);
     const roster = rosterByClass.get(occurrence.classId) ?? new Set<string>();
     const marks = attendance.filter(
       (row) => row.class_id === occurrence.classId && roster.has(row.student_id),
@@ -94,6 +127,8 @@ export function buildDayLessons({
         : null,
       startTime: occurrence.startTime,
       isTwoHour: occurrence.isTwoHour,
+      startMinutes: window?.start ?? null,
+      endMinutes: window?.end ?? null,
       kind: isCancelled ? "cancelled" : (occurrence.kind as "recurring" | "extra_session"),
       rosterSize: roster.size,
       marked: marks.length,
@@ -103,6 +138,26 @@ export function buildDayLessons({
 
   return [...lessons.values()].sort((a, b) =>
     (a.startTime ?? "99:99").localeCompare(b.startTime ?? "99:99"),
+  );
+}
+
+/**
+ * The lesson happening now, if any: from 10 minutes before it starts to 15
+ * minutes after it ends (time to open the app and to finish marking), the
+ * earliest-starting one when two overlap. Cancelled lessons never count.
+ */
+export function lessonInProgress(lessons: DayLesson[], minutesNow: number): DayLesson | null {
+  return (
+    lessons
+      .filter(
+        (lesson) =>
+          lesson.kind !== "cancelled" &&
+          lesson.startMinutes !== null &&
+          lesson.endMinutes !== null &&
+          minutesNow >= lesson.startMinutes - 10 &&
+          minutesNow <= lesson.endMinutes + 15,
+      )
+      .sort((a, b) => (a.startMinutes ?? 0) - (b.startMinutes ?? 0))[0] ?? null
   );
 }
 

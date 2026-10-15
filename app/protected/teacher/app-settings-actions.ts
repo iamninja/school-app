@@ -82,7 +82,11 @@ export type AppSettingsData = {
   families: FamilyNotificationStatus[];
   log: NotificationLogRow[];
   jobRuns: { job: string; last_run_at: string; forced: boolean }[];
-  /** Something has called /api/cron/notifications in the last 30 minutes. */
+  /**
+   * Something has called /api/cron/notifications in the last 2 days. The
+   * pg_cron scheduler only runs during teaching hours (none on Sunday), so
+   * a shorter window would call it "not set up" every morning.
+   */
   frequentSchedulerActive: boolean;
   announcements: ScheduledAnnouncementRow[];
 };
@@ -204,7 +208,7 @@ export async function getAppSettingsAction(): Promise<AppSettingsData> {
     frequentSchedulerActive: (jobRunsResult.data ?? []).some(
       (run) =>
         run.job === "frequent" &&
-        Date.now() - Date.parse(run.last_run_at) < 30 * 60 * 1000,
+        Date.now() - Date.parse(run.last_run_at) < 2 * 24 * 60 * 60 * 1000,
     ),
     announcements: ((announcementsResult.data ?? []) as Omit<
       ScheduledAnnouncementRow,

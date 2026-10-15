@@ -3,6 +3,7 @@ import type { ProjectionEvent } from "@/lib/calendar-projection";
 import {
   addDays,
   buildDayLessons,
+  lessonInProgress,
   neighbouringLessonDays,
   nextLessonDays,
   type DayProjection,
@@ -122,6 +123,60 @@ describe("buildDayLessons", () => {
     expect(lessons).toEqual([
       expect.objectContaining({ classId: CLASS_A.id, kind: "extra_session", timeLabel: "17:00–18:00" }),
     ]);
+  });
+});
+
+describe("lessonInProgress", () => {
+  // Mon 16:00 grid slot → real lesson 16:15–17:00 (the 15-minute break rule);
+  // Mon 18:00 → 18:15–19:00.
+  const lessons = () =>
+    buildDayLessons({ date: MONDAY, projection: projection(), rosterByClass: ROSTERS, attendance: [] });
+  const at = (time: string) => {
+    const [h, m] = time.split(":").map(Number);
+    return h * 60 + m;
+  };
+
+  it("works out each lesson's real window", () => {
+    expect(lessons().map((l) => [l.startMinutes, l.endMinutes])).toEqual([
+      [at("16:15"), at("17:00")],
+      [at("18:15"), at("19:00")],
+    ]);
+  });
+
+  it.each([
+    ["16:04", null],
+    ["16:05", CLASS_A.id],
+    ["16:40", CLASS_A.id],
+    ["17:15", CLASS_A.id],
+    ["17:16", null],
+    ["18:10", CLASS_B.id],
+  ])("at %s → %s", (time, classId) => {
+    expect(lessonInProgress(lessons(), at(time))?.classId ?? null).toBe(classId);
+  });
+
+  it("ignores a cancelled lesson", () => {
+    const cancelled = buildDayLessons({
+      date: MONDAY,
+      projection: projection({ events: [event({})] }),
+      rosterByClass: ROSTERS,
+      attendance: [],
+    });
+    expect(lessonInProgress(cancelled, at("16:30"))).toBeNull();
+  });
+
+  it("uses an extra session's own times", () => {
+    const extra = buildDayLessons({
+      date: "2026-09-08",
+      projection: projection({
+        events: [
+          event({ event_type: "extra_session", event_date: "2026-09-08", start_time: "10:00", end_time: "12:00" }),
+        ],
+      }),
+      rosterByClass: ROSTERS,
+      attendance: [],
+    });
+    expect(lessonInProgress(extra, at("11:30"))?.classId).toBe(CLASS_A.id);
+    expect(lessonInProgress(extra, at("12:16"))).toBeNull();
   });
 });
 
