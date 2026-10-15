@@ -279,13 +279,27 @@ describe("notification cron routes", () => {
     const evening = await eveningCron(request("Bearer s3cret"));
     expect(evening.status).toBe(200);
     const frequent = await frequentCron(request("Bearer s3cret"));
-    expect(await frequent.json()).toEqual(
-      expect.objectContaining({ absences: 0, announcements: 0 }),
+    const body = await frequent.json();
+    expect(body).toEqual(expect.objectContaining({ absences: 0, announcements: 0 }));
+    // Per-job timings, so a slow run can be read from net._http_response.
+    expect(body.timings).toEqual(
+      expect.objectContaining({
+        absences: expect.any(Number),
+        quietHours: expect.any(Number),
+        announcements: expect.any(Number),
+        reminders: expect.any(Number),
+        attendanceAlerts: expect.any(Number),
+        recordRun: expect.any(Number),
+        totalMs: expect.any(Number),
+        coldStart: true,
+      }),
     );
     const admin = vi.mocked(createServiceRoleClient).mock.results[0].value as ReturnType<typeof client>;
     expect(calls(admin, "notification_job_runs", "upsert").map((c) => (c[0] as { job: string }).job)).toEqual([
       "evening_reminders",
       "frequent",
     ]);
+    // The same instance answering again is warm.
+    expect((await (await frequentCron(request("Bearer s3cret"))).json()).timings.coldStart).toBe(false);
   });
 });
