@@ -3,6 +3,8 @@
  * These types match the Supabase database schema
  */
 
+import type { CancellationReason } from "@/lib/school-closures";
+
 // Base table types
 export interface Family {
   id: string;
@@ -767,6 +769,11 @@ export interface CalendarEvent {
   contact_phone: string | null;
   title: string | null;
   notes: string | null;
+  // Cancellation-only (see lib/school-closures.ts). Optional because only
+  // the teacher's calendar selects them; every other reader leaves them out.
+  cancellation_reason?: CancellationReason | null;
+  /** Groups the cancellations of one school closure. */
+  closure_id?: string | null;
   created_at: string;
 }
 
@@ -800,6 +807,7 @@ export interface PortalCalendarEvent {
   class_id: string | null;
   class_name: string | null;
   notes: string | null;
+  cancellation_reason?: CancellationReason | null;
 }
 
 // Assessments: in-person tests/mock exams, graded with one

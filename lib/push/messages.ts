@@ -22,6 +22,7 @@ export const PLACEHOLDERS = {
   note: { label: "homework text", sample: "σελ. 42, ασκ. 1-10" },
   receipt: { label: "receipt number", sample: "Α-5" },
   month: { label: "month", sample: "Οκτώβριος" },
+  reason: { label: "reason", sample: "Διακοπές Χριστουγέννων" },
   lessons: { label: "lessons without attendance", sample: "Άλγεβρα Β (16:15), Γεωμετρία Γ (18:15)" },
 } as const;
 
@@ -164,6 +165,27 @@ export const EVENTS = {
     title: "Το μάθημα γίνεται κανονικά · {class}",
     body: "Το μάθημα της {date} {time} γίνεται τελικά κανονικά.",
     placeholders: ["class", "date", "time"],
+    url: STUDENT_URL,
+  },
+  // A school closure (holiday, weather, strike) - one notice per class
+  // covering every lesson it cancels, not one per lesson. {date} is a
+  // single date or a range ("24/12–7/1").
+  lessons_closed: {
+    label: "No lessons (holiday, weather, strike)",
+    group: "school",
+    switch: "lesson_changes",
+    title: "Δεν γίνονται μαθήματα · {class}",
+    body: "Τα μαθήματα {date} ακυρώνονται ({reason}).",
+    placeholders: ["class", "date", "reason"],
+    url: STUDENT_URL,
+  },
+  lessons_reopened: {
+    label: "Lessons back on after a closure",
+    group: "school",
+    switch: "lesson_changes",
+    title: "Τα μαθήματα γίνονται κανονικά · {class}",
+    body: "Τα μαθήματα {date} γίνονται τελικά κανονικά.",
+    placeholders: ["class", "date"],
     url: STUDENT_URL,
   },
   mark_entered: {

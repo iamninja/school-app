@@ -197,7 +197,7 @@ export async function getParentDashboardDataAction(): Promise<
   const { data: calendarEventRows } = await supabase
     .from("calendar_events")
     .select(
-      "id, event_type, event_date, start_time, end_time, class_id, class_name, student_id, notes",
+      "id, event_type, event_date, start_time, end_time, class_id, class_name, student_id, notes, cancellation_reason",
     )
     .gte("event_date", todayIso)
     .order("event_date", { ascending: true })
@@ -244,6 +244,7 @@ export async function getParentDashboardDataAction(): Promise<
           class_id: event.class_id,
           class_name: event.class_name,
           notes: event.notes,
+          cancellation_reason: event.cancellation_reason ?? null,
         }));
 
       let schedules: ClassScheduleSlot[] = [];

@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireTeacher } from "@/lib/auth/require-teacher";
 import { ExpectedError } from "@/lib/expected-error";
 import type { CalendarEvent, CalendarEventInput } from "@/lib/types/database";
+import type { ProjectionEvent } from "@/lib/calendar-projection";
 import { notifyAfterResponse } from "@/lib/push/hooks";
 import { athensToday } from "@/lib/push/athens-time";
 import {
@@ -11,14 +12,24 @@ import {
   noticeForDeleted,
   noticeForMove,
   noticeForUpdated,
+  noticesForClosure,
   type CalendarRow,
 } from "@/lib/push/lesson-changes";
+import { addDaysToDate } from "@/lib/push/athens-time";
+import {
+  CANCELLATION_REASON_LABELS_EL,
+  MAX_CLOSURE_DAYS,
+  isCancellationReason,
+  planClosure,
+  type CancellationReason,
+} from "@/lib/school-closures";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
 const CALENDAR_EVENT_COLUMNS =
   "id, event_type, event_date, start_time, end_time, class_id, class_name, " +
-  "student_id, student_name, contact_name, contact_phone, title, notes, created_at";
+  "student_id, student_name, contact_name, contact_phone, title, notes, " +
+  "cancellation_reason, closure_id, created_at";
 
 const TIME_PATTERN = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -368,4 +379,180 @@ export async function rescheduleClassOccurrenceAction(input: {
     extraSession: extraSession as unknown as CalendarEvent,
     cancellation: cancellation as unknown as CalendarEvent,
   };
+}
+
+// A school closure (Christmas/Easter break, public holiday, weather day,
+// strike): every scheduled lesson in the dates gets an ordinary
+// cancellation, all sharing one closure_id so the closure can be undone as
+// a whole - see supabase/migrations/*_closure-cancellations.sql for why it
+// isn't its own event type. Which lessons go is decided here from a fresh
+// read (planClosure, the same function the dialog previews with), never
+// from a client-supplied list. Lessons already cancelled are skipped, so
+// overlapping a closure with an existing one is harmless.
+export async function cancelLessonsForClosureAction(input: {
+  from: string;
+  to: string;
+  reason: CancellationReason;
+  notes?: string;
+  /** Tell the students (default true) - one notice per class. */
+  notify?: boolean;
+}): Promise<{ closureId: string; cancellations: CalendarEvent[] }> {
+  const { supabase, userId } = await requireTeacherSession();
+
+  if (!isValidCalendarDate(input.from) || !isValidCalendarDate(input.to)) {
+    throw new ExpectedError("Pick valid dates");
+  }
+  if (input.to < input.from) {
+    throw new ExpectedError("The last day can't be before the first day");
+  }
+  if (addDaysToDate(input.from, MAX_CLOSURE_DAYS - 1) < input.to) {
+    throw new ExpectedError(`Close at most ${MAX_CLOSURE_DAYS} days at a time`);
+  }
+  if (!isCancellationReason(input.reason)) {
+    throw new ExpectedError("Pick a reason");
+  }
+
+  const [classes, slots, events] = await Promise.all([
+    supabase
+      .from("classes")
+      .select("id, name, archived_at, start_date, finish_date")
+      .eq("teacher_id", userId),
+    supabase
+      .from("class_schedule_slots")
+      .select("day, time, class_id, is_two_hour, end_time")
+      .eq("teacher_id", userId),
+    supabase
+      .from("calendar_events")
+      .select(
+        "id, event_type, event_date, start_time, end_time, class_id, class_name, student_id, student_name, contact_name, title, notes",
+      )
+      .eq("teacher_id", userId)
+      .gte("event_date", input.from)
+      .lte("event_date", input.to),
+  ]);
+  for (const result of [classes, slots, events]) {
+    if (result.error) throw result.error;
+  }
+
+  const { toCancel } = planClosure({
+    from: input.from,
+    to: input.to,
+    classes: (
+      (classes.data ?? []) as Array<{
+        id: string;
+        name: string;
+        archived_at: string | null;
+        start_date: string | null;
+        finish_date: string | null;
+      }>
+    ).map((row) => ({
+      id: row.id,
+      name: row.name,
+      archivedAt: row.archived_at,
+      startDate: row.start_date,
+      finishDate: row.finish_date,
+    })),
+    slots: (
+      (slots.data ?? []) as Array<{
+        day: string;
+        time: string;
+        class_id: string;
+        is_two_hour: boolean | null;
+        end_time: string | null;
+      }>
+    ).map((slot) => ({
+      classId: slot.class_id,
+      day: slot.day,
+      time: slot.time,
+      isTwoHour: slot.is_two_hour ?? false,
+      endTime: slot.end_time,
+    })),
+    events: (events.data ?? []) as unknown as ProjectionEvent[],
+  });
+
+  if (toCancel.length === 0) {
+    throw new ExpectedError("There are no scheduled lessons on those days");
+  }
+
+  const closureId = crypto.randomUUID();
+  const notes = input.notes?.trim() || null;
+  const rows = toCancel.map((occurrence) => ({
+    teacher_id: userId,
+    event_type: "cancellation",
+    event_date: occurrence.date,
+    start_time: occurrence.slotTime,
+    end_time: null,
+    class_id: occurrence.classId,
+    class_name: occurrence.className,
+    student_id: null,
+    student_name: null,
+    contact_name: null,
+    contact_phone: null,
+    title: null,
+    notes,
+    cancellation_reason: input.reason,
+    closure_id: closureId,
+  }));
+
+  // One insert, so the closure lands whole or not at all.
+  const { data, error } = await supabase
+    .from("calendar_events")
+    .insert(rows)
+    .select(CALENDAR_EVENT_COLUMNS);
+  if (error) {
+    throw error;
+  }
+  const cancellations = (data ?? []) as unknown as CalendarEvent[];
+
+  if (input.notify !== false) {
+    for (const notice of noticesForClosure(
+      cancellations,
+      { kind: "closed", reasonLabel: notes ?? CANCELLATION_REASON_LABELS_EL[input.reason] },
+      closureId,
+      athensToday(),
+    )) {
+      notifyAfterResponse({ ...notice, triggeredBy: userId });
+    }
+  }
+
+  return { closureId, cancellations };
+}
+
+// Undoes a whole closure: every lesson it cancelled is back on. Lessons the
+// teacher restored one by one in the meantime are simply already gone.
+export async function restoreClosureAction(
+  closureId: string,
+  options: { notify?: boolean } = {},
+): Promise<{ restoredIds: string[] }> {
+  const { supabase, userId } = await requireTeacherSession();
+
+  const { data, error } = await supabase
+    .from("calendar_events")
+    .delete()
+    .eq("teacher_id", userId)
+    .eq("closure_id", closureId)
+    .eq("event_type", "cancellation")
+    .select("id, event_date, class_id, class_name");
+  if (error) {
+    throw error;
+  }
+  const restored = (data ?? []) as Array<{
+    id: string;
+    event_date: string;
+    class_id: string | null;
+    class_name: string | null;
+  }>;
+
+  if (options.notify !== false) {
+    for (const notice of noticesForClosure(
+      restored,
+      { kind: "reopened" },
+      closureId,
+      athensToday(),
+    )) {
+      notifyAfterResponse({ ...notice, triggeredBy: userId });
+    }
+  }
+
+  return { restoredIds: restored.map((row) => row.id) };
 }

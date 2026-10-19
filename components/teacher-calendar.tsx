@@ -25,8 +25,10 @@ import {
   createCalendarEventAction,
   deleteCalendarEventAction,
   rescheduleClassOccurrenceAction,
+  restoreClosureAction,
   updateCalendarEventAction,
 } from "@/app/protected/teacher/calendar-actions";
+import { CloseDaysDialog } from "@/components/close-days-dialog";
 import { getAttendanceAction } from "@/app/protected/teacher/actions";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -67,6 +69,7 @@ import {
   type ProjectionSlot,
 } from "@/lib/calendar-projection";
 import { lessonTimeLabel, recurringLessonWindow } from "@/lib/schedule-grid";
+import { CANCELLATION_REASON_LABELS_EN } from "@/lib/school-closures";
 import {
   upsertAttendanceRecord,
   type AttendanceRecord,
@@ -487,6 +490,7 @@ export function TeacherCalendar({
   const [rescheduleStartTime, setRescheduleStartTime] = React.useState("");
   const [rescheduleEndTime, setRescheduleEndTime] = React.useState("");
   const [isRescheduling, setIsRescheduling] = React.useState(false);
+  const [closeDaysOpen, setCloseDaysOpen] = React.useState(false);
 
   const projectionEvents: ProjectionEvent[] = events;
   const activeClassOptions = classes.filter((item) => !item.archivedAt);
@@ -724,6 +728,30 @@ export function TeacherCalendar({
       toast.error(
         getErrorMessage(error, "Failed to restore the class"),
       );
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleRestoreClosure = async (closureId: string) => {
+    const count = events.filter((event) => event.closure_id === closureId).length;
+    if (
+      !window.confirm(
+        `Put all ${count} lesson${count === 1 ? "" : "s"} cancelled by this closure back on?`,
+      )
+    ) {
+      return;
+    }
+    setDeletingId(closureId);
+    try {
+      const { restoredIds } = await restoreClosureAction(closureId);
+      const restored = new Set(restoredIds);
+      onEventsChange((prev) => prev.filter((event) => !restored.has(event.id)));
+      toast.success(
+        `Restored ${restoredIds.length} lesson${restoredIds.length === 1 ? "" : "s"}`,
+      );
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, "Failed to restore the lessons"));
     } finally {
       setDeletingId(null);
     }
@@ -970,6 +998,9 @@ export function TeacherCalendar({
                   {item.label}
                 </DropdownMenuItem>
               ))}
+              <DropdownMenuItem onClick={() => setCloseDaysOpen(true)}>
+                Close days (holiday, weather, strike)
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </CardHeader>
@@ -1015,7 +1046,9 @@ export function TeacherCalendar({
                         {occurrence.kind === "recurring"
                           ? "Scheduled class"
                           : occurrence.kind === "cancelled"
-                            ? "Cancelled"
+                            ? occurrence.cancellationReason
+                              ? `Cancelled · ${CANCELLATION_REASON_LABELS_EN[occurrence.cancellationReason]}`
+                              : "Cancelled"
                             : TYPE_LABELS[occurrence.kind as CalendarEventType]}
                       </Badge>
                       {occurrence.notes ? (
@@ -1061,6 +1094,19 @@ export function TeacherCalendar({
                         onClick={() => void handleRestore(occurrence.eventId!)}
                       >
                         <UndoIcon className="mr-1 h-3.5 w-3.5" /> Restore
+                      </Button>
+                    )}
+                    {occurrence.kind === "cancelled" && occurrence.closureId && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={deletingId === occurrence.closureId}
+                        onClick={() =>
+                          void handleRestoreClosure(occurrence.closureId!)
+                        }
+                      >
+                        Restore whole closure
                       </Button>
                     )}
                     {storedEvent && occurrence.kind !== "cancelled" && (
@@ -1425,6 +1471,19 @@ export function TeacherCalendar({
           </form>
         </DialogContent>
       </Dialog>
+
+      {closeDaysOpen ? (
+        <CloseDaysDialog
+          open
+          onOpenChange={setCloseDaysOpen}
+          initialDate={selectedDate}
+          today={todayIso}
+          slots={slots}
+          classes={classes}
+          events={projectionEvents}
+          onCreated={(created) => onEventsChange((prev) => [...prev, ...created])}
+        />
+      ) : null}
 
       <Dialog
         open={rescheduleTarget !== null}

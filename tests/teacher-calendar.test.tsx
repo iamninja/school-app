@@ -18,6 +18,8 @@ vi.mock("@/app/protected/teacher/calendar-actions", () => ({
   updateCalendarEventAction: vi.fn(),
   deleteCalendarEventAction: vi.fn(),
   rescheduleClassOccurrenceAction: vi.fn(),
+  cancelLessonsForClosureAction: vi.fn(),
+  restoreClosureAction: vi.fn(),
 }));
 
 vi.mock("sonner", () => ({
@@ -574,6 +576,81 @@ describe("TeacherCalendar", () => {
       expect(calendarActions.deleteCalendarEventAction).toHaveBeenCalledWith(
         "evt-cancel-1",
       );
+    });
+    expect(onEventsChange).toHaveBeenCalled();
+  });
+
+  it("closes a day for a strike, previewing and then cancelling its lessons", async () => {
+    const user = userEvent.setup();
+    vi.mocked(calendarActions.cancelLessonsForClosureAction).mockResolvedValue({
+      closureId: "closure-1",
+      cancellations: [],
+    });
+
+    renderCalendar({
+      slots: [{ classId: classA.id, day: todayWeekday, time: "15:00" }],
+    });
+
+    await user.click(screen.getByRole("button", { name: /^add$/i }));
+    await user.click(screen.getByRole("menuitem", { name: /close days/i }));
+    const dialog = await screen.findByRole("dialog");
+
+    expect(within(dialog).getByText(/1 lesson will be cancelled/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/15:00 · Algebra II/)).toBeInTheDocument();
+
+    await user.selectOptions(within(dialog).getByLabelText(/reason/i), "strike");
+    await user.type(within(dialog).getByLabelText(/note for students/i), "Απεργία ΜΜΜ");
+    await user.click(
+      within(dialog).getByRole("button", { name: /cancel these lessons/i }),
+    );
+
+    await waitFor(() => {
+      expect(calendarActions.cancelLessonsForClosureAction).toHaveBeenCalledWith({
+        from: todayIso,
+        to: todayIso,
+        reason: "strike",
+        notes: "Απεργία ΜΜΜ",
+        notify: true,
+      });
+    });
+  });
+
+  it("shows a closure's reason and restores the whole closure", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    vi.mocked(calendarActions.restoreClosureAction).mockResolvedValue({
+      restoredIds: ["evt-closure-1"],
+    });
+
+    const { onEventsChange } = renderCalendar({
+      slots: [{ classId: classA.id, day: todayWeekday, time: "15:00" }],
+      events: [
+        {
+          id: "evt-closure-1",
+          event_type: "cancellation",
+          event_date: todayIso,
+          start_time: "15:00",
+          end_time: null,
+          class_id: classA.id,
+          class_name: "Algebra II",
+          student_id: null,
+          student_name: null,
+          contact_name: null,
+          contact_phone: null,
+          title: null,
+          notes: null,
+          cancellation_reason: "weather",
+          closure_id: "closure-1",
+          created_at: "2026-08-01T00:00:00Z",
+        },
+      ],
+    });
+
+    expect(screen.getByText("Cancelled · Weather")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /restore whole closure/i }));
+
+    await waitFor(() => {
+      expect(calendarActions.restoreClosureAction).toHaveBeenCalledWith("closure-1");
     });
     expect(onEventsChange).toHaveBeenCalled();
   });
