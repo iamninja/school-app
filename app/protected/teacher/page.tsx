@@ -129,7 +129,7 @@ export default async function TeacherPage({
     supabase
       .from("calendar_events")
       .select(
-        "id, event_type, event_date, start_time, end_time, class_id, class_name, student_id, student_name, contact_name, contact_phone, title, notes, created_at"
+        "id, event_type, event_date, start_time, end_time, class_id, class_name, student_id, student_name, contact_name, contact_phone, title, notes, cancellation_reason, closure_id, created_at"
       )
       .eq("teacher_id", user.id)
       .order("event_date", { ascending: true }),

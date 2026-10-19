@@ -5,7 +5,9 @@ import { ExpectedError } from "@/lib/expected-error";
 import {
   createCalendarEventAction,
   deleteCalendarEventAction,
+  cancelLessonsForClosureAction,
   rescheduleClassOccurrenceAction,
+  restoreClosureAction,
   updateCalendarEventAction,
 } from "@/app/protected/teacher/calendar-actions";
 import { createMockSupabaseClient } from "./support/mock-supabase";
@@ -378,5 +380,163 @@ describe("rescheduleClassOccurrenceAction", () => {
         toStartTime: "11:00",
       }),
     ).rejects.toThrow(ExpectedError);
+  });
+});
+
+describe("school closures", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(requireTeacher).mockResolvedValue(undefined);
+  });
+
+  const CLASSES = [
+    { id: "class-1", name: "Class A", archived_at: null, start_date: null, finish_date: null },
+  ];
+  const SLOTS = [
+    { day: "Mon", time: "16:00", class_id: "class-1", is_two_hour: false, end_time: null },
+    { day: "Wed", time: "17:00", class_id: "class-1", is_two_hour: false, end_time: null },
+  ];
+
+  function insertedRows(client: ReturnType<typeof createMockSupabaseClient>) {
+    const index = client.from.mock.calls
+      .map((call, i) => ({ table: call[0], i }))
+      .filter((c) => c.table === "calendar_events")
+      .at(-1)!.i;
+    return client.from.mock.results[index].value.insert.mock.calls[0][0];
+  }
+
+  it("cancels every scheduled lesson in the range under one closure id and reason", async () => {
+    const client = createMockSupabaseClient({
+      classes: { data: CLASSES, error: null },
+      class_schedule_slots: { data: SLOTS, error: null },
+      calendar_events: [
+        { data: [], error: null },
+        { data: [{ id: "c1" }, { id: "c2" }], error: null },
+      ],
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    const result = await cancelLessonsForClosureAction({
+      from: "2026-10-26",
+      to: "2026-10-28",
+      reason: "strike",
+      notes: "  Απεργία ΜΜΜ ",
+    });
+
+    const rows = insertedRows(client);
+    expect(rows).toHaveLength(2);
+    expect(rows).toEqual([
+      expect.objectContaining({
+        teacher_id: "teacher-1",
+        event_type: "cancellation",
+        event_date: "2026-10-26",
+        start_time: "16:00",
+        class_id: "class-1",
+        class_name: "Class A",
+        cancellation_reason: "strike",
+        closure_id: result.closureId,
+        notes: "Απεργία ΜΜΜ",
+      }),
+      expect.objectContaining({
+        event_date: "2026-10-28",
+        start_time: "17:00",
+        closure_id: result.closureId,
+      }),
+    ]);
+    expect(result.cancellations).toEqual([{ id: "c1" }, { id: "c2" }]);
+  });
+
+  it("skips lessons that are already cancelled", async () => {
+    const client = createMockSupabaseClient({
+      classes: { data: CLASSES, error: null },
+      class_schedule_slots: { data: SLOTS, error: null },
+      calendar_events: [
+        {
+          data: [
+            {
+              id: "old",
+              event_type: "cancellation",
+              event_date: "2026-10-26",
+              start_time: null,
+              end_time: null,
+              class_id: "class-1",
+              class_name: "Class A",
+              student_id: null,
+              student_name: null,
+              contact_name: null,
+              title: null,
+              notes: null,
+            },
+          ],
+          error: null,
+        },
+        { data: [{ id: "c2" }], error: null },
+      ],
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await cancelLessonsForClosureAction({
+      from: "2026-10-26",
+      to: "2026-10-28",
+      reason: "weather",
+    });
+
+    expect(insertedRows(client)).toEqual([
+      expect.objectContaining({ event_date: "2026-10-28", start_time: "17:00" }),
+    ]);
+  });
+
+  it("refuses when nothing is scheduled, without inserting", async () => {
+    const client = createMockSupabaseClient({
+      classes: { data: CLASSES, error: null },
+      class_schedule_slots: { data: SLOTS, error: null },
+      calendar_events: { data: [], error: null },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await expect(
+      cancelLessonsForClosureAction({
+        from: "2026-10-27",
+        to: "2026-10-27",
+        reason: "public_holiday",
+      }),
+    ).rejects.toThrow(ExpectedError);
+  });
+
+  it.each([
+    [{ from: "2026-10-28", to: "2026-10-27", reason: "weather" }],
+    [{ from: "2026-12-01", to: "2027-01-07", reason: "christmas" }],
+    [{ from: "2026-02-30", to: "2026-03-01", reason: "weather" }],
+    [{ from: "2026-10-27", to: "2026-10-27", reason: "holiday" }],
+  ])("rejects a bad range or reason before reading anything: %o", async (input) => {
+    const client = createMockSupabaseClient({});
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await expect(
+      cancelLessonsForClosureAction(input as never),
+    ).rejects.toThrow(ExpectedError);
+    expect(client.from).not.toHaveBeenCalled();
+  });
+
+  it("restores a whole closure scoped to this teacher", async () => {
+    const client = createMockSupabaseClient({
+      calendar_events: {
+        data: [
+          { id: "c1", event_date: "2026-10-26", class_id: "class-1", class_name: "Class A" },
+          { id: "c2", event_date: "2026-10-28", class_id: "class-1", class_name: "Class A" },
+        ],
+        error: null,
+      },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    const result = await restoreClosureAction("closure-1");
+
+    expect(result.restoredIds).toEqual(["c1", "c2"]);
+    const chain = client.from.mock.results[0].value;
+    expect(chain.delete).toHaveBeenCalled();
+    expect(chain.eq).toHaveBeenCalledWith("teacher_id", "teacher-1");
+    expect(chain.eq).toHaveBeenCalledWith("closure_id", "closure-1");
+    expect(chain.eq).toHaveBeenCalledWith("event_type", "cancellation");
   });
 });

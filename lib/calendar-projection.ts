@@ -1,6 +1,7 @@
 import { format, parse } from "date-fns";
 import type { CalendarEvent } from "@/lib/types/database";
 import { slotWindow } from "@/lib/schedule-grid";
+import type { CancellationReason } from "@/lib/school-closures";
 
 // Pure projection logic shared by the teacher's Calendar tab, the
 // Attendance tab's date picker (via lib/attendance-dates.ts), and the
@@ -87,7 +88,12 @@ export type ProjectionEvent = Pick<
   | "contact_name"
   | "title"
   | "notes"
->;
+> & {
+  // Optional so callers that never show why a lesson was cancelled (the
+  // attendance alerts, the phone companion) needn't select them.
+  cancellation_reason?: CancellationReason | null;
+  closure_id?: string | null;
+};
 
 export type OccurrenceKind =
   | "recurring"
@@ -115,6 +121,10 @@ export interface Occurrence {
   slotTime: string | null;
   /** True for a two-hour lesson (from a two-hour template slot, or an event whose start/end span at least 120 minutes). */
   isTwoHour: boolean;
+  /** Why a cancelled occurrence was cancelled, when the teacher said; null otherwise. */
+  cancellationReason: CancellationReason | null;
+  /** The school closure a cancelled occurrence belongs to (see lib/school-closures.ts). */
+  closureId: string | null;
 }
 
 function eventSpansTwoHours(startTime: string | null, endTime: string | null): boolean {
@@ -157,8 +167,10 @@ export function projectOccurrences(input: ProjectionInput): Occurrence[] {
   }
 
   const cancellationsByClassDate = new Map<string, CancellationCoverage>();
+  const cancellationById = new Map<string, ProjectionEvent>();
   for (const event of input.events) {
     if (event.event_type !== "cancellation" || !event.class_id) continue;
+    cancellationById.set(event.id, event);
     const key = `${event.class_id}|${event.event_date}`;
     const existing: CancellationCoverage = cancellationsByClassDate.get(
       key,
@@ -193,6 +205,9 @@ export function projectOccurrences(input: ProjectionInput): Occurrence[] {
       const matchedEventId =
         coverage?.wholeDayEventId ?? coverage?.timesCovered.get(slot.time) ?? null;
       if (matchedEventId) matchedCancellationIds.add(matchedEventId);
+      const cancellation = matchedEventId
+        ? cancellationById.get(matchedEventId)
+        : undefined;
 
       // A customized slot's real start is deduced from its stored end time
       // (see slotWindow()); an un-customized slot keeps startTime as the
@@ -215,10 +230,12 @@ export function projectOccurrences(input: ProjectionInput): Occurrence[] {
         studentName: null,
         contactName: null,
         title: null,
-        notes: null,
+        notes: cancellation?.notes ?? null,
         eventId: matchedEventId,
         slotTime: slot.time,
         isTwoHour: slot.isTwoHour ?? false,
+        cancellationReason: cancellation?.cancellation_reason ?? null,
+        closureId: cancellation?.closure_id ?? null,
       });
     }
   }
@@ -247,6 +264,8 @@ export function projectOccurrences(input: ProjectionInput): Occurrence[] {
           eventId: event.id,
           slotTime: null,
           isTwoHour: eventSpansTwoHours(event.start_time, event.end_time),
+          cancellationReason: event.cancellation_reason ?? null,
+          closureId: event.closure_id ?? null,
         });
       }
       continue;
@@ -273,6 +292,8 @@ export function projectOccurrences(input: ProjectionInput): Occurrence[] {
         eventId: event.id,
         slotTime: null,
         isTwoHour: eventSpansTwoHours(event.start_time, event.end_time),
+        cancellationReason: null,
+        closureId: null,
       });
       continue;
     }
@@ -293,6 +314,8 @@ export function projectOccurrences(input: ProjectionInput): Occurrence[] {
         eventId: event.id,
         slotTime: null,
         isTwoHour: eventSpansTwoHours(event.start_time, event.end_time),
+        cancellationReason: null,
+        closureId: null,
       });
       continue;
     }
@@ -313,6 +336,8 @@ export function projectOccurrences(input: ProjectionInput): Occurrence[] {
         eventId: event.id,
         slotTime: null,
         isTwoHour: eventSpansTwoHours(event.start_time, event.end_time),
+        cancellationReason: null,
+        closureId: null,
       });
       continue;
     }
@@ -334,6 +359,8 @@ export function projectOccurrences(input: ProjectionInput): Occurrence[] {
         isTwoHour: eventSpansTwoHours(event.start_time, event.end_time),
         eventId: event.id,
         slotTime: null,
+        cancellationReason: null,
+        closureId: null,
       });
     }
   }

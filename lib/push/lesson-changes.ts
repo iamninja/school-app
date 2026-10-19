@@ -1,4 +1,5 @@
 import { formatShortDateEl } from "@/lib/push/athens-time";
+import { formatClosureRangeEl } from "@/lib/school-closures";
 import type { NotificationEvent } from "@/lib/push/messages";
 import type { NotifyInput } from "@/lib/push/notify";
 
@@ -93,4 +94,45 @@ export function noticeForMove(from: CalendarRow, to: CalendarRow): Notice | null
       new_time: to.start_time,
     },
   };
+}
+
+/**
+ * A school closure was added (or undone): one notice per class, naming the
+ * span of that class's own cancelled lessons from today on - a two-week
+ * break is one message, not one per lesson. Past dates are left out like
+ * everywhere else here; a class with only past lessons gets nothing.
+ */
+export function noticesForClosure(
+  rows: Array<Pick<CalendarRow, "event_date" | "class_id" | "class_name">>,
+  change: { kind: "closed"; reasonLabel: string } | { kind: "reopened" },
+  closureId: string,
+  today: string,
+): Notice[] {
+  const byClass = new Map<string, { name: string; from: string; to: string }>();
+  for (const row of rows) {
+    if (!row.class_id || row.event_date < today) continue;
+    const span = byClass.get(row.class_id);
+    if (!span) {
+      byClass.set(row.class_id, {
+        name: row.class_name ?? "",
+        from: row.event_date,
+        to: row.event_date,
+      });
+      continue;
+    }
+    if (row.event_date < span.from) span.from = row.event_date;
+    if (row.event_date > span.to) span.to = row.event_date;
+  }
+
+  return [...byClass].map(([classId, span]) => ({
+    event: change.kind === "closed" ? "lessons_closed" : "lessons_reopened",
+    to: { kind: "class_students", classId },
+    classId,
+    values: {
+      class: span.name,
+      date: formatClosureRangeEl(span.from, span.to),
+      reason: change.kind === "closed" ? change.reasonLabel : null,
+    },
+    tag: `closure-${closureId}-${classId}`,
+  }));
 }

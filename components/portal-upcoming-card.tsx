@@ -19,6 +19,13 @@ import {
 import { CALENDAR_EVENT_TYPE_LABELS_EL } from "@/lib/greek-labels";
 import { CALENDAR_EVENT_TYPE_LABELS_EN } from "@/lib/portal-labels-en";
 import { lessonTimeLabel } from "@/lib/schedule-grid";
+import {
+  CANCELLATION_REASON_LABELS_EL,
+  CANCELLATION_REASON_LABELS_EN,
+  cancelledLessonLabel,
+  isHolidayReason,
+  type CancellationReason,
+} from "@/lib/school-closures";
 
 const EXPANDED_DAYS = 60;
 const EXPANDED_LIMIT = 30;
@@ -31,6 +38,7 @@ const LABELS = {
     more: "Περισσότερα",
     empty: "Δεν υπάρχουν προγραμματισμένα μαθήματα.",
     eventTypes: CALENDAR_EVENT_TYPE_LABELS_EL,
+    reasons: CANCELLATION_REASON_LABELS_EL,
   },
   en: {
     fallbackTitle: "Lesson",
@@ -39,6 +47,7 @@ const LABELS = {
     more: "See more",
     empty: "No lessons scheduled.",
     eventTypes: CALENDAR_EVENT_TYPE_LABELS_EN,
+    reasons: CANCELLATION_REASON_LABELS_EN,
   },
 };
 
@@ -73,10 +82,19 @@ function OccurrenceRow({
       <div className="flex shrink-0 items-center gap-1.5">
         {occurrence.kind !== "recurring" ? (
           <Badge
-            variant={occurrence.kind === "cancelled" ? "destructive" : "outline"}
+            variant={
+              occurrence.kind === "cancelled" &&
+              !isHolidayReason(occurrence.cancellationReason)
+                ? "destructive"
+                : "outline"
+            }
           >
             {occurrence.kind === "cancelled"
-              ? labels.eventTypes.cancellation
+              ? cancelledLessonLabel(
+                  occurrence.cancellationReason,
+                  labels.eventTypes.cancellation,
+                  labels.reasons,
+                )
               : (labels.eventTypes[occurrence.kind] ?? occurrence.kind)}
           </Badge>
         ) : null}
@@ -123,6 +141,7 @@ export function PortalUpcomingCard({
     class_id: string | null;
     class_name: string | null;
     notes: string | null;
+    cancellation_reason?: CancellationReason | null;
   }>;
   days?: number;
   limit?: number;
@@ -150,6 +169,7 @@ export function PortalUpcomingCard({
     contact_name: null,
     title: null,
     notes: event.notes,
+    cancellation_reason: event.cancellation_reason ?? null,
   }));
 
   const today = new Date();
