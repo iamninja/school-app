@@ -186,3 +186,89 @@ export function planClosure(
     ),
   };
 }
+
+// The long breaks are expected days off, not news: rather than every class
+// crossed out day after day, the calendars show one entry per day and the
+// portals one line for the whole break. Display only - the cancellation
+// rows stay, since they are what blocks attendance on those days and what
+// "Restore whole closure" deletes.
+const SCHOOL_BREAK_REASONS: ReadonlySet<CancellationReason> = new Set([
+  "christmas",
+  "easter",
+]);
+
+export function isSchoolBreak(occurrence: Occurrence): boolean {
+  return (
+    occurrence.kind === "cancelled" &&
+    occurrence.cancellationReason !== null &&
+    SCHOOL_BREAK_REASONS.has(occurrence.cancellationReason)
+  );
+}
+
+export interface SchoolBreakItem {
+  type: "break";
+  reason: CancellationReason;
+  /** First and last date of the lessons it stands for. */
+  from: string;
+  to: string;
+  lessons: Occurrence[];
+  closureIds: string[];
+}
+
+export type ScheduleItem =
+  | { type: "lesson"; occurrence: Occurrence }
+  | SchoolBreakItem;
+
+function collapse(
+  occurrences: Occurrence[],
+  keyOf: (occurrence: Occurrence) => string,
+): ScheduleItem[] {
+  const items: ScheduleItem[] = [];
+  const breaks = new Map<string, SchoolBreakItem>();
+  for (const occurrence of occurrences) {
+    if (!isSchoolBreak(occurrence)) {
+      items.push({ type: "lesson", occurrence });
+      continue;
+    }
+    const key = keyOf(occurrence);
+    const existing = breaks.get(key);
+    if (existing) {
+      existing.lessons.push(occurrence);
+      if (occurrence.date < existing.from) existing.from = occurrence.date;
+      if (occurrence.date > existing.to) existing.to = occurrence.date;
+      if (occurrence.closureId && !existing.closureIds.includes(occurrence.closureId)) {
+        existing.closureIds.push(occurrence.closureId);
+      }
+      continue;
+    }
+    // Takes the place of its first lesson, so the list stays in date order.
+    const item: SchoolBreakItem = {
+      type: "break",
+      reason: occurrence.cancellationReason!,
+      from: occurrence.date,
+      to: occurrence.date,
+      lessons: [occurrence],
+      closureIds: occurrence.closureId ? [occurrence.closureId] : [],
+    };
+    breaks.set(key, item);
+    items.push(item);
+  }
+  return items;
+}
+
+/** One break entry per day (the teacher's day panel and week strip). */
+export function collapseSchoolBreaksByDay(occurrences: Occurrence[]): ScheduleItem[] {
+  return collapse(
+    occurrences,
+    (occurrence) => `${occurrence.date}|${occurrence.cancellationReason}`,
+  );
+}
+
+/**
+ * One entry for the whole break (the portals' upcoming list). Keyed by
+ * reason alone: Christmas and Easter are months apart, so within any list
+ * the portals show there is at most one of each.
+ */
+export function collapseSchoolBreaks(occurrences: Occurrence[]): ScheduleItem[] {
+  return collapse(occurrences, (occurrence) => occurrence.cancellationReason ?? "");
+}

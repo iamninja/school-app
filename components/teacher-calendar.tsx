@@ -72,7 +72,10 @@ import { lessonTimeLabel, recurringLessonWindow } from "@/lib/schedule-grid";
 import {
   CANCELLATION_REASON_LABELS_EN,
   cancelledLessonLabel,
+  collapseSchoolBreaksByDay,
   isHolidayReason,
+  isSchoolBreak,
+  type SchoolBreakItem,
 } from "@/lib/school-closures";
 import {
   upsertAttendanceRecord,
@@ -145,6 +148,11 @@ const WEEK_ROW_CLASSES: Record<OccurrenceKind, string> = {
   trial_lesson: "border-amber-500/30 bg-amber-500/10",
   block: "border-sky-500/30 bg-sky-500/10",
 };
+
+// A Christmas/Easter break day - one entry instead of the crossed-out
+// lessons (see collapseSchoolBreaksByDay).
+const BREAK_ROW_CLASS = "border-emerald-500/30 bg-emerald-500/10";
+const BREAK_DOT_CLASS = "bg-emerald-500";
 
 const WEEK_KIND_LABELS: Partial<Record<OccurrenceKind, string>> = {
   cancelled: "Cancelled",
@@ -241,6 +249,39 @@ function findOverlappingLessons(
   return overlaps;
 }
 
+function WeekOccurrenceChip({ occurrence }: { occurrence: Occurrence }) {
+  return (
+    <div
+      className={cn(
+        "rounded border px-1.5 py-1 text-xs",
+        WEEK_ROW_CLASSES[occurrence.kind],
+      )}
+    >
+      <p className="font-medium">
+        {occurrence.startTime
+          ? lessonTimeLabel(
+              occurrence.startTime,
+              occurrence.isTwoHour,
+              occurrence.endTime,
+            )
+          : "All day"}
+      </p>
+      <p className="truncate">
+        {occurrence.className ??
+          occurrence.studentName ??
+          occurrence.contactName ??
+          occurrence.title ??
+          "Untitled"}
+      </p>
+      {WEEK_KIND_LABELS[occurrence.kind] ? (
+        <p className="text-[10px] tracking-wide uppercase opacity-70">
+          {WEEK_KIND_LABELS[occurrence.kind]}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function WeeklyOverview({
   selectedDate,
   slots,
@@ -315,37 +356,27 @@ function WeeklyOverview({
                   {dayOccurrences.length === 0 ? (
                     <p className="text-xs text-muted-foreground">—</p>
                   ) : (
-                    dayOccurrences.map((occurrence, idx) => (
-                      <div
-                        key={idx}
-                        className={cn(
-                          "rounded border px-1.5 py-1 text-xs",
-                          WEEK_ROW_CLASSES[occurrence.kind],
-                        )}
-                      >
-                        <p className="font-medium">
-                          {occurrence.startTime
-                            ? lessonTimeLabel(
-                                occurrence.startTime,
-                                occurrence.isTwoHour,
-                                occurrence.endTime,
-                              )
-                            : "All day"}
-                        </p>
-                        <p className="truncate">
-                          {occurrence.className ??
-                            occurrence.studentName ??
-                            occurrence.contactName ??
-                            occurrence.title ??
-                            "Untitled"}
-                        </p>
-                        {WEEK_KIND_LABELS[occurrence.kind] ? (
-                          <p className="text-[10px] tracking-wide uppercase opacity-70">
-                            {WEEK_KIND_LABELS[occurrence.kind]}
+                    collapseSchoolBreaksByDay(dayOccurrences).map((item, idx) =>
+                      item.type === "break" ? (
+                        <div
+                          key={idx}
+                          className={cn(
+                            "rounded border px-1.5 py-1 text-xs",
+                            BREAK_ROW_CLASS,
+                          )}
+                        >
+                          <p className="font-medium">All day</p>
+                          <p className="truncate">
+                            {CANCELLATION_REASON_LABELS_EN[item.reason]}
                           </p>
-                        ) : null}
-                      </div>
-                    ))
+                        </div>
+                      ) : (
+                        <WeekOccurrenceChip
+                          key={idx}
+                          occurrence={item.occurrence}
+                        />
+                      ),
+                    )
                   )}
                 </div>
               </button>
@@ -495,6 +526,9 @@ export function TeacherCalendar({
   const [rescheduleEndTime, setRescheduleEndTime] = React.useState("");
   const [isRescheduling, setIsRescheduling] = React.useState(false);
   const [closeDaysOpen, setCloseDaysOpen] = React.useState(false);
+  const [expandedBreakKeys, setExpandedBreakKeys] = React.useState<Set<string>>(
+    () => new Set(),
+  );
 
   const projectionEvents: ProjectionEvent[] = events;
   const activeClassOptions = classes.filter((item) => !item.archivedAt);
@@ -515,10 +549,11 @@ export function TeacherCalendar({
   }, [month, slots, classes, projectionEvents]);
 
   const kindsByDate = React.useMemo(() => {
-    const map = new Map<string, Set<OccurrenceKind>>();
+    const map = new Map<string, Set<OccurrenceKind | "break">>();
     for (const occurrence of monthOccurrences) {
-      const set = map.get(occurrence.date) ?? new Set<OccurrenceKind>();
-      set.add(occurrence.kind);
+      const set =
+        map.get(occurrence.date) ?? new Set<OccurrenceKind | "break">();
+      set.add(isSchoolBreak(occurrence) ? "break" : occurrence.kind);
       map.set(occurrence.date, set);
     }
     return map;
@@ -548,6 +583,11 @@ export function TeacherCalendar({
         includeBlocks: true,
       }),
     [selectedDate, slots, classes, projectionEvents],
+  );
+
+  const selectedItems = React.useMemo(
+    () => collapseSchoolBreaksByDay(selectedOccurrences),
+    [selectedOccurrences],
   );
 
   // Lessons that day eligible for attendance - only occurrences with a real
@@ -667,7 +707,7 @@ export function TeacherCalendar({
                   key={kind}
                   className={cn(
                     "h-1 w-1 rounded-full",
-                    KIND_DOT_CLASSES[kind],
+                    kind === "break" ? BREAK_DOT_CLASS : KIND_DOT_CLASSES[kind],
                   )}
                 />
               ))}
@@ -937,6 +977,207 @@ export function TeacherCalendar({
     }
   };
 
+  // A Christmas/Easter day: one row instead of every class crossed out,
+  // with the lessons themselves one click away for a single restore.
+  const renderBreakRow = (item: SchoolBreakItem) => {
+    const key = `${item.from}|${item.reason}`;
+    const expanded = expandedBreakKeys.has(key);
+    return (
+      <div key={`break|${key}`} className="space-y-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="text-sm font-medium">
+              {CANCELLATION_REASON_LABELS_EN[item.reason]}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              No lessons · {item.lessons.length} cancelled
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              aria-expanded={expanded}
+              onClick={() =>
+                setExpandedBreakKeys((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(key)) next.delete(key);
+                  else next.add(key);
+                  return next;
+                })
+              }
+            >
+              {expanded ? "Hide lessons" : "Show lessons"}
+            </Button>
+            {item.closureIds.map((closureId) => (
+              <Button
+                key={closureId}
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={deletingId === closureId}
+                onClick={() => void handleRestoreClosure(closureId)}
+              >
+                <UndoIcon className="mr-1 h-3.5 w-3.5" /> Restore whole closure
+              </Button>
+            ))}
+          </div>
+        </div>
+        {expanded
+          ? item.lessons.map((occurrence) =>
+              renderOccurrenceRow(occurrence, { inBreak: true }),
+            )
+          : null}
+      </div>
+    );
+  };
+
+  const renderOccurrenceRow = (
+    occurrence: Occurrence,
+    { inBreak = false }: { inBreak?: boolean } = {},
+  ) => {
+    const storedEvent = occurrence.eventId
+      ? events.find((event) => event.id === occurrence.eventId)
+      : undefined;
+    const key = `${occurrence.eventId ?? ""}|${occurrence.classId ?? ""}|${occurrence.slotTime ?? ""}`;
+    return (
+      <div
+        key={key}
+        className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3"
+      >
+        <div
+          className={cn(
+            occurrence.kind === "cancelled" &&
+              "line-through text-muted-foreground",
+          )}
+        >
+          <p className="text-sm font-medium">
+            {occurrence.startTime ?? "All day"}
+            {" · "}
+            {occurrence.className ??
+              occurrence.studentName ??
+              occurrence.contactName ??
+              occurrence.title ??
+              "Untitled"}
+          </p>
+          <div className="mt-1 flex items-center gap-2">
+            <Badge
+              variant={
+                occurrence.kind === "cancelled" &&
+                !isHolidayReason(occurrence.cancellationReason)
+                  ? "destructive"
+                  : "outline"
+              }
+            >
+              {occurrence.kind === "recurring"
+                ? "Scheduled class"
+                : occurrence.kind === "cancelled"
+                  ? cancelledLessonLabel(
+                      occurrence.cancellationReason,
+                      "Cancelled",
+                      CANCELLATION_REASON_LABELS_EN,
+                    )
+                  : TYPE_LABELS[occurrence.kind as CalendarEventType]}
+            </Badge>
+            {occurrence.notes ? (
+              <span className="text-xs text-muted-foreground">
+                {occurrence.notes}
+              </span>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {occurrence.kind === "recurring" && (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => openReschedule(occurrence)}
+              >
+                <CalendarClockIcon className="mr-1 h-3.5 w-3.5" />
+                Reschedule
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={
+                  cancellingKey ===
+                  `${occurrence.classId}|${occurrence.date}|${occurrence.slotTime ?? ""}`
+                }
+                onClick={() => void handleCancelOccurrence(occurrence)}
+              >
+                Cancel this class
+              </Button>
+            </>
+          )}
+          {occurrence.kind === "cancelled" && occurrence.eventId && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={deletingId === occurrence.eventId}
+              onClick={() => void handleRestore(occurrence.eventId!)}
+            >
+              <UndoIcon className="mr-1 h-3.5 w-3.5" /> Restore
+            </Button>
+          )}
+          {occurrence.kind === "cancelled" && occurrence.closureId && !inBreak && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={deletingId === occurrence.closureId}
+              onClick={() =>
+                void handleRestoreClosure(occurrence.closureId!)
+              }
+            >
+              Restore whole closure
+            </Button>
+          )}
+          {storedEvent && occurrence.kind !== "cancelled" && (
+            <>
+              {occurrence.kind !== "block" && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  aria-label={`Reschedule ${TYPE_LABELS[storedEvent.event_type]}`}
+                  onClick={() => openReschedule(occurrence)}
+                >
+                  <CalendarClockIcon className="mr-1 h-3.5 w-3.5" />
+                  Reschedule
+                </Button>
+              )}
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-label={`Edit ${TYPE_LABELS[storedEvent.event_type]}`}
+                onClick={() => openEdit(storedEvent)}
+              >
+                <PencilIcon className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-label={`Delete ${TYPE_LABELS[storedEvent.event_type]}`}
+                disabled={deletingId === storedEvent.id}
+                onClick={() => void handleDeleteEvent(storedEvent)}
+              >
+                <Trash2Icon className="h-3.5 w-3.5" />
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-4">
     <div className="grid gap-4 lg:grid-cols-[auto_1fr]">
@@ -1014,147 +1255,11 @@ export function TeacherCalendar({
               Nothing scheduled.
             </p>
           ) : (
-            selectedOccurrences.map((occurrence) => {
-              const storedEvent = occurrence.eventId
-                ? events.find((event) => event.id === occurrence.eventId)
-                : undefined;
-              const key = `${occurrence.eventId ?? ""}|${occurrence.classId ?? ""}|${occurrence.slotTime ?? ""}`;
-              return (
-                <div
-                  key={key}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3"
-                >
-                  <div
-                    className={cn(
-                      occurrence.kind === "cancelled" &&
-                        "line-through text-muted-foreground",
-                    )}
-                  >
-                    <p className="text-sm font-medium">
-                      {occurrence.startTime ?? "All day"}
-                      {" · "}
-                      {occurrence.className ??
-                        occurrence.studentName ??
-                        occurrence.contactName ??
-                        occurrence.title ??
-                        "Untitled"}
-                    </p>
-                    <div className="mt-1 flex items-center gap-2">
-                      <Badge
-                        variant={
-                          occurrence.kind === "cancelled" &&
-                          !isHolidayReason(occurrence.cancellationReason)
-                            ? "destructive"
-                            : "outline"
-                        }
-                      >
-                        {occurrence.kind === "recurring"
-                          ? "Scheduled class"
-                          : occurrence.kind === "cancelled"
-                            ? cancelledLessonLabel(
-                                occurrence.cancellationReason,
-                                "Cancelled",
-                                CANCELLATION_REASON_LABELS_EN,
-                              )
-                            : TYPE_LABELS[occurrence.kind as CalendarEventType]}
-                      </Badge>
-                      {occurrence.notes ? (
-                        <span className="text-xs text-muted-foreground">
-                          {occurrence.notes}
-                        </span>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    {occurrence.kind === "recurring" && (
-                      <>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => openReschedule(occurrence)}
-                        >
-                          <CalendarClockIcon className="mr-1 h-3.5 w-3.5" />
-                          Reschedule
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          disabled={
-                            cancellingKey ===
-                            `${occurrence.classId}|${occurrence.date}|${occurrence.slotTime ?? ""}`
-                          }
-                          onClick={() => void handleCancelOccurrence(occurrence)}
-                        >
-                          Cancel this class
-                        </Button>
-                      </>
-                    )}
-                    {occurrence.kind === "cancelled" && occurrence.eventId && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={deletingId === occurrence.eventId}
-                        onClick={() => void handleRestore(occurrence.eventId!)}
-                      >
-                        <UndoIcon className="mr-1 h-3.5 w-3.5" /> Restore
-                      </Button>
-                    )}
-                    {occurrence.kind === "cancelled" && occurrence.closureId && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        disabled={deletingId === occurrence.closureId}
-                        onClick={() =>
-                          void handleRestoreClosure(occurrence.closureId!)
-                        }
-                      >
-                        Restore whole closure
-                      </Button>
-                    )}
-                    {storedEvent && occurrence.kind !== "cancelled" && (
-                      <>
-                        {occurrence.kind !== "block" && (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            aria-label={`Reschedule ${TYPE_LABELS[storedEvent.event_type]}`}
-                            onClick={() => openReschedule(occurrence)}
-                          >
-                            <CalendarClockIcon className="mr-1 h-3.5 w-3.5" />
-                            Reschedule
-                          </Button>
-                        )}
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          aria-label={`Edit ${TYPE_LABELS[storedEvent.event_type]}`}
-                          onClick={() => openEdit(storedEvent)}
-                        >
-                          <PencilIcon className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          aria-label={`Delete ${TYPE_LABELS[storedEvent.event_type]}`}
-                          disabled={deletingId === storedEvent.id}
-                          onClick={() => void handleDeleteEvent(storedEvent)}
-                        >
-                          <Trash2Icon className="h-3.5 w-3.5" />
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              );
-            })
+            selectedItems.map((item) =>
+              item.type === "break"
+                ? renderBreakRow(item)
+                : renderOccurrenceRow(item.occurrence),
+            )
           )}
 
           {selectedAssessmentMarkers.length > 0 ? (

@@ -10,7 +10,7 @@ import { PortalHistoryDialog } from "@/components/portal-history-dialog";
 import { cn } from "@/lib/utils";
 import {
   fromIsoDate,
-  nextOccurrences,
+  projectOccurrences,
   type Occurrence,
   type ProjectionClass,
   type ProjectionEvent,
@@ -23,8 +23,11 @@ import {
   CANCELLATION_REASON_LABELS_EL,
   CANCELLATION_REASON_LABELS_EN,
   cancelledLessonLabel,
+  collapseSchoolBreaks,
   isHolidayReason,
   type CancellationReason,
+  type ScheduleItem,
+  type SchoolBreakItem,
 } from "@/lib/school-closures";
 
 const EXPANDED_DAYS = 60;
@@ -100,6 +103,45 @@ function OccurrenceRow({
         ) : null}
       </div>
     </div>
+  );
+}
+
+// A whole Christmas/Easter break as one line, instead of every lesson in it
+// crossed out (see collapseSchoolBreaks).
+function BreakRow({
+  item,
+  labels,
+}: {
+  item: SchoolBreakItem;
+  labels: (typeof LABELS)["en"];
+}) {
+  const dateLabel = (date: string, pattern: string) =>
+    format(fromIsoDate(date), pattern, { locale: labels.dateFnsLocale });
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-border/70 bg-background/60 px-3 py-2">
+      <div className="min-w-0">
+        <p className="truncate text-sm font-medium">{labels.reasons[item.reason]}</p>
+        <p className="text-xs text-muted-foreground">
+          {item.from === item.to
+            ? dateLabel(item.from, "EEEE d MMMM")
+            : `${dateLabel(item.from, "d MMMM")} – ${dateLabel(item.to, "d MMMM")}`}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function ItemRow({
+  item,
+  labels,
+}: {
+  item: ScheduleItem;
+  labels: (typeof LABELS)["en"];
+}) {
+  return item.type === "break" ? (
+    <BreakRow item={item} labels={labels} />
+  ) : (
+    <OccurrenceRow occurrence={item.occurrence} labels={labels} />
   );
 }
 
@@ -180,29 +222,22 @@ export function PortalUpcomingCard({
       "yyyy-MM-dd",
     );
 
-  const occurrences = nextOccurrences(
-    {
-      from,
-      to: projectTo(days),
-      slots: projectionSlots,
-      classes: projectionClasses,
-      events: projectionEvents,
-      includeBlocks: false,
-    },
-    limit,
-  );
+  // Breaks are collapsed before the limit applies, so a two-week break
+  // takes one of the slots, not all of them.
+  const upcomingItems = (windowDays: number, max: number) =>
+    collapseSchoolBreaks(
+      projectOccurrences({
+        from,
+        to: projectTo(windowDays),
+        slots: projectionSlots,
+        classes: projectionClasses,
+        events: projectionEvents,
+        includeBlocks: false,
+      }),
+    ).slice(0, max);
 
-  const expandedOccurrences = nextOccurrences(
-    {
-      from,
-      to: projectTo(EXPANDED_DAYS),
-      slots: projectionSlots,
-      classes: projectionClasses,
-      events: projectionEvents,
-      includeBlocks: false,
-    },
-    EXPANDED_LIMIT,
-  );
+  const occurrences = upcomingItems(days, limit);
+  const expandedOccurrences = upcomingItems(EXPANDED_DAYS, EXPANDED_LIMIT);
   const hasMore = expandedOccurrences.length > occurrences.length;
 
   return (
@@ -214,8 +249,8 @@ export function PortalUpcomingCard({
         </CardTitle>
         {hasMore ? (
           <PortalHistoryDialog triggerLabel={labels.more} title={labels.upcoming}>
-            {expandedOccurrences.map((occurrence, idx) => (
-              <OccurrenceRow key={idx} occurrence={occurrence} labels={labels} />
+            {expandedOccurrences.map((item, idx) => (
+              <ItemRow key={idx} item={item} labels={labels} />
             ))}
           </PortalHistoryDialog>
         ) : null}
@@ -225,8 +260,8 @@ export function PortalUpcomingCard({
           <p className="text-sm text-muted-foreground">{labels.empty}</p>
         ) : (
           <div className="space-y-2">
-            {occurrences.map((occurrence, idx) => (
-              <OccurrenceRow key={idx} occurrence={occurrence} labels={labels} />
+            {occurrences.map((item, idx) => (
+              <ItemRow key={idx} item={item} labels={labels} />
             ))}
           </div>
         )}
