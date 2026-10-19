@@ -211,6 +211,12 @@ export interface SchoolBreakItem {
   /** First and last date of the lessons it stands for. */
   from: string;
   to: string;
+  /**
+   * The dates the break was declared for (24/12-7/1), which is what the
+   * portals and the day panel show; null for closures made before those
+   * dates were stored - show from/to then.
+   */
+  officialRange: { from: string; to: string } | null;
   lessons: Occurrence[];
   closureIds: string[];
 }
@@ -218,6 +224,24 @@ export interface SchoolBreakItem {
 export type ScheduleItem =
   | { type: "lesson"; occurrence: Occurrence }
   | SchoolBreakItem;
+
+// Two closures with the same reason in one list (a break entered in two
+// parts) show as one span covering both.
+function widen(
+  range: { from: string; to: string } | null,
+  other: { from: string; to: string } | null,
+): { from: string; to: string } | null {
+  if (!range || !other) return range ?? other;
+  return {
+    from: other.from < range.from ? other.from : range.from,
+    to: other.to > range.to ? other.to : range.to,
+  };
+}
+
+/** The dates a break entry should show: the official ones when stored. */
+export function breakDisplayRange(item: SchoolBreakItem): { from: string; to: string } {
+  return item.officialRange ?? { from: item.from, to: item.to };
+}
 
 function collapse(
   occurrences: Occurrence[],
@@ -239,6 +263,7 @@ function collapse(
       if (occurrence.closureId && !existing.closureIds.includes(occurrence.closureId)) {
         existing.closureIds.push(occurrence.closureId);
       }
+      existing.officialRange = widen(existing.officialRange, occurrence.closureRange);
       continue;
     }
     // Takes the place of its first lesson, so the list stays in date order.
@@ -247,6 +272,7 @@ function collapse(
       reason: occurrence.cancellationReason!,
       from: occurrence.date,
       to: occurrence.date,
+      officialRange: occurrence.closureRange,
       lessons: [occurrence],
       closureIds: occurrence.closureId ? [occurrence.closureId] : [],
     };

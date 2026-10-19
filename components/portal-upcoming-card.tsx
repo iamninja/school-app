@@ -22,6 +22,7 @@ import { lessonTimeLabel } from "@/lib/schedule-grid";
 import {
   CANCELLATION_REASON_LABELS_EL,
   CANCELLATION_REASON_LABELS_EN,
+  breakDisplayRange,
   cancelledLessonLabel,
   collapseSchoolBreaks,
   isHolidayReason,
@@ -117,14 +118,15 @@ function BreakRow({
 }) {
   const dateLabel = (date: string, pattern: string) =>
     format(fromIsoDate(date), pattern, { locale: labels.dateFnsLocale });
+  const range = breakDisplayRange(item);
   return (
     <div className="flex items-center justify-between gap-3 rounded-lg border border-border/70 bg-background/60 px-3 py-2">
       <div className="min-w-0">
         <p className="truncate text-sm font-medium">{labels.reasons[item.reason]}</p>
         <p className="text-xs text-muted-foreground">
-          {item.from === item.to
-            ? dateLabel(item.from, "EEEE d MMMM")
-            : `${dateLabel(item.from, "d MMMM")} – ${dateLabel(item.to, "d MMMM")}`}
+          {range.from === range.to
+            ? dateLabel(range.from, "EEEE d MMMM")
+            : `${dateLabel(range.from, "d MMMM")} – ${dateLabel(range.to, "d MMMM")}`}
         </p>
       </div>
     </div>
@@ -184,6 +186,8 @@ export function PortalUpcomingCard({
     class_name: string | null;
     notes: string | null;
     cancellation_reason?: CancellationReason | null;
+    closure_from?: string | null;
+    closure_to?: string | null;
   }>;
   days?: number;
   limit?: number;
@@ -212,6 +216,8 @@ export function PortalUpcomingCard({
     title: null,
     notes: event.notes,
     cancellation_reason: event.cancellation_reason ?? null,
+    closure_from: event.closure_from ?? null,
+    closure_to: event.closure_to ?? null,
   }));
 
   const today = new Date();

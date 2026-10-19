@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CANCELLATION_REASON_LABELS_EL,
+  breakDisplayRange,
   cancelledLessonLabel,
   collapseSchoolBreaks,
   collapseSchoolBreaksByDay,
@@ -265,6 +266,8 @@ describe("collapsing school breaks", () => {
           start_time: time,
           cancellation_reason: "christmas",
           closure_id: "closure-xmas",
+          closure_from: "2026-12-24",
+          closure_to: "2027-01-07",
         }),
       ),
     ],
@@ -298,6 +301,11 @@ describe("collapsing school breaks", () => {
       from: "2026-12-28",
       to: "2027-01-04",
       closureIds: ["closure-xmas"],
+      officialRange: { from: "2026-12-24", to: "2027-01-07" },
+    });
+    expect(breakItem && breakItem.type === "break" && breakDisplayRange(breakItem)).toEqual({
+      from: "2026-12-24",
+      to: "2027-01-07",
     });
     expect(breakItem && breakItem.type === "break" && breakItem.lessons).toHaveLength(4);
     expect(items.map((item) => item.type)).toEqual([
@@ -329,5 +337,43 @@ describe("collapsing school breaks", () => {
     expect(collapseSchoolBreaks([occurrence])).toEqual([
       { type: "lesson", occurrence },
     ]);
+  });
+});
+
+describe("breakDisplayRange", () => {
+  it("falls back to the lesson dates for a closure made before its dates were stored", () => {
+    const [item] = collapseSchoolBreaks(
+      projectOccurrences({
+        from: "2026-12-28",
+        to: "2026-12-30",
+        slots: [{ classId: "class-a", day: "Mon", time: "16:00" }, { classId: "class-a", day: "Wed", time: "17:00" }],
+        classes: [CLASS_A],
+        events: [
+          event({ id: "a", event_date: "2026-12-28", class_id: "class-a", class_name: "Class A", start_time: "16:00", cancellation_reason: "christmas" }),
+          event({ id: "b", event_date: "2026-12-30", class_id: "class-a", class_name: "Class A", start_time: "17:00", cancellation_reason: "christmas" }),
+        ],
+      }),
+    );
+    expect(item.type === "break" && breakDisplayRange(item)).toEqual({
+      from: "2026-12-28",
+      to: "2026-12-30",
+    });
+  });
+});
+
+describe("noticesForClosure with the closure's own dates", () => {
+  const rows = [
+    { event_date: "2026-12-28", class_id: "class-a", class_name: "Class A", closure_from: "2026-12-24", closure_to: "2027-01-07" },
+    { event_date: "2027-01-04", class_id: "class-a", class_name: "Class A", closure_from: "2026-12-24", closure_to: "2027-01-07" },
+  ];
+
+  it("names the official break dates rather than the lesson dates", () => {
+    const [notice] = noticesForClosure(rows, { kind: "closed", reasonLabel: "Διακοπές Χριστουγέννων" }, "c", "2026-12-20");
+    expect(notice.values.date).toBe("24/12–7/1");
+  });
+
+  it("starts from today when the break is already under way", () => {
+    const [notice] = noticesForClosure(rows, { kind: "reopened" }, "c", "2026-12-27");
+    expect(notice.values.date).toBe("27/12–7/1");
   });
 });

@@ -93,6 +93,8 @@ export type ProjectionEvent = Pick<
   // attendance alerts, the phone companion) needn't select them.
   cancellation_reason?: CancellationReason | null;
   closure_id?: string | null;
+  closure_from?: string | null;
+  closure_to?: string | null;
 };
 
 export type OccurrenceKind =
@@ -125,6 +127,8 @@ export interface Occurrence {
   cancellationReason: CancellationReason | null;
   /** The school closure a cancelled occurrence belongs to (see lib/school-closures.ts). */
   closureId: string | null;
+  /** The dates that closure was declared for, when stored (older closures have none). */
+  closureRange: { from: string; to: string } | null;
 }
 
 function eventSpansTwoHours(startTime: string | null, endTime: string | null): boolean {
@@ -154,6 +158,14 @@ interface CancellationCoverage {
   /** start_time -> event id, for a specific-occurrence cancellation */
   timesCovered: Map<string, string>;
   allEventIds: string[];
+}
+
+function closureRangeOf(
+  event: ProjectionEvent | undefined,
+): { from: string; to: string } | null {
+  return event?.closure_from && event.closure_to
+    ? { from: event.closure_from, to: event.closure_to }
+    : null;
 }
 
 export function projectOccurrences(input: ProjectionInput): Occurrence[] {
@@ -236,6 +248,7 @@ export function projectOccurrences(input: ProjectionInput): Occurrence[] {
         isTwoHour: slot.isTwoHour ?? false,
         cancellationReason: cancellation?.cancellation_reason ?? null,
         closureId: cancellation?.closure_id ?? null,
+        closureRange: closureRangeOf(cancellation),
       });
     }
   }
@@ -266,6 +279,7 @@ export function projectOccurrences(input: ProjectionInput): Occurrence[] {
           isTwoHour: eventSpansTwoHours(event.start_time, event.end_time),
           cancellationReason: event.cancellation_reason ?? null,
           closureId: event.closure_id ?? null,
+          closureRange: closureRangeOf(event),
         });
       }
       continue;
@@ -294,6 +308,7 @@ export function projectOccurrences(input: ProjectionInput): Occurrence[] {
         isTwoHour: eventSpansTwoHours(event.start_time, event.end_time),
         cancellationReason: null,
         closureId: null,
+        closureRange: null,
       });
       continue;
     }
@@ -316,6 +331,7 @@ export function projectOccurrences(input: ProjectionInput): Occurrence[] {
         isTwoHour: eventSpansTwoHours(event.start_time, event.end_time),
         cancellationReason: null,
         closureId: null,
+        closureRange: null,
       });
       continue;
     }
@@ -338,6 +354,7 @@ export function projectOccurrences(input: ProjectionInput): Occurrence[] {
         isTwoHour: eventSpansTwoHours(event.start_time, event.end_time),
         cancellationReason: null,
         closureId: null,
+        closureRange: null,
       });
       continue;
     }
@@ -361,6 +378,7 @@ export function projectOccurrences(input: ProjectionInput): Occurrence[] {
         slotTime: null,
         cancellationReason: null,
         closureId: null,
+        closureRange: null,
       });
     }
   }

@@ -990,6 +990,9 @@ export function TeacherCalendar({
               {CANCELLATION_REASON_LABELS_EN[item.reason]}
             </p>
             <p className="text-xs text-muted-foreground">
+              {item.officialRange
+                ? `${format(fromIsoDate(item.officialRange.from), "d MMM")} – ${format(fromIsoDate(item.officialRange.to), "d MMM yyyy")} · `
+                : ""}
               No lessons · {item.lessons.length} cancelled
             </p>
           </div>
