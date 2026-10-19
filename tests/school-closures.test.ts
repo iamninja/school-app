@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  CANCELLATION_REASON_LABELS_EL,
+  cancelledLessonLabel,
   formatClosureRangeEl,
   planClosure,
   upcomingClosurePresets,
@@ -213,5 +215,20 @@ describe("noticesForClosure", () => {
       event: "lessons_reopened",
       values: { class: "Class A", date: "28/12–7/1", reason: null },
     });
+  });
+});
+
+describe("cancelledLessonLabel", () => {
+  it("shows a holiday on its own, and an unplanned closure as a cancellation", () => {
+    expect(cancelledLessonLabel("christmas", "Ακύρωση", CANCELLATION_REASON_LABELS_EL)).toBe(
+      "Διακοπές Χριστουγέννων",
+    );
+    expect(cancelledLessonLabel("public_holiday", "Ακύρωση", CANCELLATION_REASON_LABELS_EL)).toBe(
+      "Αργία",
+    );
+    expect(cancelledLessonLabel("strike", "Ακύρωση", CANCELLATION_REASON_LABELS_EL)).toBe(
+      "Ακύρωση · Απεργία",
+    );
+    expect(cancelledLessonLabel(null, "Ακύρωση", CANCELLATION_REASON_LABELS_EL)).toBe("Ακύρωση");
   });
 });

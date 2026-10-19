@@ -69,7 +69,11 @@ import {
   type ProjectionSlot,
 } from "@/lib/calendar-projection";
 import { lessonTimeLabel, recurringLessonWindow } from "@/lib/schedule-grid";
-import { CANCELLATION_REASON_LABELS_EN } from "@/lib/school-closures";
+import {
+  CANCELLATION_REASON_LABELS_EN,
+  cancelledLessonLabel,
+  isHolidayReason,
+} from "@/lib/school-closures";
 import {
   upsertAttendanceRecord,
   type AttendanceRecord,
@@ -1038,7 +1042,8 @@ export function TeacherCalendar({
                     <div className="mt-1 flex items-center gap-2">
                       <Badge
                         variant={
-                          occurrence.kind === "cancelled"
+                          occurrence.kind === "cancelled" &&
+                          !isHolidayReason(occurrence.cancellationReason)
                             ? "destructive"
                             : "outline"
                         }
@@ -1046,9 +1051,11 @@ export function TeacherCalendar({
                         {occurrence.kind === "recurring"
                           ? "Scheduled class"
                           : occurrence.kind === "cancelled"
-                            ? occurrence.cancellationReason
-                              ? `Cancelled · ${CANCELLATION_REASON_LABELS_EN[occurrence.cancellationReason]}`
-                              : "Cancelled"
+                            ? cancelledLessonLabel(
+                                occurrence.cancellationReason,
+                                "Cancelled",
+                                CANCELLATION_REASON_LABELS_EN,
+                              )
                             : TYPE_LABELS[occurrence.kind as CalendarEventType]}
                       </Badge>
                       {occurrence.notes ? (

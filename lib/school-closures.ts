@@ -46,6 +46,31 @@ export const CANCELLATION_REASON_LABELS_EL: Record<CancellationReason, string> =
   other: "Κλειστά",
 };
 
+// A holiday is simply a day off - it reads as "Αργία" / "Διακοπές
+// Χριστουγέννων" on its own, not as a cancellation. Weather, strikes and
+// other closures are unplanned, so they still say "Ακύρωση · Απεργία".
+const HOLIDAY_REASONS: ReadonlySet<CancellationReason> = new Set([
+  "christmas",
+  "easter",
+  "public_holiday",
+]);
+
+export function isHolidayReason(reason: CancellationReason | null): boolean {
+  return reason !== null && HOLIDAY_REASONS.has(reason);
+}
+
+/** The badge text for a cancelled lesson, in whichever language's labels. */
+export function cancelledLessonLabel(
+  reason: CancellationReason | null,
+  cancelledLabel: string,
+  reasonLabels: Record<CancellationReason, string>,
+): string {
+  if (reason === null) return cancelledLabel;
+  return isHolidayReason(reason)
+    ? reasonLabels[reason]
+    : `${cancelledLabel} · ${reasonLabels[reason]}`;
+}
+
 /** Longest closure in one go - comfortably covers the Christmas break (15 days). */
 export const MAX_CLOSURE_DAYS = 31;
 

@@ -175,7 +175,7 @@ export const EVENTS = {
     group: "school",
     switch: "lesson_changes",
     title: "Δεν γίνονται μαθήματα · {class}",
-    body: "Τα μαθήματα {date} ακυρώνονται ({reason}).",
+    body: "{reason}: δεν γίνονται μαθήματα {date}.",
     placeholders: ["class", "date", "reason"],
     url: STUDENT_URL,
   },

@@ -22,6 +22,8 @@ import { lessonTimeLabel } from "@/lib/schedule-grid";
 import {
   CANCELLATION_REASON_LABELS_EL,
   CANCELLATION_REASON_LABELS_EN,
+  cancelledLessonLabel,
+  isHolidayReason,
   type CancellationReason,
 } from "@/lib/school-closures";
 
@@ -80,12 +82,19 @@ function OccurrenceRow({
       <div className="flex shrink-0 items-center gap-1.5">
         {occurrence.kind !== "recurring" ? (
           <Badge
-            variant={occurrence.kind === "cancelled" ? "destructive" : "outline"}
+            variant={
+              occurrence.kind === "cancelled" &&
+              !isHolidayReason(occurrence.cancellationReason)
+                ? "destructive"
+                : "outline"
+            }
           >
             {occurrence.kind === "cancelled"
-              ? occurrence.cancellationReason
-                ? `${labels.eventTypes.cancellation} · ${labels.reasons[occurrence.cancellationReason]}`
-                : labels.eventTypes.cancellation
+              ? cancelledLessonLabel(
+                  occurrence.cancellationReason,
+                  labels.eventTypes.cancellation,
+                  labels.reasons,
+                )
               : (labels.eventTypes[occurrence.kind] ?? occurrence.kind)}
           </Badge>
         ) : null}
