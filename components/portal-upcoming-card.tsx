@@ -107,7 +107,7 @@ function OccurrenceRow({
   );
 }
 
-// A whole Christmas/Easter break as one line, instead of every lesson in it
+// A whole holiday (break or public holiday) as one line, instead of every lesson in it
 // crossed out (see collapseSchoolBreaks).
 function BreakRow({
   item,
@@ -122,7 +122,11 @@ function BreakRow({
   return (
     <div className="flex items-center justify-between gap-3 rounded-lg border border-border/70 bg-background/60 px-3 py-2">
       <div className="min-w-0">
-        <p className="truncate text-sm font-medium">{labels.reasons[item.reason]}</p>
+        <p className="truncate text-sm font-medium">
+          {item.note
+            ? `${labels.reasons[item.reason]} · ${item.note}`
+            : labels.reasons[item.reason]}
+        </p>
         <p className="text-xs text-muted-foreground">
           {range.from === range.to
             ? dateLabel(range.from, "EEEE d MMMM")

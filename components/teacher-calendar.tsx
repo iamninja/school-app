@@ -148,7 +148,7 @@ const WEEK_ROW_CLASSES: Record<OccurrenceKind, string> = {
   block: "border-sky-500/30 bg-sky-500/10",
 };
 
-// A Christmas/Easter break day - one entry instead of the crossed-out
+// A holiday (break or public holiday) - one entry instead of the crossed-out
 // lessons (see collapseSchoolBreaksByDay).
 const BREAK_ROW_CLASS = "border-emerald-500/30 bg-emerald-500/10";
 const BREAK_DOT_CLASS = "bg-emerald-500";
@@ -383,6 +383,11 @@ function WeeklyOverview({
                           <p className="truncate">
                             {CANCELLATION_REASON_LABELS_EN[item.reason]}
                           </p>
+                          {item.note ? (
+                            <p className="truncate text-[10px] opacity-70">
+                              {item.note}
+                            </p>
+                          ) : null}
                         </div>
                       ) : (
                         <WeekOccurrenceChip
@@ -991,7 +996,7 @@ export function TeacherCalendar({
     }
   };
 
-  // A Christmas/Easter day: one row instead of every class crossed out,
+  // A holiday (break or public holiday): one row instead of every class crossed out,
   // with the lessons themselves one click away for a single restore.
   const renderBreakRow = (item: SchoolBreakItem) => {
     const key = `${item.from}|${item.reason}`;
@@ -1002,6 +1007,7 @@ export function TeacherCalendar({
           <div>
             <p className="text-sm font-medium">
               {CANCELLATION_REASON_LABELS_EN[item.reason]}
+              {item.note ? ` · ${item.note}` : ""}
             </p>
             <p className="text-xs text-muted-foreground">
               {item.officialRange

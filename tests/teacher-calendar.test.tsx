@@ -157,7 +157,8 @@ describe("TeacherCalendar", () => {
     expect(within(weekCard).getByText("Algebra II")).toHaveClass("line-through");
   });
 
-  it("labels a public holiday in the week strip by its reason, struck lesson but not label", () => {
+  it("shows a public holiday as one entry with its note, in the day panel and week strip", async () => {
+    const user = userEvent.setup();
     renderCalendar({
       slots: [{ classId: classA.id, day: todayWeekday, time: "15:00" }],
       events: [
@@ -184,9 +185,16 @@ describe("TeacherCalendar", () => {
     const weekCard = screen
       .getByText(/^week of/i)
       .closest(".rounded-2xl") as HTMLElement;
-    const label = within(weekCard).getByText("Public holiday");
-    expect(label.closest(".line-through")).toBeNull();
-    expect(label.parentElement).not.toHaveClass("bg-rose-500/10");
+    expect(within(weekCard).getByText("Public holiday")).toBeInTheDocument();
+    expect(within(weekCard).getByText("28η Οκτωβρίου")).toBeInTheDocument();
+    expect(within(weekCard).queryByText("Algebra II")).not.toBeInTheDocument();
+
+    // Day panel: one row; the lesson is behind "Show lessons" for a single restore.
+    expect(screen.getByText("Public holiday · 28η Οκτωβρίου")).toBeInTheDocument();
+    expect(screen.queryByText(/15:00 · Algebra II/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /show lessons/i }));
+    expect(screen.getByText(/15:00 · Algebra II/)).toHaveClass("line-through");
+    expect(screen.getByRole("button", { name: /^restore$/i })).toBeInTheDocument();
   });
 
   it("shows no overlap warning when nothing collides", () => {
