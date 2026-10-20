@@ -141,8 +141,7 @@ export type AssessmentDateMarker = {
 
 const WEEK_ROW_CLASSES: Record<OccurrenceKind, string> = {
   recurring: "border-border bg-muted/40",
-  cancelled:
-    "border-rose-500/30 bg-rose-500/10 text-muted-foreground line-through",
+  cancelled: "border-rose-500/30 bg-rose-500/10 text-muted-foreground",
   extra_session: "border-teal-500/30 bg-teal-500/10",
   ad_hoc_lesson: "border-violet-500/30 bg-violet-500/10",
   trial_lesson: "border-amber-500/30 bg-amber-500/10",
@@ -249,15 +248,24 @@ function findOverlappingLessons(
   return overlaps;
 }
 
+// A day off for a public holiday isn't an alarm: neutral, not the red of
+// an unplanned cancellation (same rule as the day panel's badge).
+const WEEK_HOLIDAY_ROW_CLASS = "border-border bg-muted/40 text-muted-foreground";
+
 function WeekOccurrenceChip({ occurrence }: { occurrence: Occurrence }) {
+  const cancelled = occurrence.kind === "cancelled";
+  // Only the lesson itself is struck through, not the label saying why.
+  const struck = cancelled && "line-through";
   return (
     <div
       className={cn(
         "rounded border px-1.5 py-1 text-xs",
-        WEEK_ROW_CLASSES[occurrence.kind],
+        cancelled && isHolidayReason(occurrence.cancellationReason)
+          ? WEEK_HOLIDAY_ROW_CLASS
+          : WEEK_ROW_CLASSES[occurrence.kind],
       )}
     >
-      <p className="font-medium">
+      <p className={cn("font-medium", struck)}>
         {occurrence.startTime
           ? lessonTimeLabel(
               occurrence.startTime,
@@ -266,7 +274,7 @@ function WeekOccurrenceChip({ occurrence }: { occurrence: Occurrence }) {
             )
           : "All day"}
       </p>
-      <p className="truncate">
+      <p className={cn("truncate", struck)}>
         {occurrence.className ??
           occurrence.studentName ??
           occurrence.contactName ??
@@ -275,7 +283,13 @@ function WeekOccurrenceChip({ occurrence }: { occurrence: Occurrence }) {
       </p>
       {WEEK_KIND_LABELS[occurrence.kind] ? (
         <p className="text-[10px] tracking-wide uppercase opacity-70">
-          {WEEK_KIND_LABELS[occurrence.kind]}
+          {cancelled
+            ? cancelledLessonLabel(
+                occurrence.cancellationReason,
+                "Cancelled",
+                CANCELLATION_REASON_LABELS_EN,
+              )
+            : WEEK_KIND_LABELS[occurrence.kind]}
         </p>
       ) : null}
     </div>

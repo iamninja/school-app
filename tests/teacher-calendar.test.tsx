@@ -152,7 +152,41 @@ describe("TeacherCalendar", () => {
     const weekCard = screen
       .getByText(/^week of/i)
       .closest(".rounded-2xl") as HTMLElement;
-    expect(within(weekCard).getByText("Cancelled")).toBeInTheDocument();
+    const label = within(weekCard).getByText("Cancelled");
+    expect(label.closest(".line-through")).toBeNull();
+    expect(within(weekCard).getByText("Algebra II")).toHaveClass("line-through");
+  });
+
+  it("labels a public holiday in the week strip by its reason, struck lesson but not label", () => {
+    renderCalendar({
+      slots: [{ classId: classA.id, day: todayWeekday, time: "15:00" }],
+      events: [
+        {
+          id: "evt-holiday-1",
+          event_type: "cancellation",
+          event_date: todayIso,
+          start_time: "15:00",
+          end_time: null,
+          class_id: classA.id,
+          class_name: "Algebra II",
+          student_id: null,
+          student_name: null,
+          contact_name: null,
+          contact_phone: null,
+          title: null,
+          notes: "28η Οκτωβρίου",
+          cancellation_reason: "public_holiday",
+          created_at: "2026-08-01T00:00:00Z",
+        },
+      ],
+    });
+
+    const weekCard = screen
+      .getByText(/^week of/i)
+      .closest(".rounded-2xl") as HTMLElement;
+    const label = within(weekCard).getByText("Public holiday");
+    expect(label.closest(".line-through")).toBeNull();
+    expect(label.parentElement).not.toHaveClass("bg-rose-500/10");
   });
 
   it("shows no overlap warning when nothing collides", () => {
@@ -646,9 +680,11 @@ describe("TeacherCalendar", () => {
       ],
     });
 
-    const badge = screen.getByText("Cancelled · Weather");
-    // Only the lesson line is struck through, not its badge.
-    expect(badge.closest(".line-through")).toBeNull();
+    // Day panel badge and week strip label - neither struck through, only
+    // the lesson line is.
+    const labels = screen.getAllByText("Cancelled · Weather");
+    expect(labels).toHaveLength(2);
+    for (const label of labels) expect(label.closest(".line-through")).toBeNull();
     expect(screen.getByText(/15:00 · Algebra II/)).toHaveClass("line-through");
     await user.click(screen.getByRole("button", { name: /restore whole closure/i }));
 
