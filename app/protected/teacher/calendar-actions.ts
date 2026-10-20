@@ -29,7 +29,7 @@ type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 const CALENDAR_EVENT_COLUMNS =
   "id, event_type, event_date, start_time, end_time, class_id, class_name, " +
   "student_id, student_name, contact_name, contact_phone, title, notes, " +
-  "cancellation_reason, closure_id, created_at";
+  "cancellation_reason, closure_id, closure_from, closure_to, created_at";
 
 const TIME_PATTERN = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -492,6 +492,8 @@ export async function cancelLessonsForClosureAction(input: {
     notes,
     cancellation_reason: input.reason,
     closure_id: closureId,
+    closure_from: input.from,
+    closure_to: input.to,
   }));
 
   // One insert, so the closure lands whole or not at all.
@@ -532,7 +534,7 @@ export async function restoreClosureAction(
     .eq("teacher_id", userId)
     .eq("closure_id", closureId)
     .eq("event_type", "cancellation")
-    .select("id, event_date, class_id, class_name");
+    .select("id, event_date, class_id, class_name, closure_from, closure_to");
   if (error) {
     throw error;
   }
@@ -541,6 +543,8 @@ export async function restoreClosureAction(
     event_date: string;
     class_id: string | null;
     class_name: string | null;
+    closure_from: string | null;
+    closure_to: string | null;
   }>;
 
   if (options.notify !== false) {

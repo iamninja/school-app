@@ -97,13 +97,19 @@ export function noticeForMove(from: CalendarRow, to: CalendarRow): Notice | null
 }
 
 /**
- * A school closure was added (or undone): one notice per class, naming the
- * span of that class's own cancelled lessons from today on - a two-week
- * break is one message, not one per lesson. Past dates are left out like
- * everywhere else here; a class with only past lessons gets nothing.
+ * A school closure was added (or undone): one notice per class - a two-week
+ * break is one message, not one per lesson. It names the dates the closure
+ * was declared for when the rows carry them (older closures don't), else
+ * the span of that class's own cancelled lessons; either way from today on.
+ * A class with only past lessons gets nothing.
  */
 export function noticesForClosure(
-  rows: Array<Pick<CalendarRow, "event_date" | "class_id" | "class_name">>,
+  rows: Array<
+    Pick<CalendarRow, "event_date" | "class_id" | "class_name"> & {
+      closure_from?: string | null;
+      closure_to?: string | null;
+    }
+  >,
   change: { kind: "closed"; reasonLabel: string } | { kind: "reopened" },
   closureId: string,
   today: string,
@@ -111,17 +117,21 @@ export function noticesForClosure(
   const byClass = new Map<string, { name: string; from: string; to: string }>();
   for (const row of rows) {
     if (!row.class_id || row.event_date < today) continue;
+    // An official range already under way is named from today, not its start.
+    const from =
+      row.closure_from && row.closure_to
+        ? row.closure_from > today
+          ? row.closure_from
+          : today
+        : row.event_date;
+    const to = row.closure_from && row.closure_to ? row.closure_to : row.event_date;
     const span = byClass.get(row.class_id);
     if (!span) {
-      byClass.set(row.class_id, {
-        name: row.class_name ?? "",
-        from: row.event_date,
-        to: row.event_date,
-      });
+      byClass.set(row.class_id, { name: row.class_name ?? "", from, to });
       continue;
     }
-    if (row.event_date < span.from) span.from = row.event_date;
-    if (row.event_date > span.to) span.to = row.event_date;
+    if (from < span.from) span.from = from;
+    if (to > span.to) span.to = to;
   }
 
   return [...byClass].map(([classId, span]) => ({

@@ -655,6 +655,57 @@ describe("TeacherCalendar", () => {
     expect(onEventsChange).toHaveBeenCalled();
   });
 
+  it("shows a Christmas break day as one row, with the lessons behind a toggle", async () => {
+    const user = userEvent.setup();
+    vi.mocked(calendarActions.deleteCalendarEventAction).mockResolvedValue(undefined);
+
+    renderCalendar({
+      slots: [{ classId: classA.id, day: todayWeekday, time: "15:00" }],
+      events: [
+        {
+          id: "evt-xmas-1",
+          event_type: "cancellation",
+          event_date: todayIso,
+          start_time: "15:00",
+          end_time: null,
+          class_id: classA.id,
+          class_name: "Algebra II",
+          student_id: null,
+          student_name: null,
+          contact_name: null,
+          contact_phone: null,
+          title: null,
+          notes: null,
+          cancellation_reason: "christmas",
+          closure_id: "closure-xmas",
+          created_at: "2026-08-01T00:00:00Z",
+        },
+      ],
+    });
+
+    // Day panel and week strip both show the break, not a crossed-out class.
+    expect(screen.getAllByText("Christmas break").length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText(/15:00 · Algebra II/)).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /restore whole closure/i }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /show lessons/i }));
+    expect(screen.getByText(/15:00 · Algebra II/)).toBeInTheDocument();
+    // Still exactly one "whole closure" button - the expanded lesson only
+    // offers its own single restore.
+    expect(
+      screen.getAllByRole("button", { name: /restore whole closure/i }),
+    ).toHaveLength(1);
+
+    await user.click(screen.getByRole("button", { name: /^restore$/i }));
+    await waitFor(() => {
+      expect(calendarActions.deleteCalendarEventAction).toHaveBeenCalledWith(
+        "evt-xmas-1",
+      );
+    });
+  });
+
   it("adds a personal block via the Add menu", async () => {
     const user = userEvent.setup();
     const created: CalendarEvent = {

@@ -331,7 +331,7 @@ export async function getStudentDashboardDataAction(): Promise<
   const { data: calendarEventRows } = await supabase
     .from("calendar_events")
     .select(
-      "id, event_type, event_date, start_time, end_time, class_id, class_name, student_id, notes, cancellation_reason",
+      "id, event_type, event_date, start_time, end_time, class_id, class_name, student_id, notes, cancellation_reason, closure_from, closure_to",
     )
     .gte("event_date", todayIso)
     .order("event_date", { ascending: true })
@@ -356,6 +356,8 @@ export async function getStudentDashboardDataAction(): Promise<
       class_name: event.class_name,
       notes: event.notes,
       cancellation_reason: event.cancellation_reason ?? null,
+      closure_from: event.closure_from ?? null,
+      closure_to: event.closure_to ?? null,
     }));
 
   // Assessments: student_id is a direct column on assessment_assignments,

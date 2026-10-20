@@ -186,3 +186,115 @@ export function planClosure(
     ),
   };
 }
+
+// The long breaks are expected days off, not news: rather than every class
+// crossed out day after day, the calendars show one entry per day and the
+// portals one line for the whole break. Display only - the cancellation
+// rows stay, since they are what blocks attendance on those days and what
+// "Restore whole closure" deletes.
+const SCHOOL_BREAK_REASONS: ReadonlySet<CancellationReason> = new Set([
+  "christmas",
+  "easter",
+]);
+
+export function isSchoolBreak(occurrence: Occurrence): boolean {
+  return (
+    occurrence.kind === "cancelled" &&
+    occurrence.cancellationReason !== null &&
+    SCHOOL_BREAK_REASONS.has(occurrence.cancellationReason)
+  );
+}
+
+export interface SchoolBreakItem {
+  type: "break";
+  reason: CancellationReason;
+  /** First and last date of the lessons it stands for. */
+  from: string;
+  to: string;
+  /**
+   * The dates the break was declared for (24/12-7/1), which is what the
+   * portals and the day panel show; null for closures made before those
+   * dates were stored - show from/to then.
+   */
+  officialRange: { from: string; to: string } | null;
+  lessons: Occurrence[];
+  closureIds: string[];
+}
+
+export type ScheduleItem =
+  | { type: "lesson"; occurrence: Occurrence }
+  | SchoolBreakItem;
+
+// Two closures with the same reason in one list (a break entered in two
+// parts) show as one span covering both.
+function widen(
+  range: { from: string; to: string } | null,
+  other: { from: string; to: string } | null,
+): { from: string; to: string } | null {
+  if (!range || !other) return range ?? other;
+  return {
+    from: other.from < range.from ? other.from : range.from,
+    to: other.to > range.to ? other.to : range.to,
+  };
+}
+
+/** The dates a break entry should show: the official ones when stored. */
+export function breakDisplayRange(item: SchoolBreakItem): { from: string; to: string } {
+  return item.officialRange ?? { from: item.from, to: item.to };
+}
+
+function collapse(
+  occurrences: Occurrence[],
+  keyOf: (occurrence: Occurrence) => string,
+): ScheduleItem[] {
+  const items: ScheduleItem[] = [];
+  const breaks = new Map<string, SchoolBreakItem>();
+  for (const occurrence of occurrences) {
+    if (!isSchoolBreak(occurrence)) {
+      items.push({ type: "lesson", occurrence });
+      continue;
+    }
+    const key = keyOf(occurrence);
+    const existing = breaks.get(key);
+    if (existing) {
+      existing.lessons.push(occurrence);
+      if (occurrence.date < existing.from) existing.from = occurrence.date;
+      if (occurrence.date > existing.to) existing.to = occurrence.date;
+      if (occurrence.closureId && !existing.closureIds.includes(occurrence.closureId)) {
+        existing.closureIds.push(occurrence.closureId);
+      }
+      existing.officialRange = widen(existing.officialRange, occurrence.closureRange);
+      continue;
+    }
+    // Takes the place of its first lesson, so the list stays in date order.
+    const item: SchoolBreakItem = {
+      type: "break",
+      reason: occurrence.cancellationReason!,
+      from: occurrence.date,
+      to: occurrence.date,
+      officialRange: occurrence.closureRange,
+      lessons: [occurrence],
+      closureIds: occurrence.closureId ? [occurrence.closureId] : [],
+    };
+    breaks.set(key, item);
+    items.push(item);
+  }
+  return items;
+}
+
+/** One break entry per day (the teacher's day panel and week strip). */
+export function collapseSchoolBreaksByDay(occurrences: Occurrence[]): ScheduleItem[] {
+  return collapse(
+    occurrences,
+    (occurrence) => `${occurrence.date}|${occurrence.cancellationReason}`,
+  );
+}
+
+/**
+ * One entry for the whole break (the portals' upcoming list). Keyed by
+ * reason alone: Christmas and Easter are months apart, so within any list
+ * the portals show there is at most one of each.
+ */
+export function collapseSchoolBreaks(occurrences: Occurrence[]): ScheduleItem[] {
+  return collapse(occurrences, (occurrence) => occurrence.cancellationReason ?? "");
+}

@@ -774,6 +774,9 @@ export interface CalendarEvent {
   cancellation_reason?: CancellationReason | null;
   /** Groups the cancellations of one school closure. */
   closure_id?: string | null;
+  /** The dates the closure was declared for - on each of its rows. */
+  closure_from?: string | null;
+  closure_to?: string | null;
   created_at: string;
 }
 
@@ -808,6 +811,8 @@ export interface PortalCalendarEvent {
   class_name: string | null;
   notes: string | null;
   cancellation_reason?: CancellationReason | null;
+  closure_from?: string | null;
+  closure_to?: string | null;
 }
 
 // Assessments: in-person tests/mock exams, graded with one

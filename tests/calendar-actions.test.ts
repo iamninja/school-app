@@ -435,6 +435,8 @@ describe("school closures", () => {
         class_name: "Class A",
         cancellation_reason: "strike",
         closure_id: result.closureId,
+        closure_from: "2026-10-26",
+        closure_to: "2026-10-28",
         notes: "Απεργία ΜΜΜ",
       }),
       expect.objectContaining({
