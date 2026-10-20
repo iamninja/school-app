@@ -187,21 +187,19 @@ export function planClosure(
   };
 }
 
-// The long breaks are expected days off, not news: rather than every class
-// crossed out day after day, the calendars show one entry per day and the
-// portals one line for the whole break. Display only - the cancellation
-// rows stay, since they are what blocks attendance on those days and what
-// "Restore whole closure" deletes.
-const SCHOOL_BREAK_REASONS: ReadonlySet<CancellationReason> = new Set([
-  "christmas",
-  "easter",
-]);
+// Holidays (the long breaks and single public holidays) are expected days
+// off, not news: rather than every class crossed out, the calendars show
+// one entry per day and the portals one line per holiday. Display only -
+// the cancellation rows stay, since they are what blocks attendance on
+// those days and what "Restore whole closure" deletes; a class restored on
+// its own simply shows again next to the entry. Weather and strikes stay
+// per class: those are news.
 
 export function isSchoolBreak(occurrence: Occurrence): boolean {
   return (
     occurrence.kind === "cancelled" &&
     occurrence.cancellationReason !== null &&
-    SCHOOL_BREAK_REASONS.has(occurrence.cancellationReason)
+    HOLIDAY_REASONS.has(occurrence.cancellationReason)
   );
 }
 
@@ -219,6 +217,8 @@ export interface SchoolBreakItem {
   officialRange: { from: string; to: string } | null;
   lessons: Occurrence[];
   closureIds: string[];
+  /** The closure's note ("28η Οκτωβρίου"), shown with the reason. */
+  note: string | null;
 }
 
 export type ScheduleItem =
@@ -275,6 +275,7 @@ function collapse(
       officialRange: occurrence.closureRange,
       lessons: [occurrence],
       closureIds: occurrence.closureId ? [occurrence.closureId] : [],
+      note: occurrence.notes,
     };
     breaks.set(key, item);
     items.push(item);
@@ -291,10 +292,13 @@ export function collapseSchoolBreaksByDay(occurrences: Occurrence[]): ScheduleIt
 }
 
 /**
- * One entry for the whole break (the portals' upcoming list). Keyed by
- * reason alone: Christmas and Easter are months apart, so within any list
- * the portals show there is at most one of each.
+ * One entry per holiday (the portals' upcoming list), keyed by its closure:
+ * by reason alone, 28/10 and 17/11 would merge into one "Αργία" span. Every
+ * reasoned cancellation comes from a closure; the reason is only a fallback.
  */
 export function collapseSchoolBreaks(occurrences: Occurrence[]): ScheduleItem[] {
-  return collapse(occurrences, (occurrence) => occurrence.cancellationReason ?? "");
+  return collapse(
+    occurrences,
+    (occurrence) => occurrence.closureId ?? occurrence.cancellationReason ?? "",
+  );
 }

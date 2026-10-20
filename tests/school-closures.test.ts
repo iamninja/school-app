@@ -318,24 +318,52 @@ describe("collapsing school breaks", () => {
     ]);
   });
 
-  it("leaves a public holiday as ordinary cancelled lessons", () => {
-    const [occurrence] = projectOccurrences({
-      from: "2026-10-28",
-      to: "2026-10-28",
+  it("collapses each public holiday on its own, with its note, and leaves strikes per class", () => {
+    const holiday = (id: string, date: string, note: string) =>
+      event({
+        id,
+        event_date: date,
+        class_id: "class-a",
+        class_name: "Class A",
+        start_time: "17:00",
+        notes: note,
+        cancellation_reason: "public_holiday",
+        closure_id: `closure-${id}`,
+        closure_from: date,
+        closure_to: date,
+      });
+    const occurrences = projectOccurrences({
+      from: "2026-10-26",
+      to: "2026-11-18",
       slots: [{ classId: "class-a", day: "Wed", time: "17:00" }],
       classes: [CLASS_A],
       events: [
+        holiday("ohi", "2026-10-28", "28η Οκτωβρίου"),
+        holiday("poly", "2026-11-18", "Επέτειος Πολυτεχνείου"),
         event({
-          id: "ohi",
+          id: "strike",
+          event_date: "2026-11-04",
           class_id: "class-a",
           class_name: "Class A",
           start_time: "17:00",
-          cancellation_reason: "public_holiday",
+          cancellation_reason: "strike",
+          closure_id: "closure-strike",
         }),
       ],
     });
-    expect(collapseSchoolBreaks([occurrence])).toEqual([
-      { type: "lesson", occurrence },
+
+    const items = collapseSchoolBreaks(occurrences);
+    expect(
+      items.map((item) =>
+        item.type === "break"
+          ? `break ${item.from} ${item.note}`
+          : `${item.occurrence.date} ${item.occurrence.kind}`,
+      ),
+    ).toEqual([
+      "break 2026-10-28 28η Οκτωβρίου",
+      "2026-11-04 cancelled",
+      "2026-11-11 recurring",
+      "break 2026-11-18 Επέτειος Πολυτεχνείου",
     ]);
   });
 });

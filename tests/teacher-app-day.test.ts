@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ProjectionEvent } from "@/lib/calendar-projection";
 import {
   addDays,
+  buildDayHolidays,
   buildDayLessons,
   lessonInProgress,
   neighbouringLessonDays,
@@ -243,5 +244,69 @@ describe("teacherHomeFor", () => {
     [false, "nonsense", "/protected/teacher"],
   ])("phone=%s cookie=%s → %s", (isMobile, cookie, home) => {
     expect(teacherHomeFor({ isMobile, cookie })).toBe(home);
+  });
+});
+
+describe("buildDayHolidays", () => {
+  const holidayEvents = [
+    event({
+      id: "h1",
+      class_id: CLASS_A.id,
+      start_time: "16:00",
+      notes: "28η Οκτωβρίου",
+      cancellation_reason: "public_holiday",
+      closure_id: "closure-1",
+      closure_from: MONDAY,
+      closure_to: MONDAY,
+    }),
+    event({
+      id: "h2",
+      class_id: CLASS_B.id,
+      class_name: CLASS_B.name,
+      start_time: "18:00",
+      notes: "28η Οκτωβρίου",
+      cancellation_reason: "public_holiday",
+      closure_id: "closure-1",
+      closure_from: MONDAY,
+      closure_to: MONDAY,
+    }),
+  ];
+
+  it("turns a holiday's cancelled lessons into one entry with its note", () => {
+    const holidays = buildDayHolidays({
+      date: MONDAY,
+      projection: projection({ events: holidayEvents }),
+    });
+    expect(holidays).toHaveLength(1);
+    expect(holidays[0]).toMatchObject({
+      reason: "public_holiday",
+      note: "28η Οκτωβρίου",
+      closureIds: ["closure-1"],
+    });
+    expect(holidays[0].lessons).toHaveLength(2);
+  });
+
+  it("carries the reason onto the cancelled lessons, so the Today screen can hide them", () => {
+    const lessons = buildDayLessons({
+      date: MONDAY,
+      projection: projection({ events: holidayEvents }),
+      rosterByClass: ROSTERS,
+      attendance: [],
+    });
+    expect(lessons.map((l) => [l.kind, l.cancellationReason])).toEqual([
+      ["cancelled", "public_holiday"],
+      ["cancelled", "public_holiday"],
+    ]);
+  });
+
+  it("is empty for a strike - those lessons stay listed one by one", () => {
+    expect(
+      buildDayHolidays({
+        date: MONDAY,
+        projection: projection({
+          events: [event({ id: "s", start_time: "16:00", cancellation_reason: "strike", closure_id: "c" })],
+        }),
+      }),
+    ).toEqual([]);
   });
 });

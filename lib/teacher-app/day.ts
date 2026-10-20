@@ -9,6 +9,11 @@ import {
   type ProjectionSlot,
 } from "@/lib/calendar-projection";
 import { lessonTimeLabel, recurringLessonWindow, timeToMinutes } from "@/lib/schedule-grid";
+import {
+  collapseSchoolBreaksByDay,
+  type CancellationReason,
+  type SchoolBreakItem,
+} from "@/lib/school-closures";
 
 /**
  * Pure building blocks for the phone companion's "Today" screen: which
@@ -27,6 +32,8 @@ export type DayLesson = {
   startTime: string | null;
   isTwoHour: boolean;
   kind: "recurring" | "extra_session" | "cancelled";
+  /** Why a cancelled lesson was cancelled, when the teacher said. */
+  cancellationReason: CancellationReason | null;
   /** The real teaching window, minutes since midnight (null without a start time). */
   startMinutes: number | null;
   endMinutes: number | null;
@@ -130,6 +137,7 @@ export function buildDayLessons({
       startMinutes: window?.start ?? null,
       endMinutes: window?.end ?? null,
       kind: isCancelled ? "cancelled" : (occurrence.kind as "recurring" | "extra_session"),
+      cancellationReason: isCancelled ? occurrence.cancellationReason : null,
       rosterSize: roster.size,
       marked: marks.length,
       absent: marks.filter((row) => row.status === "absent").length,
@@ -139,6 +147,24 @@ export function buildDayLessons({
   return [...lessons.values()].sort((a, b) =>
     (a.startTime ?? "99:99").localeCompare(b.startTime ?? "99:99"),
   );
+}
+
+/**
+ * The day's holidays (a break or a public holiday), each as one entry in
+ * place of the lessons it cancelled - the same grouping as the console's
+ * Calendar tab (collapseSchoolBreaksByDay). The Today screen shows these
+ * instead of those cancelled lessons.
+ */
+export function buildDayHolidays({
+  date,
+  projection,
+}: {
+  date: string;
+  projection: DayProjection;
+}): SchoolBreakItem[] {
+  return collapseSchoolBreaksByDay(
+    projectOccurrences({ from: date, to: date, ...projection, includeBlocks: false }),
+  ).filter((item): item is SchoolBreakItem => item.type === "break");
 }
 
 /**

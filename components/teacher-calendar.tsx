@@ -141,15 +141,14 @@ export type AssessmentDateMarker = {
 
 const WEEK_ROW_CLASSES: Record<OccurrenceKind, string> = {
   recurring: "border-border bg-muted/40",
-  cancelled:
-    "border-rose-500/30 bg-rose-500/10 text-muted-foreground line-through",
+  cancelled: "border-rose-500/30 bg-rose-500/10 text-muted-foreground",
   extra_session: "border-teal-500/30 bg-teal-500/10",
   ad_hoc_lesson: "border-violet-500/30 bg-violet-500/10",
   trial_lesson: "border-amber-500/30 bg-amber-500/10",
   block: "border-sky-500/30 bg-sky-500/10",
 };
 
-// A Christmas/Easter break day - one entry instead of the crossed-out
+// A holiday (break or public holiday) - one entry instead of the crossed-out
 // lessons (see collapseSchoolBreaksByDay).
 const BREAK_ROW_CLASS = "border-emerald-500/30 bg-emerald-500/10";
 const BREAK_DOT_CLASS = "bg-emerald-500";
@@ -249,15 +248,24 @@ function findOverlappingLessons(
   return overlaps;
 }
 
+// A day off for a public holiday isn't an alarm: neutral, not the red of
+// an unplanned cancellation (same rule as the day panel's badge).
+const WEEK_HOLIDAY_ROW_CLASS = "border-border bg-muted/40 text-muted-foreground";
+
 function WeekOccurrenceChip({ occurrence }: { occurrence: Occurrence }) {
+  const cancelled = occurrence.kind === "cancelled";
+  // Only the lesson itself is struck through, not the label saying why.
+  const struck = cancelled && "line-through";
   return (
     <div
       className={cn(
         "rounded border px-1.5 py-1 text-xs",
-        WEEK_ROW_CLASSES[occurrence.kind],
+        cancelled && isHolidayReason(occurrence.cancellationReason)
+          ? WEEK_HOLIDAY_ROW_CLASS
+          : WEEK_ROW_CLASSES[occurrence.kind],
       )}
     >
-      <p className="font-medium">
+      <p className={cn("font-medium", struck)}>
         {occurrence.startTime
           ? lessonTimeLabel(
               occurrence.startTime,
@@ -266,7 +274,7 @@ function WeekOccurrenceChip({ occurrence }: { occurrence: Occurrence }) {
             )
           : "All day"}
       </p>
-      <p className="truncate">
+      <p className={cn("truncate", struck)}>
         {occurrence.className ??
           occurrence.studentName ??
           occurrence.contactName ??
@@ -275,7 +283,13 @@ function WeekOccurrenceChip({ occurrence }: { occurrence: Occurrence }) {
       </p>
       {WEEK_KIND_LABELS[occurrence.kind] ? (
         <p className="text-[10px] tracking-wide uppercase opacity-70">
-          {WEEK_KIND_LABELS[occurrence.kind]}
+          {cancelled
+            ? cancelledLessonLabel(
+                occurrence.cancellationReason,
+                "Cancelled",
+                CANCELLATION_REASON_LABELS_EN,
+              )
+            : WEEK_KIND_LABELS[occurrence.kind]}
         </p>
       ) : null}
     </div>
@@ -369,6 +383,11 @@ function WeeklyOverview({
                           <p className="truncate">
                             {CANCELLATION_REASON_LABELS_EN[item.reason]}
                           </p>
+                          {item.note ? (
+                            <p className="truncate text-[10px] opacity-70">
+                              {item.note}
+                            </p>
+                          ) : null}
                         </div>
                       ) : (
                         <WeekOccurrenceChip
@@ -977,7 +996,7 @@ export function TeacherCalendar({
     }
   };
 
-  // A Christmas/Easter day: one row instead of every class crossed out,
+  // A holiday (break or public holiday): one row instead of every class crossed out,
   // with the lessons themselves one click away for a single restore.
   const renderBreakRow = (item: SchoolBreakItem) => {
     const key = `${item.from}|${item.reason}`;
@@ -988,6 +1007,7 @@ export function TeacherCalendar({
           <div>
             <p className="text-sm font-medium">
               {CANCELLATION_REASON_LABELS_EN[item.reason]}
+              {item.note ? ` · ${item.note}` : ""}
             </p>
             <p className="text-xs text-muted-foreground">
               {item.officialRange
@@ -1049,13 +1069,16 @@ export function TeacherCalendar({
         key={key}
         className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3"
       >
-        <div
-          className={cn(
-            occurrence.kind === "cancelled" &&
-              "line-through text-muted-foreground",
-          )}
-        >
-          <p className="text-sm font-medium">
+        <div>
+          {/* Only the lesson line is struck through - on the wrapper, the
+              strike carried into the reason badge and the note as well. */}
+          <p
+            className={cn(
+              "text-sm font-medium",
+              occurrence.kind === "cancelled" &&
+                "line-through text-muted-foreground",
+            )}
+          >
             {occurrence.startTime ?? "All day"}
             {" · "}
             {occurrence.className ??

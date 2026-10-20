@@ -4,8 +4,10 @@ import type { createClient } from "@/lib/supabase/server";
 import type { ProjectionEvent } from "@/lib/calendar-projection";
 import type { AttendanceStatus } from "@/lib/attendance-records";
 import type { Homework } from "@/lib/types/database";
+import type { SchoolBreakItem } from "@/lib/school-closures";
 import {
   addDays,
+  buildDayHolidays,
   buildDayLessons,
   classHasLessonOn,
   neighbouringLessonDays,
@@ -97,7 +99,7 @@ async function loadSchool(
     supabase
       .from("calendar_events")
       .select(
-        "id, event_type, event_date, start_time, end_time, class_id, class_name, student_id, student_name, contact_name, title, notes",
+        "id, event_type, event_date, start_time, end_time, class_id, class_name, student_id, student_name, contact_name, title, notes, cancellation_reason, closure_id, closure_from, closure_to",
       )
       .eq("teacher_id", teacherId)
       .gte("event_date", from)
@@ -174,6 +176,8 @@ function activeClasses(classes: ClassRow[]): CompanionClass[] {
 export type CompanionDay = {
   date: string;
   lessons: DayLesson[];
+  /** Holidays that day, shown as one block each instead of their lessons. */
+  holidays: SchoolBreakItem[];
   previous: string | null;
   next: string | null;
 };
@@ -204,6 +208,7 @@ export async function loadDay(
       rosterByClass: rostersByClass(students),
       attendance: attendance ?? [],
     }),
+    holidays: buildDayHolidays({ date, projection }),
     ...neighbouringLessonDays({ date, projection }),
   };
 }

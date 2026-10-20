@@ -811,6 +811,7 @@ export interface PortalCalendarEvent {
   class_name: string | null;
   notes: string | null;
   cancellation_reason?: CancellationReason | null;
+  closure_id?: string | null;
   closure_from?: string | null;
   closure_to?: string | null;
 }
