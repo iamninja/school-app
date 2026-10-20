@@ -73,4 +73,39 @@ describe("PortalUpcomingCard during a school break", () => {
 
     expect(screen.getByText("24 Δεκεμβρίου – 7 Ιανουαρίου")).toBeInTheDocument();
   });
+
+  it("keeps two public holidays in the same list as separate lines, each with its note", () => {
+    vi.setSystemTime(new Date(2026, 9, 26, 9, 0));
+    const holiday = (date: string, note: string) => ({
+      id: `h-${date}`,
+      event_type: "cancellation" as const,
+      event_date: date,
+      start_time: "17:00",
+      end_time: null,
+      class_id: "class-a",
+      class_name: "Άλγεβρα",
+      notes: note,
+      cancellation_reason: "public_holiday" as const,
+      closure_id: `closure-${date}`,
+      closure_from: date,
+      closure_to: date,
+    });
+    render(
+      <PortalUpcomingCard
+        classes={CLASSES}
+        schedules={SCHEDULES}
+        calendarEvents={[
+          holiday("2026-10-28", "28η Οκτωβρίου"),
+          holiday("2026-11-04", "Τοπική αργία"),
+        ]}
+        limit={10}
+      />,
+    );
+
+    expect(screen.getByText("Αργία · 28η Οκτωβρίου")).toBeInTheDocument();
+    expect(screen.getByText("Τετάρτη 28 Οκτωβρίου")).toBeInTheDocument();
+    expect(screen.getByText("Αργία · Τοπική αργία")).toBeInTheDocument();
+    expect(screen.getByText("Τετάρτη 4 Νοεμβρίου")).toBeInTheDocument();
+    expect(screen.queryByText(/Ακύρωση/)).not.toBeInTheDocument();
+  });
 });

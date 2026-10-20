@@ -190,6 +190,7 @@ export function PortalUpcomingCard({
     class_name: string | null;
     notes: string | null;
     cancellation_reason?: CancellationReason | null;
+    closure_id?: string | null;
     closure_from?: string | null;
     closure_to?: string | null;
   }>;
@@ -220,6 +221,7 @@ export function PortalUpcomingCard({
     title: null,
     notes: event.notes,
     cancellation_reason: event.cancellation_reason ?? null,
+    closure_id: event.closure_id ?? null,
     closure_from: event.closure_from ?? null,
     closure_to: event.closure_to ?? null,
   }));

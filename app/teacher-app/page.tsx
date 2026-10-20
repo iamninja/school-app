@@ -10,6 +10,12 @@ import { loadDay } from "@/lib/teacher-app/load";
 import { athensMinutesNow, athensToday } from "@/lib/push/athens-time";
 import { lessonInProgress } from "@/lib/teacher-app/day";
 import { cn } from "@/lib/utils";
+import {
+  CANCELLATION_REASON_LABELS_EN,
+  breakDisplayRange,
+  cancelledLessonLabel,
+  isHolidayReason,
+} from "@/lib/school-closures";
 
 /** Today: the day's lessons, each opening its attendance and homework. */
 export default async function TeacherAppTodayPage({
@@ -23,6 +29,11 @@ export default async function TeacherAppTodayPage({
   const date = parseDateParam(query.date) ?? today;
   const day = await loadDay(supabase, teacherId, date);
   const now = date === today ? lessonInProgress(day.lessons, athensMinutesNow()) : null;
+  // A holiday's cancelled lessons are shown as its block, not one by one; a
+  // class restored on its own is back among the lessons.
+  const lessons = day.lessons.filter(
+    (lesson) => !(lesson.kind === "cancelled" && isHolidayReason(lesson.cancellationReason)),
+  );
 
   // Opening the app (/start adds ?open=1) during a lesson goes straight to
   // it; the tab bar and "back" link to plain /teacher-app, so they never jump.
@@ -40,7 +51,37 @@ export default async function TeacherAppTodayPage({
         basePath="/teacher-app"
       />
 
-      {day.lessons.length === 0 ? (
+      {day.holidays.map((holiday) => {
+        const range = breakDisplayRange(holiday);
+        return (
+          <div
+            key={`${holiday.reason}|${holiday.closureIds.join(",")}`}
+            className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3"
+          >
+            <p className="font-medium">
+              {CANCELLATION_REASON_LABELS_EN[holiday.reason]}
+              {holiday.note ? ` · ${holiday.note}` : ""}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {range.from !== range.to
+                ? `${formatCompanionDate(range.from)} – ${formatCompanionDate(range.to)} · `
+                : ""}
+              No lessons · {holiday.lessons.length} cancelled
+            </p>
+          </div>
+        );
+      })}
+
+      {lessons.length === 0 && day.holidays.length > 0 ? (
+        day.next && (
+          <Link
+            href={`/teacher-app?date=${day.next}`}
+            className="inline-block text-sm font-medium text-brand underline-offset-4 hover:underline"
+          >
+            Next lessons: {formatCompanionDate(day.next)}
+          </Link>
+        )
+      ) : lessons.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border px-4 py-10 text-center">
           <p className="font-medium">No lessons {date === today ? "today" : "this day"}</p>
           {day.next && (
@@ -54,7 +95,7 @@ export default async function TeacherAppTodayPage({
         </div>
       ) : (
         <ul className="space-y-2">
-          {day.lessons.map((lesson) => {
+          {lessons.map((lesson) => {
             const cancelled = lesson.kind === "cancelled";
             const allMarked = lesson.rosterSize > 0 && lesson.marked >= lesson.rosterSize;
             const body = (
@@ -75,7 +116,11 @@ export default async function TeacherAppTodayPage({
                   </div>
                   <div className="text-xs text-muted-foreground">
                     {cancelled
-                      ? "Cancelled"
+                      ? cancelledLessonLabel(
+                          lesson.cancellationReason,
+                          "Cancelled",
+                          CANCELLATION_REASON_LABELS_EN,
+                        )
                       : `${lesson.marked}/${lesson.rosterSize} marked` +
                         (lesson.absent > 0 ? ` · ${lesson.absent} absent` : "") +
                         (lesson.kind === "extra_session" ? " · Extra" : "")}
