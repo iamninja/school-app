@@ -1049,13 +1049,16 @@ export function TeacherCalendar({
         key={key}
         className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3"
       >
-        <div
-          className={cn(
-            occurrence.kind === "cancelled" &&
-              "line-through text-muted-foreground",
-          )}
-        >
-          <p className="text-sm font-medium">
+        <div>
+          {/* Only the lesson line is struck through - on the wrapper, the
+              strike carried into the reason badge and the note as well. */}
+          <p
+            className={cn(
+              "text-sm font-medium",
+              occurrence.kind === "cancelled" &&
+                "line-through text-muted-foreground",
+            )}
+          >
             {occurrence.startTime ?? "All day"}
             {" · "}
             {occurrence.className ??

@@ -646,7 +646,10 @@ describe("TeacherCalendar", () => {
       ],
     });
 
-    expect(screen.getByText("Cancelled · Weather")).toBeInTheDocument();
+    const badge = screen.getByText("Cancelled · Weather");
+    // Only the lesson line is struck through, not its badge.
+    expect(badge.closest(".line-through")).toBeNull();
+    expect(screen.getByText(/15:00 · Algebra II/)).toHaveClass("line-through");
     await user.click(screen.getByRole("button", { name: /restore whole closure/i }));
 
     await waitFor(() => {
