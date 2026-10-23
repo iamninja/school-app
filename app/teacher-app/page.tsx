@@ -11,6 +11,45 @@ import { athensMinutesNow, athensToday } from "@/lib/push/athens-time";
 import { lessonInProgress, type DayLesson } from "@/lib/teacher-app/day";
 import { TrialOutcomeButtons } from "@/components/teacher-app/trial-outcome";
 
+// Same palette as the console's Calendar tab (components/teacher-calendar.tsx
+// WEEK_ROW_CLASSES), so a lesson's kind reads the same on both. A plain
+// recurring lesson keeps the neutral card.
+const KIND_STYLES = {
+  extra_session: {
+    label: "Extra",
+    row: "border-teal-500/40 bg-teal-500/10",
+    chip: "bg-teal-500/15 text-teal-800 dark:text-teal-300",
+  },
+  ad_hoc_lesson: {
+    label: "One-off",
+    row: "border-violet-500/40 bg-violet-500/10",
+    chip: "bg-violet-500/15 text-violet-800 dark:text-violet-300",
+  },
+  trial_lesson: {
+    label: "Trial",
+    row: "border-amber-500/40 bg-amber-500/10",
+    chip: "bg-amber-500/20 text-amber-900 dark:text-amber-300",
+  },
+  block: {
+    label: "Personal",
+    row: "border-sky-500/40 bg-sky-500/10",
+    chip: "bg-sky-500/15 text-sky-800 dark:text-sky-300",
+  },
+} as const;
+
+function KindChip({ kind }: { kind: keyof typeof KIND_STYLES }) {
+  return (
+    <span
+      className={cn(
+        "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+        KIND_STYLES[kind].chip,
+      )}
+    >
+      {KIND_STYLES[kind].label}
+    </span>
+  );
+}
+
 const STATUS_LABELS: Record<string, string> = {
   present: "Present",
   late: "Late",
@@ -42,7 +81,8 @@ export default async function TeacherAppTodayPage({
   const lessons = day.lessons.filter(
     (lesson) => !(lesson.kind === "cancelled" && isHolidayReason(lesson.cancellationReason)),
   );
-  // Classes, one-off lessons and trials in one time-ordered list.
+  // Classes, one-off lessons, trials and personal blocks in one time-ordered
+  // list; an all-day block (no start time) comes first.
   const items = [
     ...lessons.map((lesson) => ({ type: "class" as const, lesson, start: lesson.startTime })),
     ...day.eventLessons.map((lesson) => ({
@@ -50,7 +90,7 @@ export default async function TeacherAppTodayPage({
       lesson,
       start: lesson.startTime,
     })),
-  ].sort((a, b) => (a.start ?? "99:99").localeCompare(b.start ?? "99:99"));
+  ].sort((a, b) => (a.start ?? "").localeCompare(b.start ?? ""));
 
   // Opening the app (/start adds ?open=1) during a lesson goes straight to
   // it; the tab bar and "back" link to plain /teacher-app, so they never jump.
@@ -71,6 +111,7 @@ export default async function TeacherAppTodayPage({
             <span className={cn("truncate font-medium", cancelled && "line-through")}>
               {lesson.className}
             </span>
+            {lesson.kind === "extra_session" && <KindChip kind="extra_session" />}
             {now?.classId === lesson.classId && (
               <span className="shrink-0 rounded-full bg-brand px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand-foreground">
                 Now
@@ -85,8 +126,7 @@ export default async function TeacherAppTodayPage({
                   CANCELLATION_REASON_LABELS_EN,
                 )
               : `${lesson.marked}/${lesson.rosterSize} marked` +
-                (lesson.absent > 0 ? ` · ${lesson.absent} absent` : "") +
-                (lesson.kind === "extra_session" ? " · Extra" : "")}
+                (lesson.absent > 0 ? ` · ${lesson.absent} absent` : "")}
           </div>
         </div>
         {!cancelled && (
@@ -112,7 +152,12 @@ export default async function TeacherAppTodayPage({
         ) : (
           <Link
             href={`/teacher-app/lesson/${lesson.classId}?date=${date}`}
-            className="flex min-h-16 items-center gap-3 rounded-lg border border-border bg-card px-4 active:bg-muted"
+            className={cn(
+              "flex min-h-16 items-center gap-3 rounded-lg border px-4 active:bg-muted",
+              lesson.kind === "extra_session"
+                ? KIND_STYLES.extra_session.row
+                : "border-border bg-card",
+            )}
           >
             {body}
           </Link>
@@ -181,15 +226,23 @@ export default async function TeacherAppTodayPage({
                 {item.lesson.kind === "ad_hoc_lesson" ? (
                   <Link
                     href={`/teacher-app/one-off/${item.lesson.eventId}`}
-                    className="flex min-h-16 items-center gap-3 rounded-lg border border-border bg-card px-4 active:bg-muted"
+                    className={cn(
+                      "flex min-h-16 items-center gap-3 rounded-lg border px-4 active:bg-muted",
+                      KIND_STYLES.ad_hoc_lesson.row,
+                    )}
                   >
                     <div className="w-20 shrink-0 text-sm font-semibold tabular-nums">
                       {item.lesson.timeLabel ?? "—"}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="truncate font-medium">{item.lesson.name}</div>
+                      <div className="flex items-center gap-2">
+                        <span className="truncate font-medium">{item.lesson.name}</span>
+                        <KindChip kind="ad_hoc_lesson" />
+                      </div>
                       <div className="text-xs text-muted-foreground">
-                        One-off · {item.lesson.status ? STATUS_LABELS[item.lesson.status] ?? item.lesson.status : "not marked"}
+                        {item.lesson.status
+                          ? (STATUS_LABELS[item.lesson.status] ?? item.lesson.status)
+                          : "Not marked"}
                       </div>
                     </div>
                     <span
@@ -201,19 +254,41 @@ export default async function TeacherAppTodayPage({
                     />
                     <ChevronRight className="size-4 text-muted-foreground" aria-hidden="true" />
                   </Link>
-                ) : (
-                  <div className="flex min-h-16 items-center gap-3 rounded-lg border border-border bg-card px-4">
+                ) : item.lesson.kind === "trial_lesson" ? (
+                  <div
+                    className={cn(
+                      "flex min-h-16 items-center gap-3 rounded-lg border px-4",
+                      KIND_STYLES.trial_lesson.row,
+                    )}
+                  >
                     <div className="w-20 shrink-0 text-sm font-semibold tabular-nums">
                       {item.lesson.timeLabel ?? "—"}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="truncate font-medium">{item.lesson.name}</div>
-                      <div className="text-xs text-muted-foreground">Trial lesson</div>
+                      <div className="flex items-center gap-2">
+                        <span className="truncate font-medium">{item.lesson.name}</span>
+                        <KindChip kind="trial_lesson" />
+                      </div>
                     </div>
                     <TrialOutcomeButtons
                       eventId={item.lesson.eventId}
                       initialOutcome={item.lesson.trialOutcome}
                     />
+                  </div>
+                ) : (
+                  <div
+                    className={cn(
+                      "flex min-h-12 items-center gap-3 rounded-lg border px-4 py-2",
+                      KIND_STYLES.block.row,
+                    )}
+                  >
+                    <div className="w-20 shrink-0 text-sm font-semibold tabular-nums">
+                      {item.lesson.timeLabel ?? "All day"}
+                    </div>
+                    <div className="flex min-w-0 flex-1 items-center gap-2">
+                      <span className="truncate font-medium">{item.lesson.name}</span>
+                      <KindChip kind="block" />
+                    </div>
                   </div>
                 )}
               </li>
