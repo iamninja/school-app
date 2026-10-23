@@ -6,6 +6,7 @@ import { ExpectedError } from "@/lib/expected-error";
 import { SCHEDULE_ROWS, slotWindow, timeToMinutes } from "@/lib/schedule-grid";
 import { runAfterResponse } from "@/lib/push/hooks";
 import { handleAttendanceChange } from "@/lib/push/absences";
+import { ONE_OFF_CLASS_NAME } from "@/lib/attendance-records";
 
 // The (day, time) one grid row below - null when `time` is that day's last
 // SCHEDULE_ROWS entry, since a 2-hour lesson can't extend past it.
@@ -1182,10 +1183,9 @@ export async function unenrollStudentFromClassAction(
   }
 }
 
-export async function getAttendanceAction(data: {
-  classId: string;
-  attendanceDate: string;
-}) {
+export async function getAttendanceAction(
+  data: { classId: string; attendanceDate: string } | { eventId: string },
+) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -1203,12 +1203,16 @@ export async function getAttendanceAction(data: {
   // the class wasn't per-lesson yet at the time, shows the truth instead
   // of a client-side guess. See post_lesson_charge_row()'s future-only
   // repricing guard for why these can disagree with the class's current rate.
-  const { data: rows, error } = await supabase
+  let query = supabase
     .from("attendance_records")
     .select("student_id, status, family_balance_transactions(amount)")
-    .eq("teacher_id", user.id)
-    .eq("class_id", data.classId)
-    .eq("attendance_date", data.attendanceDate);
+    .eq("teacher_id", user.id);
+  // A one-off lesson's marks belong to the lesson itself, not a class/date.
+  query =
+    "eventId" in data
+      ? query.eq("calendar_event_id", data.eventId)
+      : query.eq("class_id", data.classId).eq("attendance_date", data.attendanceDate);
+  const { data: rows, error } = await query;
 
   if (error) {
     throw error;
@@ -1239,6 +1243,11 @@ export async function setAttendanceAction(data: {
   studentId: string;
   attendanceDate: string;
   status: "present" | "late" | "absent" | "split" | "";
+  /**
+   * A one-off lesson's mark: classId/className are ignored, the mark
+   * belongs to this calendar event (see setOneOffAttendance).
+   */
+  eventId?: string;
 }) {
   const supabase = await createClient();
   const {
@@ -1250,6 +1259,9 @@ export async function setAttendanceAction(data: {
   }
 
   await requireTeacher(supabase, user.id);
+  if (data.eventId) {
+    return setOneOffAttendance(supabase, user.id, { ...data, eventId: data.eventId });
+  }
   // Belt-and-braces alongside the trigger's own teacher_id check
   // (post_lesson_charge_row(), see the per-lesson-billing-tenant-fix
   // migration): attendance_records RLS only checks the row's own
@@ -1330,4 +1342,104 @@ export async function setAttendanceAction(data: {
     status: data.status,
     chargedAmount: transaction ? Number(transaction.amount) : null,
   };
+}
+
+// A one-off lesson's attendance: the mark belongs to the lesson (class_id
+// null, calendar_event_id set, class_name "Ιδιαίτερο μάθημα") and is
+// charged at the lesson's own price, if it has one (post_lesson_charge(),
+// see the one-off-attendance migration). Everything is taken from the
+// teacher's own event row - the student and date the client sent must
+// match it, so a mark can't be filed against someone else's lesson.
+async function setOneOffAttendance(
+  supabase: SupabaseServerClient,
+  teacherId: string,
+  data: {
+    eventId: string;
+    studentId: string;
+    attendanceDate: string;
+    status: "present" | "late" | "absent" | "split" | "";
+  },
+) {
+  const { data: event, error: eventError } = await supabase
+    .from("calendar_events")
+    .select("id, event_date, start_time, end_time, student_id")
+    .eq("id", data.eventId)
+    .eq("teacher_id", teacherId)
+    .eq("event_type", "ad_hoc_lesson")
+    .maybeSingle();
+  if (eventError || !event) {
+    throw new ExpectedError("That lesson no longer exists");
+  }
+  if (event.student_id !== data.studentId || event.event_date !== data.attendanceDate) {
+    throw new ExpectedError("That student isn't in this lesson");
+  }
+
+  if (!data.status) {
+    const { error } = await supabase
+      .from("attendance_records")
+      .delete()
+      .match({
+        teacher_id: teacherId,
+        calendar_event_id: data.eventId,
+        student_id: data.studentId,
+      });
+    if (error) {
+      throw error;
+    }
+    return { studentId: data.studentId, status: "", chargedAmount: null };
+  }
+
+  const { data: row, error } = await supabase
+    .from("attendance_records")
+    .upsert(
+      {
+        teacher_id: teacherId,
+        class_id: null,
+        calendar_event_id: data.eventId,
+        class_name: ONE_OFF_CLASS_NAME,
+        student_id: data.studentId,
+        attendance_date: event.event_date,
+        status: data.status,
+      },
+      { onConflict: "calendar_event_id,student_id" },
+    )
+    .select("id")
+    .single();
+  if (error) {
+    throw error;
+  }
+
+  const attendanceRecordId = row.id as string;
+  runAfterResponse(() =>
+    handleAttendanceChange(createServiceRoleClient(), {
+      attendanceRecordId,
+      classId: null,
+      className: ONE_OFF_CLASS_NAME,
+      studentId: data.studentId,
+      attendanceDate: event.event_date,
+      status: data.status,
+      triggeredBy: teacherId,
+      lessonEnd: event.end_time ?? oneHourAfter(event.start_time),
+    }),
+  );
+
+  const { data: transaction } = await supabase
+    .from("family_balance_transactions")
+    .select("amount")
+    .eq("attendance_record_id", row.id)
+    .maybeSingle();
+
+  return {
+    studentId: data.studentId,
+    status: data.status,
+    chargedAmount: transaction ? Number(transaction.amount) : null,
+  };
+}
+
+// A one-off lesson saved without an end time runs an hour (the companion's
+// occurrenceWindow() makes the same assumption).
+function oneHourAfter(startTime: string | null): string | null {
+  if (!startTime) return null;
+  const minutes = timeToMinutes(startTime) + 60;
+  return `${String(Math.floor(minutes / 60) % 24).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
 }

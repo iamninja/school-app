@@ -3,7 +3,11 @@
 import { createClient } from "@/lib/supabase/server";
 import { requireTeacher } from "@/lib/auth/require-teacher";
 import { ExpectedError } from "@/lib/expected-error";
-import type { CalendarEvent, CalendarEventInput } from "@/lib/types/database";
+import type {
+  CalendarEvent,
+  CalendarEventInput,
+  TrialOutcome,
+} from "@/lib/types/database";
 import type { ProjectionEvent } from "@/lib/calendar-projection";
 import { notifyAfterResponse } from "@/lib/push/hooks";
 import { athensToday } from "@/lib/push/athens-time";
@@ -29,7 +33,8 @@ type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 const CALENDAR_EVENT_COLUMNS =
   "id, event_type, event_date, start_time, end_time, class_id, class_name, " +
   "student_id, student_name, contact_name, contact_phone, title, notes, " +
-  "cancellation_reason, closure_id, closure_from, closure_to, created_at";
+  "cancellation_reason, closure_id, closure_from, closure_to, " +
+  "lesson_price, trial_outcome, created_at";
 
 const TIME_PATTERN = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -49,6 +54,16 @@ async function requireTeacherSession(): Promise<{
 
   await requireTeacher(supabase, user.id);
   return { supabase, userId: user.id };
+}
+
+// null/undefined = not charged. Same bounds as the database check
+// (lesson_price > 0, numeric(10, 2)).
+function validLessonPrice(value: number | null | undefined): number | null {
+  if (value === null || value === undefined) return null;
+  if (!Number.isFinite(value) || value <= 0 || value >= 100_000_000) {
+    throw new ExpectedError("Enter a price above 0, or untick the charge");
+  }
+  return Math.round(value * 100) / 100;
 }
 
 function isValidCalendarDate(value: string): boolean {
@@ -101,6 +116,7 @@ async function resolveEventRow(
     contact_phone: null,
     title: null,
     notes: input.notes?.trim() || null,
+    lesson_price: null,
   };
 
   switch (input.eventType) {
@@ -147,6 +163,7 @@ async function resolveEventRow(
       row.student_id = studentRow.id;
       row.student_name =
         `${studentRow.first_name} ${studentRow.last_name}`.trim();
+      row.lesson_price = validLessonPrice(input.lessonPrice);
       break;
     }
     case "trial_lesson": {
@@ -559,4 +576,33 @@ export async function restoreClosureAction(
   }
 
   return { restoredIds: restored.map((row) => row.id) };
+}
+
+// A trial lesson's came / no-show mark - the teacher's own record (the
+// contact isn't a student, so nothing reaches portals or billing). null
+// clears it.
+export async function setTrialOutcomeAction(
+  eventId: string,
+  outcome: TrialOutcome | null,
+): Promise<CalendarEvent> {
+  const { supabase, userId } = await requireTeacherSession();
+  if (outcome !== null && outcome !== "came" && outcome !== "no_show") {
+    throw new ExpectedError("Unknown trial outcome");
+  }
+
+  const { data, error } = await supabase
+    .from("calendar_events")
+    .update({ trial_outcome: outcome })
+    .eq("id", eventId)
+    .eq("teacher_id", userId)
+    .eq("event_type", "trial_lesson")
+    .select(CALENDAR_EVENT_COLUMNS)
+    .maybeSingle();
+  if (error) {
+    throw error;
+  }
+  if (!data) {
+    throw new ExpectedError("That trial lesson no longer exists");
+  }
+  return data as unknown as CalendarEvent;
 }

@@ -487,6 +487,111 @@ describe("RLS: per-lesson billing (attendance -> family_balance_transactions)", 
     });
   });
 
+  // Must run before the class-deletion guard below, which deletes classA.
+  describe("one-off lessons (attendance by calendar event, priced per lesson)", () => {
+    const createdEventIds: string[] = [];
+
+    afterEach(async () => {
+      if (createdEventIds.length > 0) {
+        await admin.from("calendar_events").delete().in("id", createdEventIds);
+        createdEventIds.length = 0;
+      }
+    });
+
+    async function oneOffLesson(lessonPrice: number | null, teacherId = fixtures.teacherA.id) {
+      const { data, error } = await admin
+        .from("calendar_events")
+        .insert({
+          teacher_id: teacherId,
+          event_type: "ad_hoc_lesson",
+          event_date: "2026-09-29",
+          start_time: "16:00",
+          student_id: fixtures.studentA.id,
+          student_name: "RLS Student A",
+          lesson_price: lessonPrice,
+        })
+        .select("id")
+        .single();
+      expect(error).toBeNull();
+      createdEventIds.push(data!.id as string);
+      return data!.id as string;
+    }
+
+    async function markOneOff(eventId: string, status: string) {
+      const { data, error } = await teacherA
+        .from("attendance_records")
+        .upsert(
+          {
+            teacher_id: fixtures.teacherA.id,
+            class_id: null,
+            calendar_event_id: eventId,
+            class_name: "Ιδιαίτερο μάθημα",
+            student_id: fixtures.studentA.id,
+            attendance_date: "2026-09-29",
+            status,
+          },
+          { onConflict: "calendar_event_id,student_id" },
+        )
+        .select("id")
+        .single();
+      if (data) createdAttendanceIds.push(data.id as string);
+      return { data, error };
+    }
+
+    it("charges a priced one-off at its own price, half for 1+1, nothing when absent", async () => {
+      const eventId = await oneOffLesson(25);
+      const { data: record, error } = await markOneOff(eventId, "present");
+      expect(error).toBeNull();
+      const charge = await lessonChargeFor(record!.id);
+      expect(Number(charge?.amount)).toBe(25);
+      expect(charge?.family_id).toBe(fixtures.familyA.id);
+
+      await markOneOff(eventId, "split");
+      expect(Number((await lessonChargeFor(record!.id))?.amount)).toBe(12.5);
+
+      await markOneOff(eventId, "absent");
+      expect(await lessonChargeFor(record!.id)).toBeNull();
+    });
+
+    it("doesn't charge a one-off with no price", async () => {
+      const eventId = await oneOffLesson(null);
+      const { data: record } = await markOneOff(eventId, "present");
+      expect(await lessonChargeFor(record!.id)).toBeNull();
+    });
+
+    it("re-posts the charge when the lesson's price is edited, and removes it when the price is cleared", async () => {
+      const eventId = await oneOffLesson(25);
+      const { data: record } = await markOneOff(eventId, "present");
+
+      await admin.from("calendar_events").update({ lesson_price: 30 }).eq("id", eventId);
+      expect(Number((await lessonChargeFor(record!.id))?.amount)).toBe(30);
+
+      await admin.from("calendar_events").update({ lesson_price: null }).eq("id", eventId);
+      expect(await lessonChargeFor(record!.id)).toBeNull();
+    });
+
+    it("keeps the mark and its charge when the lesson is deleted", async () => {
+      const eventId = await oneOffLesson(25);
+      const { data: record } = await markOneOff(eventId, "present");
+
+      await admin.from("calendar_events").delete().eq("id", eventId);
+
+      const { data: surviving } = await admin
+        .from("attendance_records")
+        .select("calendar_event_id")
+        .eq("id", record!.id)
+        .single();
+      expect(surviving?.calendar_event_id).toBeNull();
+      expect(Number((await lessonChargeFor(record!.id))?.amount)).toBe(25);
+    });
+
+    it("never charges against another teacher's priced lesson", async () => {
+      const foreignEventId = await oneOffLesson(99, fixtures.teacherB.id);
+      const { data: record } = await markOneOff(foreignEventId, "present");
+      if (record) expect(await lessonChargeFor(record.id)).toBeNull();
+    });
+  });
+
   describe("the class-deletion regression guard", () => {
     it("deleting a class leaves its historical lesson charges and the family balance untouched", async () => {
       const before = await familyBalance(fixtures.familyA.id);

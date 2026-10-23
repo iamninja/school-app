@@ -18,6 +18,7 @@ vi.mock("@/app/protected/teacher/actions", () => ({
   setAttendanceAction: vi
     .fn()
     .mockResolvedValue({ studentId: "", status: "", chargedAmount: null }),
+  getAttendanceAction: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock("sonner", () => ({
@@ -233,5 +234,64 @@ describe("TeacherCalendar attendance section", () => {
       });
     });
     expect(onAttendanceRecordsChange).toHaveBeenCalled();
+  });
+
+  it("takes attendance for a one-off lesson's student, filed under the lesson", async () => {
+    const user = userEvent.setup();
+    vi.mocked(teacherActions.getAttendanceAction).mockResolvedValue([
+      { student_id: studentA.id, status: "absent", chargedAmount: null },
+    ]);
+    vi.mocked(teacherActions.setAttendanceAction).mockResolvedValue({
+      studentId: studentA.id,
+      status: "present",
+      chargedAmount: 25,
+    });
+
+    renderCalendar({
+      events: [
+        {
+          id: "evt-one-off",
+          event_type: "ad_hoc_lesson",
+          event_date: todayIso,
+          start_time: "16:00",
+          end_time: null,
+          class_id: null,
+          class_name: null,
+          student_id: studentA.id,
+          student_name: "Ada Lovelace",
+          contact_name: null,
+          contact_phone: null,
+          title: null,
+          notes: null,
+          lesson_price: 25,
+          created_at: "2026-08-01T00:00:00Z",
+        },
+      ],
+    });
+
+    const card = attendanceCard();
+    expect(
+      within(card).getByRole("tab", { name: /ada lovelace \(one-off\)/i }),
+    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(teacherActions.getAttendanceAction).toHaveBeenCalledWith({ eventId: "evt-one-off" });
+    });
+    // The saved mark is loaded into the tab.
+    await waitFor(() => {
+      expect(within(card).getByRole("button", { name: "Absent" })).toHaveClass("bg-destructive");
+    });
+
+    await user.click(within(card).getByRole("button", { name: "Present" }));
+
+    await waitFor(() => {
+      expect(teacherActions.setAttendanceAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventId: "evt-one-off",
+          studentId: studentA.id,
+          attendanceDate: todayIso,
+          status: "present",
+        }),
+      );
+    });
   });
 });

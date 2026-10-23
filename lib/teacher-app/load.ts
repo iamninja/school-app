@@ -7,15 +7,19 @@ import type { Homework } from "@/lib/types/database";
 import type { SchoolBreakItem } from "@/lib/school-closures";
 import {
   addDays,
+  buildDayEventLessons,
   buildDayHolidays,
   buildDayLessons,
   classHasLessonOn,
   neighbouringLessonDays,
   nextLessonDays,
+  type DayAttendanceRow,
+  type DayEventLesson,
   type DayLesson,
   type DayProjection,
 } from "@/lib/teacher-app/day";
 import { normalizeGreekPhone } from "@/lib/teacher-app/phone";
+import { lessonTimeLabel, timeToMinutes } from "@/lib/schedule-grid";
 
 /**
  * Small, focused reads for the phone companion (/teacher-app) - instead of
@@ -99,7 +103,7 @@ async function loadSchool(
     supabase
       .from("calendar_events")
       .select(
-        "id, event_type, event_date, start_time, end_time, class_id, class_name, student_id, student_name, contact_name, title, notes, cancellation_reason, closure_id, closure_from, closure_to",
+        "id, event_type, event_date, start_time, end_time, class_id, class_name, student_id, student_name, contact_name, title, notes, cancellation_reason, closure_id, closure_from, closure_to, trial_outcome",
       )
       .eq("teacher_id", teacherId)
       .gte("event_date", from)
@@ -178,6 +182,8 @@ export type CompanionDay = {
   lessons: DayLesson[];
   /** Holidays that day, shown as one block each instead of their lessons. */
   holidays: SchoolBreakItem[];
+  /** One-off and trial lessons that day (no class, so not in `lessons`). */
+  eventLessons: DayEventLesson[];
   previous: string | null;
   next: string | null;
 };
@@ -195,10 +201,13 @@ export async function loadDay(
   );
   const { data: attendance, error } = await supabase
     .from("attendance_records")
-    .select("class_id, student_id, status")
+    .select("class_id, calendar_event_id, student_id, status")
     .eq("teacher_id", teacherId)
     .eq("attendance_date", date);
   if (error) throw error;
+  const rows = (attendance ?? []) as Array<
+    DayAttendanceRow & { calendar_event_id: string | null }
+  >;
 
   return {
     date,
@@ -206,9 +215,18 @@ export async function loadDay(
       date,
       projection,
       rosterByClass: rostersByClass(students),
-      attendance: attendance ?? [],
+      attendance: rows.filter((row) => row.calendar_event_id === null),
     }),
     holidays: buildDayHolidays({ date, projection }),
+    eventLessons: buildDayEventLessons({
+      date,
+      projection,
+      statusByEventId: new Map(
+        rows
+          .filter((row) => row.calendar_event_id !== null)
+          .map((row) => [row.calendar_event_id!, row.status]),
+      ),
+    }),
     ...neighbouringLessonDays({ date, projection }),
   };
 }
@@ -358,5 +376,77 @@ export async function loadHomeworkView(
     selectedClassId,
     homework,
     nextLessonDates: selectedClassId ? nextLessonDays(selectedClassId, today, projection) : [],
+  };
+}
+
+export type CompanionOneOffLesson = {
+  eventId: string;
+  date: string;
+  timeLabel: string | null;
+  isTwoHour: boolean;
+  /** Charged at the lesson's own price when set. */
+  isCharged: boolean;
+  /** The one student - null if they were withdrawn or deleted since. */
+  student: CompanionStudent | null;
+  studentName: string;
+  statuses: Record<string, { status: AttendanceStatus; chargedAmount: number | null }>;
+};
+
+/** One one-off lesson, for its one-student attendance screen. */
+export async function loadOneOffLesson(
+  supabase: SupabaseServerClient,
+  teacherId: string,
+  eventId: string,
+): Promise<CompanionOneOffLesson | null> {
+  const { data: event, error } = await supabase
+    .from("calendar_events")
+    .select("id, event_date, start_time, end_time, student_id, student_name, lesson_price")
+    .eq("id", eventId)
+    .eq("teacher_id", teacherId)
+    .eq("event_type", "ad_hoc_lesson")
+    .maybeSingle();
+  if (error) throw error;
+  if (!event) return null;
+
+  const [{ students }, { data: rows, error: rowsError }] = await Promise.all([
+    loadSchool(supabase, teacherId, event.event_date, event.event_date),
+    supabase
+      .from("attendance_records")
+      .select("student_id, status, family_balance_transactions(amount)")
+      .eq("teacher_id", teacherId)
+      .eq("calendar_event_id", eventId),
+  ]);
+  if (rowsError) throw rowsError;
+
+  const studentRow = students.find((student) => student.id === event.student_id);
+  const startTime = event.start_time as string | null;
+  const endTime = event.end_time as string | null;
+  const isTwoHour =
+    !!startTime && !!endTime && timeToMinutes(endTime) - timeToMinutes(startTime) >= 120;
+  return {
+    eventId,
+    date: event.event_date,
+    timeLabel: startTime ? lessonTimeLabel(startTime, isTwoHour, endTime) : null,
+    isTwoHour,
+    isCharged: event.lesson_price != null,
+    student: studentRow
+      ? {
+          id: studentRow.id,
+          firstName: studentRow.first_name,
+          lastName: studentRow.last_name,
+          gradeLevel: studentRow.grade_level ?? "",
+          contacts: contactsFor(studentRow),
+        }
+      : null,
+    studentName: event.student_name ?? "",
+    statuses: Object.fromEntries(
+      (rows ?? []).map((row) => [
+        row.student_id,
+        {
+          status: row.status as AttendanceStatus,
+          chargedAmount: toChargedAmount(row.family_balance_transactions),
+        },
+      ]),
+    ),
   };
 }

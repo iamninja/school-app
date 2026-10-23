@@ -33,6 +33,7 @@ export function AttendanceRosterTable({
   roster,
   classId,
   className,
+  eventId,
   dateKey,
   isTwoHour,
   isPerLesson,
@@ -44,6 +45,8 @@ export function AttendanceRosterTable({
   roster: RosterStudent[];
   classId: string;
   className: string;
+  /** A one-off lesson's roster (one student): marks belong to this event. */
+  eventId?: string;
   dateKey: string;
   isTwoHour: boolean;
   // True only for a per_lesson-billed class - renders the "€X charged"
@@ -88,6 +91,7 @@ export function AttendanceRosterTable({
       studentId,
       attendanceDate: dateKey,
       status,
+      ...(eventId ? { eventId } : {}),
     });
     onCommitted(studentId, status, result.chargedAmount);
   };

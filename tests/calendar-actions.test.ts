@@ -8,6 +8,7 @@ import {
   cancelLessonsForClosureAction,
   rescheduleClassOccurrenceAction,
   restoreClosureAction,
+  setTrialOutcomeAction,
   updateCalendarEventAction,
 } from "@/app/protected/teacher/calendar-actions";
 import { createMockSupabaseClient } from "./support/mock-supabase";
@@ -540,5 +541,109 @@ describe("school closures", () => {
     expect(chain.eq).toHaveBeenCalledWith("teacher_id", "teacher-1");
     expect(chain.eq).toHaveBeenCalledWith("closure_id", "closure-1");
     expect(chain.eq).toHaveBeenCalledWith("event_type", "cancellation");
+  });
+});
+
+describe("one-off lesson price and trial outcome", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(requireTeacher).mockResolvedValue(undefined);
+  });
+
+  function insertedRow(client: ReturnType<typeof createMockSupabaseClient>) {
+    const index = client.from.mock.calls.findIndex((call) => call[0] === "calendar_events");
+    return client.from.mock.results[index].value.insert.mock.calls[0][0];
+  }
+
+  it("stores a one-off lesson's price, rounded to cents", async () => {
+    const client = createMockSupabaseClient({
+      students: { data: STUDENT_ROW, error: null },
+      calendar_events: { data: { id: "evt" }, error: null },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await createCalendarEventAction({
+      eventType: "ad_hoc_lesson",
+      eventDate: "2026-10-28",
+      startTime: "16:00",
+      studentId: "student-1",
+      lessonPrice: 25.004,
+    });
+
+    expect(insertedRow(client)).toEqual(expect.objectContaining({ lesson_price: 25 }));
+  });
+
+  it("stores no price when the lesson isn't charged", async () => {
+    const client = createMockSupabaseClient({
+      students: { data: STUDENT_ROW, error: null },
+      calendar_events: { data: { id: "evt" }, error: null },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await createCalendarEventAction({
+      eventType: "ad_hoc_lesson",
+      eventDate: "2026-10-28",
+      startTime: "16:00",
+      studentId: "student-1",
+      lessonPrice: null,
+    });
+
+    expect(insertedRow(client)).toEqual(expect.objectContaining({ lesson_price: null }));
+  });
+
+  it("ignores a price on anything but a one-off lesson", async () => {
+    const client = createMockSupabaseClient({
+      classes: { data: CLASS_ROW, error: null },
+      calendar_events: { data: { id: "evt" }, error: null },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await createCalendarEventAction({
+      eventType: "extra_session",
+      eventDate: "2026-10-28",
+      startTime: "16:00",
+      classId: "class-1",
+      lessonPrice: 30,
+    });
+
+    expect(insertedRow(client)).toEqual(expect.objectContaining({ lesson_price: null }));
+  });
+
+  it.each([0, -5, Number.NaN])("rejects a price of %s", async (price) => {
+    const client = createMockSupabaseClient({
+      students: { data: STUDENT_ROW, error: null },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await expect(
+      createCalendarEventAction({
+        eventType: "ad_hoc_lesson",
+        eventDate: "2026-10-28",
+        startTime: "16:00",
+        studentId: "student-1",
+        lessonPrice: price,
+      }),
+    ).rejects.toThrow(ExpectedError);
+  });
+
+  it("marks a trial lesson's outcome, scoped to this teacher's trials", async () => {
+    const client = createMockSupabaseClient({
+      calendar_events: { data: { id: "trial-1", trial_outcome: "came" }, error: null },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await setTrialOutcomeAction("trial-1", "came");
+
+    const chain = client.from.mock.results[0].value;
+    expect(chain.update).toHaveBeenCalledWith({ trial_outcome: "came" });
+    expect(chain.eq).toHaveBeenCalledWith("teacher_id", "teacher-1");
+    expect(chain.eq).toHaveBeenCalledWith("event_type", "trial_lesson");
+  });
+
+  it("refuses an unknown outcome", async () => {
+    const client = createMockSupabaseClient({});
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await expect(setTrialOutcomeAction("trial-1", "maybe" as never)).rejects.toThrow(ExpectedError);
   });
 });

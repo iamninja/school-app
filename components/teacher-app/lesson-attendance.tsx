@@ -43,6 +43,7 @@ const OPTIONS: { status: AttendanceStatus; label: string; active: string }[] = [
 export function LessonAttendance({
   classId,
   className,
+  eventId,
   date,
   isTwoHour,
   isPerLesson,
@@ -51,6 +52,8 @@ export function LessonAttendance({
 }: {
   classId: string;
   className: string;
+  /** A one-off lesson: marks belong to this calendar event (classId is ""). */
+  eventId?: string;
   date: string;
   isTwoHour: boolean;
   isPerLesson: boolean;
@@ -67,13 +70,16 @@ export function LessonAttendance({
     const merged = { ...localMarks };
     const waiting = new Set<string>();
     for (const entry of queue) {
-      if (entry.classId !== classId || entry.date !== date) continue;
+      const sameLesson = eventId
+        ? entry.eventId === eventId
+        : !entry.eventId && entry.classId === classId;
+      if (!sameLesson || entry.date !== date) continue;
       waiting.add(entry.studentId);
       if (entry.status) merged[entry.studentId] = { status: entry.status, chargedAmount: null };
       else delete merged[entry.studentId];
     }
     return { marks: merged, pending: waiting };
-  }, [localMarks, queue, classId, date]);
+  }, [localMarks, queue, classId, eventId, date]);
 
   const options = OPTIONS.filter((option) => option.status !== "split" || isTwoHour);
   const markedCount = roster.filter((student) => marks[student.id]).length;
@@ -92,6 +98,7 @@ export function LessonAttendance({
     const queueEntry = () =>
       enqueueMark({
         classId,
+        ...(eventId ? { eventId } : {}),
         className,
         date,
         studentId,
@@ -104,7 +111,7 @@ export function LessonAttendance({
       return true;
     }
     // This tap is newer than anything still queued for the student.
-    dropQueuedMark({ classId, date, studentId });
+    dropQueuedMark({ classId, eventId, date, studentId });
     try {
       const result = await setAttendanceAction({
         classId,
@@ -112,6 +119,7 @@ export function LessonAttendance({
         studentId,
         attendanceDate: date,
         status,
+        ...(eventId ? { eventId } : {}),
       });
       if (status) {
         setMarks((current) => ({
