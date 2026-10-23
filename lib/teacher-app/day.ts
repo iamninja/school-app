@@ -150,14 +150,15 @@ export function buildDayLessons({
 }
 
 /**
- * The day's one-off and trial lessons - they have no class, so they aren't
- * in buildDayLessons(). A one-off opens its own one-student attendance
- * screen; a trial gets an inline came / no-show mark.
+ * The day's one-off and trial lessons and personal blocks - they have no
+ * class, so they aren't in buildDayLessons(). A one-off opens its own
+ * one-student attendance screen; a trial gets an inline came / no-show
+ * mark; a block (the teacher's own time) is shown for reference.
  */
 export type DayEventLesson = {
   eventId: string;
-  kind: "ad_hoc_lesson" | "trial_lesson";
-  /** The student (one-off) or the trial contact. */
+  kind: "ad_hoc_lesson" | "trial_lesson" | "block";
+  /** The student (one-off), the trial contact, or the block's title. */
   name: string;
   timeLabel: string | null;
   startTime: string | null;
@@ -180,16 +181,23 @@ export function buildDayEventLessons({
   const outcomes = new Map(
     projection.events.map((event) => [event.id, event.trial_outcome ?? null]),
   );
-  return projectOccurrences({ from: date, to: date, ...projection, includeBlocks: false })
+  return projectOccurrences({ from: date, to: date, ...projection, includeBlocks: true })
     .filter(
       (occurrence) =>
         occurrence.eventId !== null &&
-        (occurrence.kind === "ad_hoc_lesson" || occurrence.kind === "trial_lesson"),
+        (occurrence.kind === "ad_hoc_lesson" ||
+          occurrence.kind === "trial_lesson" ||
+          occurrence.kind === "block"),
     )
     .map((occurrence) => ({
       eventId: occurrence.eventId!,
-      kind: occurrence.kind as "ad_hoc_lesson" | "trial_lesson",
-      name: (occurrence.kind === "ad_hoc_lesson" ? occurrence.studentName : occurrence.contactName) ?? "",
+      kind: occurrence.kind as DayEventLesson["kind"],
+      name:
+        (occurrence.kind === "ad_hoc_lesson"
+          ? occurrence.studentName
+          : occurrence.kind === "trial_lesson"
+            ? occurrence.contactName
+            : occurrence.title) ?? "",
       timeLabel: occurrence.startTime
         ? lessonTimeLabel(occurrence.startTime, occurrence.isTwoHour, occurrence.endTime)
         : null,

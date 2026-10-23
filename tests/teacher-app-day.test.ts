@@ -347,6 +347,30 @@ describe("buildDayEventLessons", () => {
     ]);
   });
 
+  it("includes the teacher's personal blocks by their title", () => {
+    expect(
+      buildDayEventLessons({
+        date: MONDAY,
+        projection: projection({
+          events: [
+            event({
+              id: "block",
+              event_type: "block",
+              class_id: null,
+              class_name: null,
+              title: "Λογιστής",
+              start_time: "12:00",
+              end_time: "13:00",
+            }),
+          ],
+        }),
+        statusByEventId: new Map(),
+      }),
+    ).toEqual([
+      expect.objectContaining({ eventId: "block", kind: "block", name: "Λογιστής", timeLabel: "12:00–13:00" }),
+    ]);
+  });
+
   it("makes a day with only a one-off reachable from the date strip", () => {
     const tuesday = addDays(MONDAY, 1);
     const onlyOneOff = projection({
