@@ -150,6 +150,56 @@ export function buildDayLessons({
 }
 
 /**
+ * The day's one-off and trial lessons - they have no class, so they aren't
+ * in buildDayLessons(). A one-off opens its own one-student attendance
+ * screen; a trial gets an inline came / no-show mark.
+ */
+export type DayEventLesson = {
+  eventId: string;
+  kind: "ad_hoc_lesson" | "trial_lesson";
+  /** The student (one-off) or the trial contact. */
+  name: string;
+  timeLabel: string | null;
+  startTime: string | null;
+  /** One-off only: the student's mark, "" when not taken yet. */
+  status: string;
+  /** Trial only. */
+  trialOutcome: "came" | "no_show" | null;
+};
+
+export function buildDayEventLessons({
+  date,
+  projection,
+  statusByEventId,
+}: {
+  date: string;
+  projection: DayProjection;
+  /** One-off lessons' marks that day, by calendar event id. */
+  statusByEventId: Map<string, string>;
+}): DayEventLesson[] {
+  const outcomes = new Map(
+    projection.events.map((event) => [event.id, event.trial_outcome ?? null]),
+  );
+  return projectOccurrences({ from: date, to: date, ...projection, includeBlocks: false })
+    .filter(
+      (occurrence) =>
+        occurrence.eventId !== null &&
+        (occurrence.kind === "ad_hoc_lesson" || occurrence.kind === "trial_lesson"),
+    )
+    .map((occurrence) => ({
+      eventId: occurrence.eventId!,
+      kind: occurrence.kind as "ad_hoc_lesson" | "trial_lesson",
+      name: (occurrence.kind === "ad_hoc_lesson" ? occurrence.studentName : occurrence.contactName) ?? "",
+      timeLabel: occurrence.startTime
+        ? lessonTimeLabel(occurrence.startTime, occurrence.isTwoHour, occurrence.endTime)
+        : null,
+      startTime: occurrence.startTime,
+      status: statusByEventId.get(occurrence.eventId!) ?? "",
+      trialOutcome: occurrence.kind === "trial_lesson" ? (outcomes.get(occurrence.eventId!) ?? null) : null,
+    }));
+}
+
+/**
  * The day's holidays (a break or a public holiday), each as one entry in
  * place of the lessons it cancelled - the same grouping as the console's
  * Calendar tab (collapseSchoolBreaksByDay). The Today screen shows these
@@ -189,7 +239,8 @@ export function lessonInProgress(lessons: DayLesson[], minutesNow: number): DayL
 
 /**
  * The nearest days before and after `date` (within `windowDays`) that have a
- * lesson taking attendance, for the date strip's ‹ › buttons.
+ * lesson taking attendance - a class lesson, a one-off or a trial - for the
+ * date strip's ‹ › buttons.
  */
 export function neighbouringLessonDays({
   date,
@@ -207,7 +258,12 @@ export function neighbouringLessonDays({
       ...projection,
       includeBlocks: false,
     })
-      .filter(isAttendanceLesson)
+      .filter(
+        (occurrence) =>
+          isAttendanceLesson(occurrence) ||
+          occurrence.kind === "ad_hoc_lesson" ||
+          occurrence.kind === "trial_lesson",
+      )
       .map((occurrence) => occurrence.date),
   );
   const sorted = [...days].sort();

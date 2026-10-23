@@ -109,6 +109,26 @@ describe("absence notices - 2 hours after the lesson", () => {
     );
   });
 
+  it("a one-off lesson (no class) uses its own end time", async () => {
+    const c = client({
+      notification_settings: { data: settings, error: null },
+      absence_notifications: { data: null, error: null },
+    });
+    await handleAttendanceChange(
+      asClient(c),
+      { ...change, classId: null, className: "Ιδιαίτερο μάθημα", lessonEnd: "18:00" },
+      new Date("2026-10-13T14:30:00Z"),
+    );
+    expect(classLessons).not.toHaveBeenCalled();
+    expect(calls(c, "absence_notifications", "upsert")[0][0]).toEqual(
+      expect.objectContaining({
+        class_id: null,
+        // 18:00 Athens = 15:00 UTC, + 2 hours.
+        send_at: "2026-10-13T17:00:00.000Z",
+      }),
+    );
+  });
+
   it("a mark saved after that point the same day goes out at the next run", async () => {
     vi.mocked(classLessons).mockResolvedValue([{ date: TODAY, start: "10:15", end: "11:00" }]);
     const c = client({

@@ -12,6 +12,8 @@ import type { AttendanceStatus } from "@/lib/attendance-records";
 
 export type QueuedMark = {
   classId: string;
+  /** A one-off lesson's mark (classId is "" then). */
+  eventId?: string;
   className: string;
   date: string;
   studentId: string;
@@ -26,8 +28,10 @@ const EMPTY: QueuedMark[] = [];
 let cache: QueuedMark[] | null = null;
 const listeners = new Set<() => void>();
 
-export function markKey(mark: Pick<QueuedMark, "classId" | "date" | "studentId">): string {
-  return `${mark.classId}|${mark.date}|${mark.studentId}`;
+export function markKey(
+  mark: Pick<QueuedMark, "classId" | "eventId" | "date" | "studentId">,
+): string {
+  return `${mark.eventId ? `event:${mark.eventId}` : mark.classId}|${mark.date}|${mark.studentId}`;
 }
 
 function isQueuedMark(value: unknown): value is QueuedMark {
@@ -36,6 +40,7 @@ function isQueuedMark(value: unknown): value is QueuedMark {
     typeof mark === "object" &&
     mark !== null &&
     typeof mark.classId === "string" &&
+    (mark.eventId === undefined || typeof mark.eventId === "string") &&
     typeof mark.className === "string" &&
     typeof mark.date === "string" &&
     typeof mark.studentId === "string" &&
@@ -97,7 +102,9 @@ export function enqueueMark(mark: QueuedMark) {
 }
 
 /** Drops the queued mark for this student/lesson (a newer direct save wins). */
-export function dropQueuedMark(mark: Pick<QueuedMark, "classId" | "date" | "studentId">) {
+export function dropQueuedMark(
+  mark: Pick<QueuedMark, "classId" | "eventId" | "date" | "studentId">,
+) {
   const key = markKey(mark);
   const queue = getQueueSnapshot();
   if (queue.some((entry) => markKey(entry) === key)) {
@@ -139,6 +146,7 @@ export type SendMark = (data: {
   studentId: string;
   attendanceDate: string;
   status: AttendanceStatus | "";
+  eventId?: string;
 }) => Promise<unknown>;
 
 export type FlushResult = {
@@ -169,6 +177,7 @@ export function flushQueue(send: SendMark): Promise<FlushResult> {
           studentId: mark.studentId,
           attendanceDate: mark.date,
           status: mark.status,
+          ...(mark.eventId ? { eventId: mark.eventId } : {}),
         });
         removeSent(mark);
         result.sent += 1;

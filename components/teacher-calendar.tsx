@@ -26,6 +26,7 @@ import {
   deleteCalendarEventAction,
   rescheduleClassOccurrenceAction,
   restoreClosureAction,
+  setTrialOutcomeAction,
   updateCalendarEventAction,
 } from "@/app/protected/teacher/calendar-actions";
 import { CloseDaysDialog } from "@/components/close-days-dialog";
@@ -78,13 +79,16 @@ import {
   type SchoolBreakItem,
 } from "@/lib/school-closures";
 import {
+  ONE_OFF_CLASS_NAME,
   upsertAttendanceRecord,
   type AttendanceRecord,
+  type AttendanceStatus,
 } from "@/lib/attendance-records";
 import type {
   CalendarEvent,
   CalendarEventInput,
   CalendarEventType,
+  TrialOutcome,
 } from "@/lib/types/database";
 
 type StudentOption = {
@@ -439,6 +443,9 @@ type FormState = {
   endTime: string;
   allDay: boolean;
   notes: string;
+  /** One-off lessons: charge the student per attendance, at lessonPrice. */
+  charge: boolean;
+  lessonPrice: string;
 };
 
 function blankForm(eventType: AddableEventType, eventDate: string): FormState {
@@ -454,6 +461,8 @@ function blankForm(eventType: AddableEventType, eventDate: string): FormState {
     endTime: "",
     allDay: false,
     notes: "",
+    charge: false,
+    lessonPrice: "",
   };
 }
 
@@ -470,6 +479,8 @@ function formFromEvent(event: CalendarEvent): FormState {
     endTime: event.end_time ?? "",
     allDay: event.start_time === null,
     notes: event.notes ?? "",
+    charge: event.lesson_price != null,
+    lessonPrice: event.lesson_price != null ? String(event.lesson_price) : "",
   };
 }
 
@@ -485,7 +496,26 @@ function formToInput(form: FormState): CalendarEventInput {
     contactPhone: form.contactPhone,
     title: form.title,
     notes: form.notes,
+    lessonPrice:
+      form.eventType === "ad_hoc_lesson" && form.charge
+        ? Number(form.lessonPrice.replace(",", "."))
+        : null,
   };
+}
+
+// A one-off lesson is charged by default only when the student already pays
+// by the lesson: their first per-lesson class's rate. Students who only
+// take monthly classes have extras covered by their tuition.
+function defaultLessonCharge(
+  student: StudentOption | undefined,
+  lessonRateByClassId: Record<string, number> | undefined,
+): { charge: boolean; lessonPrice: string } {
+  const rate = student?.assignedClassIds
+    .map((classId) => lessonRateByClassId?.[classId])
+    .find((value): value is number => value !== undefined);
+  return rate === undefined
+    ? { charge: false, lessonPrice: "" }
+    : { charge: true, lessonPrice: String(rate) };
 }
 
 export function TeacherCalendar({
@@ -689,16 +719,69 @@ export function TeacherCalendar({
     };
   }, [attendanceLessons, selectedDate, lessonRateByClassId]);
 
+  // One-off lessons take attendance too, for their one student. Their marks
+  // belong to the lesson (calendar_event_id), not to a class/date, so they
+  // are read and kept here rather than in the shared attendanceRecords.
+  const oneOffLessons = React.useMemo(
+    () =>
+      selectedOccurrences.filter(
+        (occurrence) =>
+          occurrence.kind === "ad_hoc_lesson" &&
+          occurrence.eventId !== null &&
+          occurrence.studentId !== null,
+      ),
+    [selectedOccurrences],
+  );
+
+  const [oneOffMarks, setOneOffMarks] = React.useState<
+    Record<string, { status: AttendanceStatus | ""; chargedAmount: number | null }>
+  >({});
+
+  React.useEffect(() => {
+    let isActive = true;
+    const eventIds = oneOffLessons.map((occurrence) => occurrence.eventId!);
+    if (eventIds.length === 0) return;
+    void Promise.resolve()
+      .then(() =>
+        Promise.all(
+          eventIds.map((eventId) =>
+            getAttendanceAction({ eventId }).then((rows) => [eventId, rows[0]] as const),
+          ),
+        ),
+      )
+      .then((results) => {
+        if (!isActive) return;
+        setOneOffMarks((prev) => {
+          const next = { ...prev };
+          for (const [eventId, row] of results) {
+            next[eventId] = {
+              status: (row?.status as AttendanceStatus | undefined) ?? "",
+              chargedAmount: row?.chargedAmount ?? null,
+            };
+          }
+          return next;
+        });
+      })
+      .catch(() => {
+        // The tab still works; marks show once set.
+      });
+    return () => {
+      isActive = false;
+    };
+  }, [oneOffLessons]);
+
+  const attendanceTabIds = [
+    ...attendanceLessons.map((occurrence) => occurrence.classId!),
+    ...oneOffLessons.map((occurrence) => `event:${occurrence.eventId}`),
+  ];
+
   // Falls back to the day's first lesson whenever the previously-active tab
   // isn't one of today's lessons - e.g. right after switching to a new
   // selected date, or a lesson getting cancelled out from under it.
   const activeAttendanceTab =
-    activeAttendanceClassId &&
-    attendanceLessons.some(
-      (occurrence) => occurrence.classId === activeAttendanceClassId,
-    )
+    activeAttendanceClassId && attendanceTabIds.includes(activeAttendanceClassId)
       ? activeAttendanceClassId
-      : (attendanceLessons[0]?.classId ?? null);
+      : (attendanceTabIds[0] ?? null);
 
   const todayIso = toIsoDate(new Date());
 
@@ -820,8 +903,37 @@ export function TeacherCalendar({
     }
   };
 
+  const handleTrialOutcome = async (
+    event: CalendarEvent,
+    outcome: TrialOutcome,
+  ) => {
+    setDeletingId(event.id);
+    try {
+      // Tapping the chosen one again clears it.
+      const updated = await setTrialOutcomeAction(
+        event.id,
+        event.trial_outcome === outcome ? null : outcome,
+      );
+      onEventsChange((prev) =>
+        prev.map((item) => (item.id === updated.id ? updated : item)),
+      );
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, "Failed to save"));
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   const handleDeleteEvent = async (event: CalendarEvent) => {
-    if (!window.confirm(`Delete this ${TYPE_LABELS[event.event_type]}?`)) {
+    // A one-off's attendance (and any charge) outlives the lesson - say so
+    // before it goes (attendance_records.calendar_event_id is SET NULL).
+    const keepsHistory =
+      event.event_type === "ad_hoc_lesson"
+        ? "\nAny attendance already taken (and its charge) is kept."
+        : "";
+    if (
+      !window.confirm(`Delete this ${TYPE_LABELS[event.event_type]}?${keepsHistory}`)
+    ) {
       return;
     }
     setDeletingId(event.id);
@@ -1115,6 +1227,28 @@ export function TeacherCalendar({
         </div>
 
         <div className="flex items-center gap-2">
+          {storedEvent && occurrence.kind === "trial_lesson" && (
+            <div className="flex items-center gap-1" role="group" aria-label="Trial outcome">
+              {(
+                [
+                  ["came", "Came"],
+                  ["no_show", "Didn't come"],
+                ] as const
+              ).map(([outcome, label]) => (
+                <Button
+                  key={outcome}
+                  type="button"
+                  size="sm"
+                  variant={storedEvent.trial_outcome === outcome ? "default" : "outline"}
+                  aria-pressed={storedEvent.trial_outcome === outcome}
+                  disabled={deletingId === storedEvent.id}
+                  onClick={() => void handleTrialOutcome(storedEvent, outcome)}
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
+          )}
           {occurrence.kind === "recurring" && (
             <>
               <Button
@@ -1335,7 +1469,7 @@ export function TeacherCalendar({
         </CardTitle>
       </CardHeader>
       <CardContent>
-        {attendanceLessons.length === 0 ? (
+        {attendanceTabIds.length === 0 ? (
           <p className="text-sm text-muted-foreground">Nothing scheduled.</p>
         ) : (
           <Tabs
@@ -1354,7 +1488,51 @@ export function TeacherCalendar({
                     : ""}
                 </TabsTrigger>
               ))}
+              {oneOffLessons.map((occurrence) => (
+                <TabsTrigger
+                  key={occurrence.eventId}
+                  value={`event:${occurrence.eventId}`}
+                >
+                  {occurrence.studentName} (one-off)
+                  {occurrence.startTime
+                    ? ` · ${lessonTimeLabel(occurrence.startTime, occurrence.isTwoHour, occurrence.endTime)}`
+                    : ""}
+                </TabsTrigger>
+              ))}
             </TabsList>
+            {oneOffLessons.map((occurrence) => {
+              const eventId = occurrence.eventId!;
+              const student = students.find((item) => item.id === occurrence.studentId);
+              const mark = oneOffMarks[eventId];
+              const storedEvent = events.find((event) => event.id === eventId);
+              return (
+                <TabsContent key={eventId} value={`event:${eventId}`} className="mt-3">
+                  <AttendanceRosterTable
+                    roster={student ? [student] : []}
+                    classId=""
+                    className={ONE_OFF_CLASS_NAME}
+                    eventId={eventId}
+                    dateKey={selectedDate}
+                    isTwoHour={occurrence.isTwoHour}
+                    isPerLesson={storedEvent?.lesson_price != null}
+                    getStatus={() => mark?.status ?? ""}
+                    getChargedAmount={() => mark?.chargedAmount ?? null}
+                    onOptimisticChange={(_studentId, status) =>
+                      setOneOffMarks((prev) => ({
+                        ...prev,
+                        [eventId]: { status, chargedAmount: null },
+                      }))
+                    }
+                    onCommitted={(_studentId, status, chargedAmount) =>
+                      setOneOffMarks((prev) => ({
+                        ...prev,
+                        [eventId]: { status, chargedAmount },
+                      }))
+                    }
+                  />
+                </TabsContent>
+              );
+            })}
             {attendanceLessons.map((occurrence) => {
               const classId = occurrence.classId!;
               const roster = attendanceStudentOptions.filter((student) =>
@@ -1463,9 +1641,21 @@ export function TeacherCalendar({
                 <select
                   id="event-student"
                   value={form.studentId}
-                  onChange={(e) =>
-                    setForm((prev) => ({ ...prev, studentId: e.target.value }))
-                  }
+                  onChange={(e) => {
+                    const studentId = e.target.value;
+                    setForm((prev) => ({
+                      ...prev,
+                      studentId,
+                      // Editing keeps the lesson's own price; a new lesson
+                      // follows the student's billing.
+                      ...(dialog?.mode === "create"
+                        ? defaultLessonCharge(
+                            students.find((item) => item.id === studentId),
+                            lessonRateByClassId,
+                          )
+                        : {}),
+                    }));
+                  }}
                   className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                 >
                   <option value="">Choose a student</option>
@@ -1484,6 +1674,43 @@ export function TeacherCalendar({
                     </optgroup>
                   )}
                 </select>
+              </div>
+            )}
+
+            {form.eventType === "ad_hoc_lesson" && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="event-charge"
+                    checked={form.charge}
+                    onCheckedChange={(checked) =>
+                      setForm((prev) => ({ ...prev, charge: checked === true }))
+                    }
+                  />
+                  <Label htmlFor="event-charge" className="font-normal">
+                    Charge this lesson
+                  </Label>
+                </div>
+                {form.charge && (
+                  <div className="space-y-2">
+                    <Label htmlFor="event-price">Price (€)</Label>
+                    <Input
+                      id="event-price"
+                      inputMode="decimal"
+                      value={form.lessonPrice}
+                      onChange={(e) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          lessonPrice: e.target.value,
+                        }))
+                      }
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Charged to the family when you mark the student present
+                      or late (half for 1+1), like a per-lesson class.
+                    </p>
+                  </div>
+                )}
               </div>
             )}
 

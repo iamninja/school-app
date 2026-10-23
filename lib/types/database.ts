@@ -755,6 +755,8 @@ export type CalendarEventType =
   | "trial_lesson"
   | "block";
 
+export type TrialOutcome = "came" | "no_show";
+
 export interface CalendarEvent {
   id: string;
   event_type: CalendarEventType;
@@ -777,6 +779,10 @@ export interface CalendarEvent {
   /** The dates the closure was declared for - on each of its rows. */
   closure_from?: string | null;
   closure_to?: string | null;
+  /** ad_hoc_lesson only: charged per attendance when set (null = free). */
+  lesson_price?: number | null;
+  /** trial_lesson only: the teacher's own came / no-show record. */
+  trial_outcome?: TrialOutcome | null;
   created_at: string;
 }
 
@@ -794,6 +800,8 @@ export interface CalendarEventInput {
   contactPhone?: string;
   title?: string;
   notes?: string;
+  /** ad_hoc_lesson only: the lesson's price, or null/absent for no charge. */
+  lessonPrice?: number | null;
   /** Tell the students about this change (default true). */
   notify?: boolean;
 }

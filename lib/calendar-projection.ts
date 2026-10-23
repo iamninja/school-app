@@ -95,6 +95,7 @@ export type ProjectionEvent = Pick<
   closure_id?: string | null;
   closure_from?: string | null;
   closure_to?: string | null;
+  trial_outcome?: "came" | "no_show" | null;
 };
 
 export type OccurrenceKind =

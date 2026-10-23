@@ -64,6 +64,19 @@ describe("attendance queue", () => {
     expect(getQueueSnapshot()).toEqual([]);
   });
 
+  it("keeps a one-off lesson's mark apart from a class mark the same day, and sends it with its lesson", async () => {
+    enqueueMark(mark());
+    enqueueMark(mark({ classId: "", eventId: "event-1", className: "Ιδιαίτερο μάθημα", queuedAt: 2 }));
+    expect(getQueueSnapshot()).toHaveLength(2);
+
+    const send = vi.fn().mockResolvedValue({});
+    await flushQueue(send);
+
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ classId: "c1" }));
+    expect(send.mock.calls[0][0]).not.toHaveProperty("eventId");
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ eventId: "event-1" }));
+  });
+
   it("sends oldest first and clears what was sent", async () => {
     enqueueMark(mark({ studentId: "s2", queuedAt: 5 }));
     enqueueMark(mark({ studentId: "s1", queuedAt: 2 }));

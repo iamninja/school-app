@@ -303,6 +303,100 @@ describe("teacher actions - updateStudentAction", () => {
   });
 });
 
+describe("teacher actions - setAttendanceAction for a one-off lesson", () => {
+  beforeEach(() => {
+    vi.mocked(requireTeacher).mockResolvedValue(undefined);
+  });
+
+  const EVENT = {
+    id: "event-1",
+    event_date: "2026-10-28",
+    start_time: "16:00",
+    end_time: null,
+    student_id: "student-1",
+  };
+
+  it("files the mark under the lesson, with no class, from the teacher's own event", async () => {
+    const client = createMockSupabaseClient({
+      calendar_events: { data: EVENT, error: null },
+      attendance_records: { data: { id: "record-1" }, error: null },
+      family_balance_transactions: { data: { amount: "25.00" }, error: null },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    const result = await setAttendanceAction({
+      classId: "",
+      className: "ignored",
+      eventId: "event-1",
+      studentId: "student-1",
+      attendanceDate: "2026-10-28",
+      status: "present",
+    });
+
+    expect(result).toEqual({ studentId: "student-1", status: "present", chargedAmount: 25 });
+    const eventChain = client.from.mock.results[0].value;
+    expect(eventChain.eq).toHaveBeenCalledWith("teacher_id", "teacher-1");
+    expect(eventChain.eq).toHaveBeenCalledWith("event_type", "ad_hoc_lesson");
+    const attendanceChain = client.from.mock.results[1].value;
+    expect(attendanceChain.upsert).toHaveBeenCalledWith(
+      {
+        teacher_id: "teacher-1",
+        class_id: null,
+        calendar_event_id: "event-1",
+        class_name: "Ιδιαίτερο μάθημα",
+        student_id: "student-1",
+        attendance_date: "2026-10-28",
+        status: "present",
+      },
+      { onConflict: "calendar_event_id,student_id" },
+    );
+  });
+
+  it("refuses a student or date that isn't the lesson's", async () => {
+    const client = createMockSupabaseClient({
+      calendar_events: { data: EVENT, error: null },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await expect(
+      setAttendanceAction({
+        classId: "",
+        className: "",
+        eventId: "event-1",
+        studentId: "someone-else",
+        attendanceDate: "2026-10-28",
+        status: "present",
+      }),
+    ).rejects.toThrow(ExpectedError);
+    expect(client.from).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears the lesson's mark by event and student", async () => {
+    const client = createMockSupabaseClient({
+      calendar_events: { data: EVENT, error: null },
+      attendance_records: { data: null, error: null },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await setAttendanceAction({
+      classId: "",
+      className: "",
+      eventId: "event-1",
+      studentId: "student-1",
+      attendanceDate: "2026-10-28",
+      status: "",
+    });
+
+    const chain = client.from.mock.results[1].value;
+    expect(chain.delete).toHaveBeenCalled();
+    expect(chain.match).toHaveBeenCalledWith({
+      teacher_id: "teacher-1",
+      calendar_event_id: "event-1",
+      student_id: "student-1",
+    });
+  });
+});
+
 describe("teacher actions - setAttendanceAction", () => {
   beforeEach(() => {
     vi.mocked(requireTeacher).mockResolvedValue(undefined);

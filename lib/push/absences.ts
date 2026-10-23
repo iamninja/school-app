@@ -44,12 +44,18 @@ export async function lessonEndTime(
 
 export type AttendanceChange = {
   attendanceRecordId: string | null;
-  classId: string;
+  /** null for a one-off lesson's mark (it has no class). */
+  classId: string | null;
   className: string;
   studentId: string;
   attendanceDate: string;
   status: string;
   triggeredBy: string;
+  /**
+   * When the lesson ends, if the caller already knows (a one-off lesson
+   * carries its own times); otherwise looked up from the class's lessons.
+   */
+  lessonEnd?: string | null;
 };
 
 /**
@@ -102,7 +108,12 @@ export async function handleAttendanceChange(
       return;
     }
 
-    const end = await lessonEndTime(supabase, change.classId, change.attendanceDate);
+    const end =
+      change.lessonEnd !== undefined
+        ? change.lessonEnd
+        : change.classId
+          ? await lessonEndTime(supabase, change.classId, change.attendanceDate)
+          : null;
     const sendAt = end
       ? new Date(athensDateTimeToUtc(change.attendanceDate, end).getTime() + DELAY_AFTER_LESSON_MS)
       : new Date(now.getTime() + DELAY_AFTER_LESSON_MS);
@@ -128,7 +139,7 @@ export async function handleAttendanceChange(
 async function sendAbsenceNotice(
   supabase: SupabaseClient,
   studentId: string,
-  classId: string,
+  classId: string | null,
   className: string,
   date: string,
   triggeredBy: string | null,

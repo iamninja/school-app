@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ProjectionEvent } from "@/lib/calendar-projection";
 import {
   addDays,
+  buildDayEventLessons,
   buildDayHolidays,
   buildDayLessons,
   lessonInProgress,
@@ -308,5 +309,50 @@ describe("buildDayHolidays", () => {
         }),
       }),
     ).toEqual([]);
+  });
+});
+
+describe("buildDayEventLessons", () => {
+  const events = [
+    event({
+      id: "one-off",
+      event_type: "ad_hoc_lesson",
+      class_id: null,
+      class_name: null,
+      student_id: "s1",
+      student_name: "Ada Lovelace",
+      start_time: "15:00",
+    }),
+    event({
+      id: "trial",
+      event_type: "trial_lesson",
+      class_id: null,
+      class_name: null,
+      contact_name: "Νίκος",
+      start_time: "19:00",
+      trial_outcome: "no_show",
+    }),
+  ];
+
+  it("lists one-off and trial lessons with their mark or outcome", () => {
+    expect(
+      buildDayEventLessons({
+        date: MONDAY,
+        projection: projection({ events }),
+        statusByEventId: new Map([["one-off", "present"]]),
+      }),
+    ).toEqual([
+      expect.objectContaining({ eventId: "one-off", kind: "ad_hoc_lesson", name: "Ada Lovelace", status: "present", trialOutcome: null }),
+      expect.objectContaining({ eventId: "trial", kind: "trial_lesson", name: "Νίκος", status: "", trialOutcome: "no_show" }),
+    ]);
+  });
+
+  it("makes a day with only a one-off reachable from the date strip", () => {
+    const tuesday = addDays(MONDAY, 1);
+    const onlyOneOff = projection({
+      slots: [],
+      events: [event({ id: "x", event_type: "ad_hoc_lesson", class_id: null, class_name: null, student_id: "s1", student_name: "Ada", start_time: "15:00", event_date: tuesday })],
+    });
+    expect(neighbouringLessonDays({ date: MONDAY, projection: onlyOneOff }).next).toBe(tuesday);
   });
 });

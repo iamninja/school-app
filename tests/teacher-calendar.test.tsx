@@ -20,6 +20,7 @@ vi.mock("@/app/protected/teacher/calendar-actions", () => ({
   rescheduleClassOccurrenceAction: vi.fn(),
   cancelLessonsForClosureAction: vi.fn(),
   restoreClosureAction: vi.fn(),
+  setTrialOutcomeAction: vi.fn(),
 }));
 
 vi.mock("sonner", () => ({
@@ -53,6 +54,7 @@ function renderCalendar(overrides: {
   slots?: Array<{ classId: string; day: string; time: string }>;
   classes?: Array<{ id: string; name: string; archivedAt: string | null }>;
   attendanceRecords?: AttendanceRecord[];
+  lessonRateByClassId?: Record<string, number>;
 } = {}) {
   const events = overrides.events ?? [];
   const onEventsChange = vi.fn();
@@ -66,6 +68,7 @@ function renderCalendar(overrides: {
       slots={overrides.slots ?? []}
       attendanceRecords={overrides.attendanceRecords ?? []}
       onAttendanceRecordsChange={onAttendanceRecordsChange}
+      lessonRateByClassId={overrides.lessonRateByClassId}
     />,
   );
   return { onEventsChange, onAttendanceRecordsChange };
@@ -959,6 +962,94 @@ describe("TeacherCalendar", () => {
         }),
       );
     });
+  });
+
+  it("charges a one-off lesson by default when the student pays per lesson", async () => {
+    const user = userEvent.setup();
+    vi.mocked(calendarActions.createCalendarEventAction).mockResolvedValue({
+      id: "evt-adhoc-2",
+    } as CalendarEvent);
+
+    renderCalendar({ lessonRateByClassId: { [classA.id]: 20 } });
+
+    await user.click(screen.getByRole("button", { name: /^add$/i }));
+    await user.click(screen.getByRole("menuitem", { name: /one-off lesson/i }));
+    await screen.findByRole("dialog");
+    expect(screen.getByLabelText(/charge this lesson/i)).not.toBeChecked();
+
+    await user.selectOptions(screen.getByLabelText(/^student/i), studentA.id);
+    expect(screen.getByLabelText(/charge this lesson/i)).toBeChecked();
+    expect(screen.getByLabelText(/price/i)).toHaveValue("20");
+
+    await user.clear(screen.getByLabelText(/price/i));
+    await user.type(screen.getByLabelText(/price/i), "22,5");
+    await user.type(screen.getByLabelText(/start time/i), "16:00");
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => {
+      expect(calendarActions.createCalendarEventAction).toHaveBeenCalledWith(
+        expect.objectContaining({ eventType: "ad_hoc_lesson", lessonPrice: 22.5 }),
+      );
+    });
+  });
+
+  it("leaves a one-off lesson free for a student on monthly tuition", async () => {
+    const user = userEvent.setup();
+    vi.mocked(calendarActions.createCalendarEventAction).mockResolvedValue({
+      id: "evt-adhoc-3",
+    } as CalendarEvent);
+
+    renderCalendar();
+
+    await user.click(screen.getByRole("button", { name: /^add$/i }));
+    await user.click(screen.getByRole("menuitem", { name: /one-off lesson/i }));
+    await screen.findByRole("dialog");
+    await user.selectOptions(screen.getByLabelText(/^student/i), studentA.id);
+    expect(screen.getByLabelText(/charge this lesson/i)).not.toBeChecked();
+    await user.type(screen.getByLabelText(/start time/i), "16:00");
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => {
+      expect(calendarActions.createCalendarEventAction).toHaveBeenCalledWith(
+        expect.objectContaining({ eventType: "ad_hoc_lesson", lessonPrice: null }),
+      );
+    });
+  });
+
+  it("marks a trial lesson as came, and clears it on a second tap", async () => {
+    const user = userEvent.setup();
+    const trial: CalendarEvent = {
+      id: "evt-trial-1",
+      event_type: "trial_lesson",
+      event_date: todayIso,
+      start_time: "19:00",
+      end_time: null,
+      class_id: null,
+      class_name: null,
+      student_id: null,
+      student_name: null,
+      contact_name: "Νίκος",
+      contact_phone: null,
+      title: null,
+      notes: null,
+      trial_outcome: "came",
+      created_at: "2026-08-01T00:00:00Z",
+    };
+    vi.mocked(calendarActions.setTrialOutcomeAction).mockResolvedValue({
+      ...trial,
+      trial_outcome: null,
+    });
+
+    const { onEventsChange } = renderCalendar({ events: [trial] });
+
+    const came = screen.getByRole("button", { name: "Came" });
+    expect(came).toHaveAttribute("aria-pressed", "true");
+    await user.click(came);
+
+    await waitFor(() => {
+      expect(calendarActions.setTrialOutcomeAction).toHaveBeenCalledWith("evt-trial-1", null);
+    });
+    expect(onEventsChange).toHaveBeenCalled();
   });
 
   it("edits an existing extra session, pre-filling the form", async () => {

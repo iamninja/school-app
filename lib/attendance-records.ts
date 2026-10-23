@@ -6,6 +6,12 @@
 
 export type AttendanceStatus = "present" | "late" | "absent" | "split";
 
+/**
+ * The class_name snapshot on a one-off lesson's attendance mark (it has no
+ * class) - what the student's history and the lesson charge read.
+ */
+export const ONE_OFF_CLASS_NAME = "Ιδιαίτερο μάθημα";
+
 export type AttendanceRecord = {
   studentId: string;
   classId: string | null;
