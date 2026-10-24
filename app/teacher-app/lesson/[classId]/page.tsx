@@ -7,7 +7,8 @@ import { HomeworkPanel } from "@/components/teacher-app/homework-panel";
 import { LastHomework } from "@/components/teacher-app/last-homework";
 import { formatCompanionDate } from "@/components/teacher-app/format";
 import { requireCompanionTeacher, parseDateParam } from "@/app/teacher-app/session";
-import { loadHomeworkView, loadLesson } from "@/lib/teacher-app/load";
+import { loadHomeworkView, loadLesson, loadLessonTasks } from "@/lib/teacher-app/load";
+import { CompanionTasks } from "@/components/teacher-app/task-list";
 import { athensToday } from "@/lib/push/athens-time";
 import { cn } from "@/lib/utils";
 
@@ -27,8 +28,10 @@ export default async function TeacherAppLessonPage({
 
   const lesson = await loadLesson(supabase, teacherId, classId, date);
   if (!lesson) notFound();
-  const homeworkView =
-    tab === "homework" ? await loadHomeworkView(supabase, teacherId, today, classId) : null;
+  const [homeworkView, lessonTasks] = await Promise.all([
+    tab === "homework" ? loadHomeworkView(supabase, teacherId, today, classId) : null,
+    tab === "attendance" ? loadLessonTasks(supabase, teacherId, date, { classId }) : null,
+  ]);
 
   const backHref = date === today ? "/teacher-app" : `/teacher-app?date=${date}`;
   const lessonHref = `/teacher-app/lesson/${classId}?date=${date}`;
@@ -86,6 +89,14 @@ export default async function TeacherAppLessonPage({
         />
       ) : lesson.hasLesson ? (
         <div className="space-y-4">
+          {lessonTasks?.lessonRef && (
+            <CompanionTasks
+              key={JSON.stringify(lessonTasks.tasks.map((task) => [task.id, task.done_at]))}
+              title="Tasks"
+              target={{ kind: "lesson", date, lesson: lessonTasks.lessonRef }}
+              tasks={lessonTasks.tasks}
+            />
+          )}
           <LastHomework
             homework={lesson.lastHomework}
             today={today}

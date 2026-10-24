@@ -5,6 +5,8 @@ import { toast } from "sonner";
 import { addDays, format, startOfWeek } from "date-fns";
 import { TeacherCalendar } from "@/components/teacher-calendar";
 import * as calendarActions from "@/app/protected/teacher/calendar-actions";
+import * as taskActions from "@/app/protected/teacher/task-actions";
+import type { TeacherTask } from "@/lib/teacher-tasks";
 import {
   fromIsoDate,
   toIsoDate,
@@ -21,6 +23,13 @@ vi.mock("@/app/protected/teacher/calendar-actions", () => ({
   cancelLessonsForClosureAction: vi.fn(),
   restoreClosureAction: vi.fn(),
   setTrialOutcomeAction: vi.fn(),
+}));
+
+vi.mock("@/app/protected/teacher/task-actions", () => ({
+  listTasksAction: vi.fn().mockResolvedValue([]),
+  createTaskAction: vi.fn(),
+  setTaskDoneAction: vi.fn(),
+  deleteTaskAction: vi.fn(),
 }));
 
 vi.mock("sonner", () => ({
@@ -754,6 +763,102 @@ describe("TeacherCalendar", () => {
         "evt-xmas-1",
       );
     });
+  });
+
+  it("shows a lesson's tasks, ticks one, and adds a personal task for the day", async () => {
+    const user = userEvent.setup();
+    const lessonTask: TeacherTask = {
+      id: "task-1",
+      kind: "lesson",
+      title: "Print worksheets",
+      task_date: todayIso,
+      task_time: null,
+      phase: "before",
+      class_id: classA.id,
+      slot_time: "15:00",
+      calendar_event_id: null,
+      lesson_label: "Algebra II 15:00",
+      done_at: null,
+      created_at: "2026-10-20T10:00:00Z",
+    };
+    vi.mocked(taskActions.listTasksAction).mockResolvedValue([lessonTask]);
+    vi.mocked(taskActions.setTaskDoneAction).mockResolvedValue({
+      ...lessonTask,
+      done_at: "2026-10-26T10:00:00Z",
+    });
+    vi.mocked(taskActions.createTaskAction).mockResolvedValue({
+      ...lessonTask,
+      id: "task-2",
+      kind: "personal",
+      title: "Call the accountant",
+      phase: null,
+      class_id: null,
+      slot_time: null,
+      lesson_label: null,
+    });
+
+    renderCalendar({
+      slots: [{ classId: classA.id, day: todayWeekday, time: "15:00" }],
+    });
+
+    await user.click(await screen.findByRole("button", { name: "Tasks 0/1" }));
+    await user.click(screen.getByLabelText("Print worksheets"));
+    await waitFor(() => {
+      expect(taskActions.setTaskDoneAction).toHaveBeenCalledWith("task-1", true);
+    });
+    expect(screen.getByRole("button", { name: "Tasks 1/1" })).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("Add a task for this day"), "Call the accountant");
+    await user.click(screen.getByRole("button", { name: "Add: Add a task for this day" }));
+    await waitFor(() => {
+      expect(taskActions.createTaskAction).toHaveBeenCalledWith({
+        kind: "personal",
+        title: "Call the accountant",
+        date: todayIso,
+        time: null,
+      });
+    });
+    expect(await screen.findByText("Call the accountant")).toBeInTheDocument();
+  });
+
+  it("adds a task before a lesson, filed under that lesson", async () => {
+    const user = userEvent.setup();
+    vi.mocked(taskActions.listTasksAction).mockResolvedValue([]);
+    vi.mocked(taskActions.createTaskAction).mockResolvedValue({
+      id: "task-3",
+      kind: "lesson",
+      title: "Bring the projector",
+      task_date: todayIso,
+      task_time: null,
+      phase: "before",
+      class_id: classA.id,
+      slot_time: "15:00",
+      calendar_event_id: null,
+      lesson_label: "Algebra II 15:00",
+      done_at: null,
+      created_at: "2026-10-20T10:00:00Z",
+    });
+
+    renderCalendar({
+      slots: [{ classId: classA.id, day: todayWeekday, time: "15:00" }],
+    });
+
+    await user.click(screen.getByRole("button", { name: "Add tasks" }));
+    await user.type(
+      screen.getByLabelText("Add a task before the lesson (Algebra II 15:00)"),
+      "Bring the projector{Enter}",
+    );
+
+    await waitFor(() => {
+      expect(taskActions.createTaskAction).toHaveBeenCalledWith({
+        kind: "lesson",
+        title: "Bring the projector",
+        date: todayIso,
+        phase: "before",
+        lesson: { classId: classA.id, slotTime: "15:00" },
+      });
+    });
+    expect(await screen.findByText("Bring the projector")).toBeInTheDocument();
   });
 
   it("adds a personal block via the Add menu", async () => {

@@ -5,6 +5,18 @@ import type { ProjectionEvent } from "@/lib/calendar-projection";
 import type { AttendanceStatus } from "@/lib/attendance-records";
 import type { Homework } from "@/lib/types/database";
 import type { SchoolBreakItem } from "@/lib/school-closures";
+import { projectOccurrences } from "@/lib/calendar-projection";
+import { athensToday } from "@/lib/push/athens-time";
+import {
+  TEACHER_TASK_COLUMNS,
+  groupDayTasks,
+  lessonRefFor,
+  lessonRefKey,
+  overdueTasks as overdueTasksOf,
+  taskProgress,
+  type LessonRef,
+  type TeacherTask,
+} from "@/lib/teacher-tasks";
 import {
   addDays,
   buildDayEventLessons,
@@ -184,6 +196,15 @@ export type CompanionDay = {
   holidays: SchoolBreakItem[];
   /** One-off and trial lessons that day (no class, so not in `lessons`). */
   eventLessons: DayEventLesson[];
+  /**
+   * Task counts per Today row: `class:<classId>` (all of that class's
+   * lessons that day - one row per class) or `event:<eventId>`.
+   */
+  lessonTaskCounts: Record<string, { done: number; total: number }>;
+  /** The day's own to-dos, plus lesson tasks whose lesson isn't on it any more. */
+  dayTasks: TeacherTask[];
+  /** Still-open tasks from earlier days (only on today). */
+  overdueTasks: TeacherTask[];
   previous: string | null;
   next: string | null;
 };
@@ -209,6 +230,29 @@ export async function loadDay(
     DayAttendanceRow & { calendar_event_id: string | null }
   >;
 
+  const today = athensToday();
+  const tasks = await loadTasks(supabase, teacherId, date, date === today ? today : null);
+  const occurrences = projectOccurrences({ from: date, to: date, ...projection, includeBlocks: false });
+  const grouped = groupDayTasks(tasks, date, occurrences);
+  const lessonTaskCounts: Record<string, { done: number; total: number }> = {};
+  for (const occurrence of occurrences) {
+    const ref = lessonRefFor(occurrence);
+    if (!ref) continue;
+    const list = grouped.byLesson.get(lessonRefKey(ref));
+    if (!list) continue;
+    // A class meeting twice that day is one Today row: add its slots up.
+    const rowKey =
+      occurrence.classId && occurrence.kind !== "ad_hoc_lesson" && occurrence.kind !== "trial_lesson"
+        ? `class:${occurrence.classId}`
+        : `event:${occurrence.eventId}`;
+    const counts = lessonTaskCounts[rowKey] ?? { done: 0, total: 0 };
+    const progress = taskProgress(list);
+    lessonTaskCounts[rowKey] = {
+      done: counts.done + progress.done,
+      total: counts.total + progress.total,
+    };
+  }
+
   return {
     date,
     lessons: buildDayLessons({
@@ -218,6 +262,9 @@ export async function loadDay(
       attendance: rows.filter((row) => row.calendar_event_id === null),
     }),
     holidays: buildDayHolidays({ date, projection }),
+    lessonTaskCounts,
+    dayTasks: [...grouped.personal, ...grouped.unlinked],
+    overdueTasks: overdueTasksOf(tasks, today),
     eventLessons: buildDayEventLessons({
       date,
       projection,
@@ -448,5 +495,79 @@ export async function loadOneOffLesson(
         },
       ]),
     ),
+  };
+}
+
+/**
+ * A day's tasks, plus - when `overdueBefore` is given - every still-open
+ * task from before that date.
+ */
+async function loadTasks(
+  supabase: SupabaseServerClient,
+  teacherId: string,
+  date: string,
+  overdueBefore: string | null,
+): Promise<TeacherTask[]> {
+  const [onDay, overdue] = await Promise.all([
+    supabase
+      .from("teacher_tasks")
+      .select(TEACHER_TASK_COLUMNS)
+      .eq("teacher_id", teacherId)
+      .eq("task_date", date),
+    overdueBefore
+      ? supabase
+          .from("teacher_tasks")
+          .select(TEACHER_TASK_COLUMNS)
+          .eq("teacher_id", teacherId)
+          .is("done_at", null)
+          .lt("task_date", overdueBefore)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (onDay.error) throw onDay.error;
+  if (overdue.error) throw overdue.error;
+  return [
+    ...((onDay.data ?? []) as unknown as TeacherTask[]),
+    ...((overdue.data ?? []) as unknown as TeacherTask[]),
+  ];
+}
+
+export type CompanionLessonTasks = {
+  /** Where a new task for this lesson goes (null: the lesson isn't on the day). */
+  lessonRef: LessonRef | null;
+  tasks: TeacherTask[];
+};
+
+/**
+ * One lesson's tasks on a date: a class's (all of its lessons that day,
+ * like its single Today row) or one event's (one-off, trial).
+ */
+export async function loadLessonTasks(
+  supabase: SupabaseServerClient,
+  teacherId: string,
+  date: string,
+  lesson: { classId: string } | { eventId: string },
+): Promise<CompanionLessonTasks> {
+  const [{ projection }, tasks] = await Promise.all([
+    loadSchool(supabase, teacherId, date, date),
+    loadTasks(supabase, teacherId, date, null),
+  ]);
+  const occurrences = projectOccurrences({ from: date, to: date, ...projection, includeBlocks: false })
+    .filter((occurrence) =>
+      "eventId" in lesson
+        ? occurrence.eventId === lesson.eventId
+        : occurrence.classId === lesson.classId &&
+          (occurrence.kind === "recurring" ||
+            occurrence.kind === "extra_session" ||
+            occurrence.kind === "cancelled"),
+    );
+  const grouped = groupDayTasks(tasks, date, occurrences);
+  const refs = occurrences
+    .map(lessonRefFor)
+    .filter((ref): ref is LessonRef => ref !== null);
+  // New tasks go to the day's first lesson that still happens.
+  const live = occurrences.find((occurrence) => occurrence.kind !== "cancelled");
+  return {
+    lessonRef: live ? lessonRefFor(live) : (refs[0] ?? null),
+    tasks: refs.flatMap((ref) => grouped.byLesson.get(lessonRefKey(ref)) ?? []),
   };
 }

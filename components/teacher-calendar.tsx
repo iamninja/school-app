@@ -14,6 +14,7 @@ import {
 } from "date-fns";
 import {
   CalendarClockIcon,
+  ListTodoIcon,
   PencilIcon,
   PlusIcon,
   TriangleAlertIcon,
@@ -30,6 +31,22 @@ import {
   updateCalendarEventAction,
 } from "@/app/protected/teacher/calendar-actions";
 import { CloseDaysDialog } from "@/components/close-days-dialog";
+import {
+  createTaskAction,
+  deleteTaskAction,
+  listTasksAction,
+  setTaskDoneAction,
+  type CreateTaskInput,
+} from "@/app/protected/teacher/task-actions";
+import { LessonTasks, MyTasks } from "@/components/teacher-tasks";
+import {
+  groupDayTasks,
+  lessonLabelFor,
+  lessonRefFor,
+  lessonRefKey,
+  overdueTasks,
+  type TeacherTask,
+} from "@/lib/teacher-tasks";
 import { getAttendanceAction } from "@/app/protected/teacher/actions";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -135,6 +152,8 @@ const KIND_DOT_CLASSES: Record<OccurrenceKind, string> = {
 // calendar_events), so they get their own dot color rather than a slot in
 // KIND_DOT_CLASSES.
 const ASSESSMENT_DOT_CLASS = "bg-indigo-500";
+// A day with tasks still to do (lib/teacher-tasks.ts).
+const TASK_DOT_CLASS = "bg-orange-500";
 
 export type AssessmentDateMarker = {
   assessmentId: string;
@@ -306,12 +325,15 @@ function WeeklyOverview({
   classes,
   events,
   onSelectDate,
+  openTaskCountByDate,
 }: {
   selectedDate: string;
   slots: ProjectionSlot[];
   classes: ProjectionClass[];
   events: ProjectionEvent[];
   onSelectDate: (date: string) => void;
+  /** Tasks still to do, per day - a small count in the day's header. */
+  openTaskCountByDate?: Map<string, number>;
 }) {
   const weekStart = startOfWeek(fromIsoDate(selectedDate), {
     weekStartsOn: 1,
@@ -367,6 +389,15 @@ function WeeklyOverview({
                   {day === todayIso && (
                     <span className="rounded-full bg-sky-500/15 px-1.5 py-0.5 text-[10px] font-medium text-sky-600 dark:text-sky-400">
                       Today
+                    </span>
+                  )}
+                  {(openTaskCountByDate?.get(day) ?? 0) > 0 && (
+                    <span
+                      className="ml-auto flex items-center gap-0.5 rounded-full bg-orange-500/15 px-1.5 py-0.5 text-[10px] font-medium text-orange-700 dark:text-orange-400"
+                      title="Tasks to do"
+                    >
+                      <ListTodoIcon className="h-3 w-3" aria-hidden="true" />
+                      {openTaskCountByDate!.get(day)}
                     </span>
                   )}
                 </p>
@@ -639,6 +670,111 @@ export function TeacherCalendar({
     [selectedOccurrences],
   );
 
+  // The teacher's own to-dos (lib/teacher-tasks.ts): the visible month's
+  // (and the selected week's) plus everything still open from earlier days.
+  const [tasks, setTasks] = React.useState<TeacherTask[]>([]);
+  React.useEffect(() => {
+    let isActive = true;
+    const monthFrom = toIsoDate(startOfWeek(startOfMonth(month)));
+    const monthTo = toIsoDate(endOfWeek(endOfMonth(month)));
+    const weekFrom = toIsoDate(startOfWeek(fromIsoDate(selectedDate), { weekStartsOn: 1 }));
+    const weekTo = toIsoDate(endOfWeek(fromIsoDate(selectedDate), { weekStartsOn: 1 }));
+    void Promise.resolve()
+      .then(() =>
+        listTasksAction({
+          from: weekFrom < monthFrom ? weekFrom : monthFrom,
+          to: weekTo > monthTo ? weekTo : monthTo,
+          today: toIsoDate(new Date()),
+        }),
+      )
+      .then((loaded) => {
+        if (!isActive) return;
+        // Keep tasks from outside the new range (the overdue ones, a day
+        // added to just now) - the loaded set wins for what it covers.
+        setTasks((prev) => {
+          const byId = new Map(prev.map((task) => [task.id, task]));
+          for (const task of loaded) byId.set(task.id, task);
+          return [...byId.values()];
+        });
+      })
+      .catch(() => {
+        // Tasks stay as they were; the calendar itself still works.
+      });
+    return () => {
+      isActive = false;
+    };
+  }, [month, selectedDate]);
+
+  const dayTasks = React.useMemo(
+    () => groupDayTasks(tasks, selectedDate, selectedOccurrences),
+    [tasks, selectedDate, selectedOccurrences],
+  );
+  const todayForTasks = toIsoDate(new Date());
+  const overdue =
+    selectedDate === todayForTasks ? overdueTasks(tasks, todayForTasks) : [];
+
+  const openTaskCountByDate = React.useMemo(() => {
+    const map = new Map<string, number>();
+    for (const task of tasks) {
+      if (task.done_at !== null) continue;
+      map.set(task.task_date, (map.get(task.task_date) ?? 0) + 1);
+    }
+    return map;
+  }, [tasks]);
+
+  const addTask = async (input: CreateTaskInput): Promise<boolean> => {
+    try {
+      const created = await createTaskAction(input);
+      setTasks((prev) => [...prev, created]);
+      return true;
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, "Failed to add the task"));
+      return false;
+    }
+  };
+
+  const toggleTask = async (task: TeacherTask, done: boolean) => {
+    const replace = (next: TeacherTask) =>
+      setTasks((prev) => prev.map((item) => (item.id === next.id ? next : item)));
+    replace({ ...task, done_at: done ? new Date().toISOString() : null });
+    try {
+      replace(await setTaskDoneAction(task.id, done));
+    } catch (error: unknown) {
+      replace(task);
+      toast.error(getErrorMessage(error, "Failed to save the task"));
+    }
+  };
+
+  const removeTask = async (task: TeacherTask) => {
+    setTasks((prev) => prev.filter((item) => item.id !== task.id));
+    try {
+      await deleteTaskAction(task.id);
+    } catch (error: unknown) {
+      setTasks((prev) => [...prev, task]);
+      toast.error(getErrorMessage(error, "Failed to delete the task"));
+    }
+  };
+
+  const taskHandlers = {
+    onToggle: (task: TeacherTask, done: boolean) => void toggleTask(task, done),
+    onDelete: (task: TeacherTask) => void removeTask(task),
+  };
+
+  const renderLessonTasks = (occurrence: Occurrence) => {
+    const ref = lessonRefFor(occurrence);
+    if (!ref) return null;
+    return (
+      <LessonTasks
+        tasks={dayTasks.byLesson.get(lessonRefKey(ref)) ?? []}
+        lessonName={lessonLabelFor(occurrence)}
+        onAdd={(phase, title) =>
+          addTask({ kind: "lesson", title, date: occurrence.date, phase, lesson: ref })
+        }
+        {...taskHandlers}
+      />
+    );
+  };
+
   // Lessons that day eligible for attendance - only occurrences with a real
   // class roster behind them (ad_hoc_lesson/trial_lesson/block have no
   // classId; a cancelled lesson didn't happen). Deduped by classId - a class
@@ -791,6 +927,7 @@ export function TeacherCalendar({
       const kinds = kindsByDate.get(iso);
       const hasAssessmentMarker =
         (assessmentMarkersByDate.get(iso)?.length ?? 0) > 0;
+      const hasOpenTasks = (openTaskCountByDate.get(iso) ?? 0) > 0;
       return (
         <CalendarDayButton
           {...dayButtonProps}
@@ -802,7 +939,7 @@ export function TeacherCalendar({
           )}
         >
           {dayButtonProps.children}
-          {(kinds && kinds.size > 0) || hasAssessmentMarker ? (
+          {(kinds && kinds.size > 0) || hasAssessmentMarker || hasOpenTasks ? (
             <span className="flex gap-0.5">
               {[...(kinds ?? [])].slice(0, 3).map((kind) => (
                 <span
@@ -818,12 +955,15 @@ export function TeacherCalendar({
                   className={cn("h-1 w-1 rounded-full", ASSESSMENT_DOT_CLASS)}
                 />
               ) : null}
+              {hasOpenTasks ? (
+                <span className={cn("h-1 w-1 rounded-full", TASK_DOT_CLASS)} />
+              ) : null}
             </span>
           ) : null}
         </CalendarDayButton>
       );
     },
-    [kindsByDate, assessmentMarkersByDate, todayIso],
+    [kindsByDate, assessmentMarkersByDate, openTaskCountByDate, todayIso],
   );
 
   const openCreate = (type: AddableEventType) => {
@@ -1334,6 +1474,7 @@ export function TeacherCalendar({
             </>
           )}
         </div>
+        {renderLessonTasks(occurrence)}
       </div>
     );
   };
@@ -1422,6 +1563,16 @@ export function TeacherCalendar({
             )
           )}
 
+          <MyTasks
+            personal={dayTasks.personal}
+            unlinked={dayTasks.unlinked}
+            overdue={overdue}
+            onAdd={(title, time) =>
+              addTask({ kind: "personal", title, date: selectedDate, time })
+            }
+            {...taskHandlers}
+          />
+
           {selectedAssessmentMarkers.length > 0 ? (
             <div className="mt-3 space-y-2 border-t pt-3">
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -1460,6 +1611,7 @@ export function TeacherCalendar({
       classes={classes}
       events={projectionEvents}
       onSelectDate={setSelectedDate}
+      openTaskCountByDate={openTaskCountByDate}
     />
 
     <Card>
