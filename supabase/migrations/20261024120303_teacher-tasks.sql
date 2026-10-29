@@ -15,13 +15,21 @@
 -- 20260819225129. For the same reason the shape check below is written
 -- against kind/lesson_label, never the FK columns (see the note on
 -- calendar_events_shape_check, 20260821175434).
+--
+-- A title may tag students, parents and classes as inline tokens,
+-- "@[Ελένη](parent:<uuid>)" (lib/task-tags.ts) - the server checks every
+-- tagged id is the teacher's own before saving, so the length bound is on
+-- the stored text (tokens included); the visible text is held to 200
+-- characters by the app. is_call marks a task as a phone call: it gets a
+-- call button for the people it tags and sorts first.
 
 create table public.teacher_tasks (
   id uuid primary key default gen_random_uuid(),
   teacher_id uuid not null references auth.users (id) on delete cascade,
 
   kind text not null check (kind in ('lesson', 'personal')),
-  title text not null check (length(btrim(title)) between 1 and 200),
+  title text not null check (length(btrim(title)) between 1 and 2000),
+  is_call boolean not null default false,
   task_date date not null,
   -- personal tasks only, optional: 'HH:MM', same format as lesson times.
   task_time text check (task_time ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'),

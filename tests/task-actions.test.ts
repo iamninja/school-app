@@ -35,6 +35,7 @@ describe("teacher task actions", () => {
       teacher_id: "teacher-1",
       kind: "personal",
       title: "Λογιστής",
+      is_call: false,
       task_date: "2026-10-26",
       task_time: "12:00",
     });
@@ -131,5 +132,64 @@ describe("teacher task actions", () => {
     const chain = client.from.mock.results[0].value;
     expect(chain.delete).toHaveBeenCalled();
     expect(chain.eq).toHaveBeenCalledWith("teacher_id", "teacher-1");
+  });
+
+  describe("tags and call tasks", () => {
+    const PARENT = "11111111-1111-1111-1111-111111111111";
+    const STUDENT = "33333333-3333-3333-3333-333333333333";
+
+    it("stores a call task whose tagged parent is the teacher's own", async () => {
+      const client = createMockSupabaseClient({
+        family_parents: { data: [{ id: PARENT }], error: null },
+        teacher_tasks: { data: { id: "t9" }, error: null },
+      });
+      vi.mocked(createClient).mockResolvedValue(client as never);
+
+      await createTaskAction({
+        kind: "personal",
+        title: `Πάρε @[Ελένη](parent:${PARENT}) για το διαγώνισμα`,
+        date: "2026-10-30",
+        isCall: true,
+      });
+
+      const parentsChain = client.from.mock.results[0].value;
+      expect(parentsChain.eq).toHaveBeenCalledWith("families.teacher_id", "teacher-1");
+      expect(insertedRow(client)).toEqual(
+        expect.objectContaining({
+          title: `Πάρε @[Ελένη](parent:${PARENT}) για το διαγώνισμα`,
+          is_call: true,
+        }),
+      );
+    });
+
+    it("refuses a tag for someone who isn't the teacher's", async () => {
+      const client = createMockSupabaseClient({
+        students: { data: [], error: null },
+      });
+      vi.mocked(createClient).mockResolvedValue(client as never);
+
+      await expect(
+        createTaskAction({
+          kind: "personal",
+          title: `Call @[Μαρία](student:${STUDENT})`,
+          date: "2026-10-30",
+        }),
+      ).rejects.toThrow(ExpectedError);
+      expect(client.from.mock.calls.map((call) => call[0])).not.toContain("teacher_tasks");
+    });
+
+    it("holds the visible text, not the stored tokens, to 200 characters", async () => {
+      const client = createMockSupabaseClient({
+        family_parents: { data: [{ id: PARENT }], error: null },
+        teacher_tasks: { data: { id: "t10" }, error: null },
+      });
+      vi.mocked(createClient).mockResolvedValue(client as never);
+
+      // 190 visible characters, well over 200 stored.
+      const title = `${"x".repeat(183)} @[Ελένη](parent:${PARENT})`;
+      await expect(
+        createTaskAction({ kind: "personal", title, date: "2026-10-30" }),
+      ).resolves.toBeDefined();
+    });
   });
 });

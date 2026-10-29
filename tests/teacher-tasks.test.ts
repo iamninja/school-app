@@ -19,6 +19,7 @@ function task(overrides: Partial<TeacherTask>): TeacherTask {
     id: "t",
     kind: "personal",
     title: "Task",
+    is_call: false,
     task_date: MONDAY,
     task_time: null,
     phase: null,

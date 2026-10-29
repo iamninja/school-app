@@ -7,6 +7,7 @@ import { TeacherCalendar } from "@/components/teacher-calendar";
 import * as calendarActions from "@/app/protected/teacher/calendar-actions";
 import * as taskActions from "@/app/protected/teacher/task-actions";
 import type { TeacherTask } from "@/lib/teacher-tasks";
+import { __resetTaskDirectoryForTests } from "@/components/task-tags-ui";
 import {
   fromIsoDate,
   toIsoDate,
@@ -30,6 +31,7 @@ vi.mock("@/app/protected/teacher/task-actions", () => ({
   createTaskAction: vi.fn(),
   setTaskDoneAction: vi.fn(),
   deleteTaskAction: vi.fn(),
+  getTaskDirectoryAction: vi.fn().mockResolvedValue({ entries: [] }),
 }));
 
 vi.mock("sonner", () => ({
@@ -771,6 +773,7 @@ describe("TeacherCalendar", () => {
       id: "task-1",
       kind: "lesson",
       title: "Print worksheets",
+      is_call: false,
       task_date: todayIso,
       task_time: null,
       phase: "before",
@@ -816,6 +819,7 @@ describe("TeacherCalendar", () => {
         title: "Call the accountant",
         date: todayIso,
         time: null,
+        isCall: false,
       });
     });
     expect(await screen.findByText("Call the accountant")).toBeInTheDocument();
@@ -828,6 +832,7 @@ describe("TeacherCalendar", () => {
       id: "task-3",
       kind: "lesson",
       title: "Bring the projector",
+      is_call: false,
       task_date: todayIso,
       task_time: null,
       phase: "before",
@@ -856,9 +861,62 @@ describe("TeacherCalendar", () => {
         date: todayIso,
         phase: "before",
         lesson: { classId: classA.id, slotTime: "15:00" },
+        isCall: false,
       });
     });
     expect(await screen.findByText("Bring the projector")).toBeInTheDocument();
+  });
+
+  it("tags a parent with @ and saves a call task with a call button", async () => {
+    const user = userEvent.setup();
+    const PARENT = "11111111-1111-1111-1111-111111111111";
+    __resetTaskDirectoryForTests();
+    vi.mocked(taskActions.getTaskDirectoryAction).mockResolvedValue({
+      entries: [
+        { kind: "parent", id: PARENT, name: "Ελένη Παπαδοπούλου", detail: "Parent of Μαρία", phone: "+306900000001", familyId: "f1", isPrimary: true },
+      ],
+    });
+    vi.mocked(taskActions.listTasksAction).mockResolvedValue([]);
+    vi.mocked(taskActions.createTaskAction).mockImplementation(async (input) => ({
+      id: "task-call",
+      kind: "personal",
+      title: input.title,
+      is_call: input.isCall ?? false,
+      task_date: todayIso,
+      task_time: null,
+      phase: null,
+      class_id: null,
+      slot_time: null,
+      calendar_event_id: null,
+      lesson_label: null,
+      done_at: null,
+      created_at: "2026-10-29T10:00:00Z",
+    }));
+
+    renderCalendar();
+
+    const field = screen.getByLabelText("Add a task for this day");
+    await user.type(field, "Πάρε @ελεν");
+    await user.keyboard("{Enter}");
+    expect(field).toHaveValue("Πάρε @Ελένη Παπαδοπούλου ");
+    await user.type(field, "για το διαγώνισμα");
+    await user.click(screen.getAllByRole("button", { name: "Call task" }).at(-1)!);
+    await user.click(screen.getByRole("button", { name: "Add: Add a task for this day" }));
+
+    await waitFor(() => {
+      expect(taskActions.createTaskAction).toHaveBeenCalledWith({
+        kind: "personal",
+        title: `Πάρε @[Ελένη Παπαδοπούλου](parent:${PARENT}) για το διαγώνισμα`,
+        date: todayIso,
+        time: null,
+        isCall: true,
+      });
+    });
+    // The new task shows the parent as a chip, with a call menu.
+    expect(await screen.findByText("@Ελένη Παπαδοπούλου")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Contact Ελένη Παπαδοπούλου's family" }),
+    ).toBeInTheDocument();
   });
 
   it("adds a personal block via the Add menu", async () => {

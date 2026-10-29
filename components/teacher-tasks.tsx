@@ -7,6 +7,17 @@ import { ListTodoIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import {
+  CallButton,
+  CallToggle,
+  EMPTY_DRAFT,
+  TaskTextInput,
+  TaskTitle,
+  draftTitle,
+  useTaskDirectory,
+  type TaggedDraft,
+} from "@/components/task-tags-ui";
+import { plainTitle } from "@/lib/task-tags";
 import { fromIsoDate } from "@/lib/calendar-projection";
 import { cn } from "@/lib/utils";
 import {
@@ -30,6 +41,7 @@ function TaskRow({
   onToggle,
   onDelete,
 }: { task: TeacherTask; meta?: string } & TaskHandlers) {
+  const directory = useTaskDirectory();
   const done = task.done_at !== null;
   const id = `task-${task.id}`;
   return (
@@ -47,17 +59,18 @@ function TaskRow({
           done && "text-muted-foreground line-through",
         )}
       >
-        {task.title}
+        <TaskTitle title={task.title} directory={directory} />
         {meta ? (
           <span className="ml-1.5 text-xs text-muted-foreground no-underline">{meta}</span>
         ) : null}
       </label>
+      {task.is_call && <CallButton title={task.title} directory={directory} />}
       <Button
         type="button"
         variant="ghost"
         size="sm"
         className="h-6 px-1.5 text-muted-foreground opacity-60 hover:opacity-100"
-        aria-label={`Delete task ${task.title}`}
+        aria-label={`Delete task ${plainTitle(task.title)}`}
         onClick={() => onDelete(task)}
       >
         <Trash2Icon className="h-3.5 w-3.5" />
@@ -76,33 +89,38 @@ function AddTaskForm({
   /** Shorter visible hint, when the label names the lesson too. */
   placeholder?: string;
   withTime?: boolean;
-  onAdd: (title: string, time: string | null) => Promise<boolean>;
+  onAdd: (title: string, time: string | null, isCall: boolean) => Promise<boolean>;
 }) {
-  const [title, setTitle] = React.useState("");
+  const directory = useTaskDirectory();
+  const [draft, setDraft] = React.useState<TaggedDraft>(EMPTY_DRAFT);
+  const [isCall, setIsCall] = React.useState(false);
   const [time, setTime] = React.useState("");
   const [saving, setSaving] = React.useState(false);
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!title.trim()) return;
+    if (!draft.text.trim()) return;
     setSaving(true);
-    const ok = await onAdd(title, withTime && time ? time : null);
+    const ok = await onAdd(draftTitle(draft), withTime && time ? time : null, isCall);
     setSaving(false);
     if (ok) {
-      setTitle("");
+      setDraft(EMPTY_DRAFT);
+      setIsCall(false);
       setTime("");
     }
   };
 
   return (
     <form onSubmit={submit} className="flex items-center gap-2">
-      <Input
+      <CallToggle pressed={isCall} onPressedChange={setIsCall} className="h-8 w-8" />
+      <TaskTextInput
+        draft={draft}
+        onDraftChange={setDraft}
+        directory={directory}
         aria-label={label}
-        placeholder={placeholder}
-        value={title}
+        placeholder={withTime ? `${placeholder} · @ to tag` : placeholder}
         maxLength={TASK_TITLE_MAX_LENGTH}
-        onChange={(e) => setTitle(e.target.value)}
-        className="h-8 text-sm"
+        className="flex h-8 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs placeholder:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
       />
       {withTime ? (
         <Input
@@ -118,7 +136,7 @@ function AddTaskForm({
         size="sm"
         variant="outline"
         className="h-8"
-        disabled={saving || !title.trim()}
+        disabled={saving || !draft.text.trim()}
         aria-label={`Add: ${label}`}
       >
         <PlusIcon className="h-3.5 w-3.5" />
@@ -144,7 +162,7 @@ export function LessonTasks({
 }: {
   tasks: TeacherTask[];
   lessonName: string;
-  onAdd: (phase: TaskPhase, title: string) => Promise<boolean>;
+  onAdd: (phase: TaskPhase, title: string, isCall: boolean) => Promise<boolean>;
 } & TaskHandlers) {
   const { done, total } = taskProgress(tasks);
   const [open, setOpen] = React.useState(false);
@@ -182,7 +200,7 @@ export function LessonTasks({
                 <AddTaskForm
                   label={`${placeholder} (${lessonName})`}
                   placeholder={placeholder}
-                  onAdd={(title) => onAdd(phase, title)}
+                  onAdd={(title, _time, isCall) => onAdd(phase, title, isCall)}
                 />
               </div>
             );
@@ -207,7 +225,7 @@ export function MyTasks({
   personal: TeacherTask[];
   unlinked: TeacherTask[];
   overdue: TeacherTask[];
-  onAdd: (title: string, time: string | null) => Promise<boolean>;
+  onAdd: (title: string, time: string | null, isCall: boolean) => Promise<boolean>;
 } & TaskHandlers) {
   return (
     <div className="mt-3 space-y-3 border-t pt-3">

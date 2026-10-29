@@ -767,8 +767,8 @@ export function TeacherCalendar({
       <LessonTasks
         tasks={dayTasks.byLesson.get(lessonRefKey(ref)) ?? []}
         lessonName={lessonLabelFor(occurrence)}
-        onAdd={(phase, title) =>
-          addTask({ kind: "lesson", title, date: occurrence.date, phase, lesson: ref })
+        onAdd={(phase, title, isCall) =>
+          addTask({ kind: "lesson", title, date: occurrence.date, phase, lesson: ref, isCall })
         }
         {...taskHandlers}
       />
@@ -1567,8 +1567,8 @@ export function TeacherCalendar({
             personal={dayTasks.personal}
             unlinked={dayTasks.unlinked}
             overdue={overdue}
-            onAdd={(title, time) =>
-              addTask({ kind: "personal", title, date: selectedDate, time })
+            onAdd={(title, time, isCall) =>
+              addTask({ kind: "personal", title, date: selectedDate, time, isCall })
             }
             {...taskHandlers}
           />

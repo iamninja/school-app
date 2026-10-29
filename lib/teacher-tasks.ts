@@ -10,7 +10,10 @@ export type TaskPhase = "before" | "after";
 export interface TeacherTask {
   id: string;
   kind: "lesson" | "personal";
+  /** May contain tag tokens - see lib/task-tags.ts. */
   title: string;
+  /** A phone call: a call button for the people it tags, listed first. */
+  is_call: boolean;
   task_date: string;
   task_time: string | null;
   phase: TaskPhase | null;
@@ -23,9 +26,10 @@ export interface TeacherTask {
 }
 
 export const TEACHER_TASK_COLUMNS =
-  "id, kind, title, task_date, task_time, phase, class_id, slot_time, " +
+  "id, kind, title, is_call, task_date, task_time, phase, class_id, slot_time, " +
   "calendar_event_id, lesson_label, done_at, created_at";
 
+/** Of the visible text (tags read as "@Name"); stored tokens are longer. */
 export const TASK_TITLE_MAX_LENGTH = 200;
 
 /** Which lesson a task belongs to - see the migration for why two shapes. */
@@ -121,10 +125,16 @@ export function groupDayTasks(
       unlinked.push(task);
     }
   }
+  // Calls first within each list - the ones to make are on top.
+  const callsFirst = (a: TeacherTask, b: TeacherTask) => Number(b.is_call) - Number(a.is_call);
   for (const list of byLesson.values()) {
-    list.sort((a, b) => (a.phase === b.phase ? 0 : a.phase === "before" ? -1 : 1));
+    list.sort(
+      (a, b) =>
+        (a.phase === b.phase ? 0 : a.phase === "before" ? -1 : 1) || callsFirst(a, b),
+    );
   }
   personal.sort((a, b) => {
+    if (a.is_call !== b.is_call) return callsFirst(a, b);
     if (a.task_time === b.task_time) return 0;
     if (a.task_time === null) return -1;
     if (b.task_time === null) return 1;

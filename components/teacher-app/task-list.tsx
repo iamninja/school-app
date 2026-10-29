@@ -20,6 +20,17 @@ import {
   type TeacherTask,
 } from "@/lib/teacher-tasks";
 import { cn } from "@/lib/utils";
+import {
+  CallButton,
+  CallToggle,
+  EMPTY_DRAFT,
+  TaskTextInput,
+  TaskTitle,
+  draftTitle,
+  useTaskDirectory,
+  type TaggedDraft,
+} from "@/components/task-tags-ui";
+import { plainTitle } from "@/lib/task-tags";
 
 /** Where a new task goes: the day itself, or one lesson's before/after list. */
 export type TaskTarget =
@@ -78,11 +89,11 @@ export function CompanionTasks({
     }
   };
 
-  const add = async (text: string, phase?: TaskPhase): Promise<boolean> => {
+  const add = async (text: string, phase: TaskPhase | undefined, isCall: boolean): Promise<boolean> => {
     const input: CreateTaskInput =
       target.kind === "personal"
-        ? { kind: "personal", title: text, date: target.date }
-        : { kind: "lesson", title: text, date: target.date, phase: phase!, lesson: target.lesson };
+        ? { kind: "personal", title: text, date: target.date, isCall }
+        : { kind: "lesson", title: text, date: target.date, phase: phase!, lesson: target.lesson, isCall };
     try {
       const created = await createTaskAction(input);
       setTasks((prev) => [...prev, created]);
@@ -160,7 +171,7 @@ export function CompanionTasks({
                   ? "Add a task after the lesson"
                   : "Add a task for this day"
             }
-            onAdd={(text) => add(text, section.phase)}
+            onAdd={(text, isCall) => add(text, section.phase, isCall)}
           />
         </div>
       ))}
@@ -179,6 +190,7 @@ function TaskItem({
   onToggle: (task: TeacherTask) => void;
   onDelete: (task: TeacherTask) => void;
 }) {
+  const directory = useTaskDirectory();
   const done = task.done_at !== null;
   return (
     <li className="flex min-h-11 items-center gap-3">
@@ -186,7 +198,7 @@ function TaskItem({
         type="button"
         role="checkbox"
         aria-checked={done}
-        aria-label={task.title}
+        aria-label={plainTitle(task.title)}
         onClick={() => void onToggle(task)}
         className={cn(
           "flex size-7 shrink-0 items-center justify-center rounded-md border-2",
@@ -196,12 +208,13 @@ function TaskItem({
         {done && <Check className="size-4" aria-hidden="true" />}
       </button>
       <span className={cn("min-w-0 flex-1 text-sm", done && "text-muted-foreground line-through")}>
-        {task.title}
+        <TaskTitle title={task.title} directory={directory} />
         {meta && <span className="block text-xs text-muted-foreground no-underline">{meta}</span>}
       </span>
+      {task.is_call && <CallButton title={task.title} directory={directory} direct />}
       <button
         type="button"
-        aria-label={`Delete task ${task.title}`}
+        aria-label={`Delete task ${plainTitle(task.title)}`}
         onClick={() => void onDelete(task)}
         className="flex size-9 shrink-0 items-center justify-center rounded-md text-muted-foreground active:bg-muted"
       >
@@ -211,32 +224,45 @@ function TaskItem({
   );
 }
 
-function AddTask({ label, onAdd }: { label: string; onAdd: (text: string) => Promise<boolean> }) {
-  const [text, setText] = useState("");
+function AddTask({
+  label,
+  onAdd,
+}: {
+  label: string;
+  onAdd: (text: string, isCall: boolean) => Promise<boolean>;
+}) {
+  const directory = useTaskDirectory();
+  const [draft, setDraft] = useState<TaggedDraft>(EMPTY_DRAFT);
+  const [isCall, setIsCall] = useState(false);
   const [saving, setSaving] = useState(false);
   return (
     <form
       className="flex items-center gap-2"
       onSubmit={async (event) => {
         event.preventDefault();
-        if (!text.trim()) return;
+        if (!draft.text.trim()) return;
         setSaving(true);
-        const ok = await onAdd(text);
+        const ok = await onAdd(draftTitle(draft), isCall);
         setSaving(false);
-        if (ok) setText("");
+        if (ok) {
+          setDraft(EMPTY_DRAFT);
+          setIsCall(false);
+        }
       }}
     >
-      <input
+      <CallToggle pressed={isCall} onPressedChange={setIsCall} className="size-10" />
+      <TaskTextInput
+        draft={draft}
+        onDraftChange={setDraft}
+        directory={directory}
         aria-label={label}
-        placeholder={label}
-        value={text}
+        placeholder={label === "Add a task for this day" ? "Add a task · @ to tag" : label}
         maxLength={TASK_TITLE_MAX_LENGTH}
-        onChange={(event) => setText(event.target.value)}
-        className="h-10 min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-sm"
+        className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
       />
       <button
         type="submit"
-        disabled={saving || !text.trim()}
+        disabled={saving || !draft.text.trim()}
         aria-label={`Add: ${label}`}
         className="flex size-10 shrink-0 items-center justify-center rounded-md border border-border bg-background disabled:opacity-50"
       >
