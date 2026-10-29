@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, ListTodo } from "lucide-react";
 
 import { DateStrip } from "@/components/teacher-app/date-strip";
 import { DeviceNotifications } from "@/components/teacher-app/device-notifications";
@@ -10,6 +10,7 @@ import { loadDay } from "@/lib/teacher-app/load";
 import { athensMinutesNow, athensToday } from "@/lib/push/athens-time";
 import { lessonInProgress, type DayLesson } from "@/lib/teacher-app/day";
 import { TrialOutcomeButtons } from "@/components/teacher-app/trial-outcome";
+import { CompanionTasks } from "@/components/teacher-app/task-list";
 
 // Same palette as the console's Calendar tab (components/teacher-calendar.tsx
 // WEEK_ROW_CLASSES), so a lesson's kind reads the same on both. A plain
@@ -46,6 +47,26 @@ function KindChip({ kind }: { kind: keyof typeof KIND_STYLES }) {
       )}
     >
       {KIND_STYLES[kind].label}
+    </span>
+  );
+}
+
+// "Tasks 1/3" on a Today row - orange while some are still open.
+function TaskChip({ counts }: { counts?: { done: number; total: number } }) {
+  if (!counts || counts.total === 0) return null;
+  const open = counts.done < counts.total;
+  return (
+    <span
+      className={cn(
+        "flex shrink-0 items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
+        open
+          ? "bg-orange-500/15 text-orange-800 dark:text-orange-300"
+          : "bg-muted text-muted-foreground",
+      )}
+      aria-label={`Tasks ${counts.done} of ${counts.total} done`}
+    >
+      <ListTodo className="size-3" aria-hidden="true" />
+      {counts.done}/{counts.total}
     </span>
   );
 }
@@ -118,7 +139,7 @@ export default async function TeacherAppTodayPage({
               </span>
             )}
           </div>
-          <div className="text-xs text-muted-foreground">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             {cancelled
               ? cancelledLessonLabel(
                   lesson.cancellationReason,
@@ -127,6 +148,7 @@ export default async function TeacherAppTodayPage({
                 )
               : `${lesson.marked}/${lesson.rosterSize} marked` +
                 (lesson.absent > 0 ? ` · ${lesson.absent} absent` : "")}
+            <TaskChip counts={day.lessonTaskCounts[`class:${lesson.classId}`]} />
           </div>
         </div>
         {!cancelled && (
@@ -239,10 +261,11 @@ export default async function TeacherAppTodayPage({
                         <span className="truncate font-medium">{item.lesson.name}</span>
                         <KindChip kind="ad_hoc_lesson" />
                       </div>
-                      <div className="text-xs text-muted-foreground">
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                         {item.lesson.status
                           ? (STATUS_LABELS[item.lesson.status] ?? item.lesson.status)
                           : "Not marked"}
+                        <TaskChip counts={day.lessonTaskCounts[`event:${item.lesson.eventId}`]} />
                       </div>
                     </div>
                     <span
@@ -269,6 +292,7 @@ export default async function TeacherAppTodayPage({
                         <span className="truncate font-medium">{item.lesson.name}</span>
                         <KindChip kind="trial_lesson" />
                       </div>
+                      <TaskChip counts={day.lessonTaskCounts[`event:${item.lesson.eventId}`]} />
                     </div>
                     <TrialOutcomeButtons
                       eventId={item.lesson.eventId}
@@ -298,6 +322,15 @@ export default async function TeacherAppTodayPage({
           )}
         </ul>
       )}
+
+      <CompanionTasks
+        // Fresh lists after a change re-reads the day (router.refresh()).
+        key={`${date}|${JSON.stringify([day.dayTasks, day.overdueTasks].map((list) => list.map((task) => [task.id, task.done_at])))}`}
+        title="My tasks"
+        target={{ kind: "personal", date }}
+        tasks={day.dayTasks}
+        overdue={day.overdueTasks}
+      />
 
       <DeviceNotifications />
     </div>

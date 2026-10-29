@@ -5,7 +5,8 @@ import { ChevronLeft } from "lucide-react";
 import { LessonAttendance } from "@/components/teacher-app/lesson-attendance";
 import { formatCompanionDate } from "@/components/teacher-app/format";
 import { requireCompanionTeacher } from "@/app/teacher-app/session";
-import { loadOneOffLesson } from "@/lib/teacher-app/load";
+import { loadLessonTasks, loadOneOffLesson } from "@/lib/teacher-app/load";
+import { CompanionTasks } from "@/components/teacher-app/task-list";
 import { athensToday } from "@/lib/push/athens-time";
 import { ONE_OFF_CLASS_NAME } from "@/lib/attendance-records";
 
@@ -19,6 +20,7 @@ export default async function TeacherAppOneOffPage({
   const { eventId } = await params;
   const lesson = await loadOneOffLesson(supabase, teacherId, eventId);
   if (!lesson) notFound();
+  const lessonTasks = await loadLessonTasks(supabase, teacherId, lesson.date, { eventId });
 
   const today = athensToday();
   const backHref = lesson.date === today ? "/teacher-app" : `/teacher-app?date=${lesson.date}`;
@@ -41,6 +43,15 @@ export default async function TeacherAppOneOffPage({
           </p>
         </div>
       </div>
+
+      {lessonTasks.lessonRef && (
+        <CompanionTasks
+          key={JSON.stringify(lessonTasks.tasks.map((task) => [task.id, task.done_at]))}
+          title="Tasks"
+          target={{ kind: "lesson", date: lesson.date, lesson: lessonTasks.lessonRef }}
+          tasks={lessonTasks.tasks}
+        />
+      )}
 
       {lesson.student ? (
         <LessonAttendance

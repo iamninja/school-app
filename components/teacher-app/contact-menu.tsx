@@ -3,6 +3,7 @@
 import { MessageCircle, MessageSquare, Phone, PhoneCall } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,9 +32,12 @@ const ICONS: Record<ContactLink["kind"], React.ComponentType<{ className?: strin
 export function ContactMenu({
   studentName,
   contacts,
+  triggerClassName,
 }: {
   studentName: string;
   contacts: CompanionContact[];
+  /** Restyles the 📞 trigger (a call task's button is green). */
+  triggerClassName?: string;
 }) {
   if (contacts.length === 0) return null;
 
@@ -44,7 +48,7 @@ export function ContactMenu({
           type="button"
           variant="ghost"
           size="icon"
-          className="size-9 shrink-0"
+          className={cn("size-9 shrink-0", triggerClassName)}
           aria-label={`Contact ${studentName}'s family`}
         >
           <Phone className="size-4" aria-hidden="true" />
