@@ -91,6 +91,8 @@ import { LogoutButton } from "@/components/logout-button";
 import type { TeacherSectionId } from "@/lib/teacher-sections";
 import { TeacherClassDetail } from "@/components/teacher-class-detail";
 import { TeacherQuizBuilder } from "@/components/teacher-quiz-builder";
+import { TeacherContacts } from "@/components/teacher-contacts";
+import { TagOpenerProvider, type TagOpener } from "@/components/task-tags-ui";
 import { TeacherAssessments } from "@/components/teacher-assessments";
 import { AssessmentStatusBadge } from "@/components/assessment-status-badge";
 import {
@@ -754,6 +756,23 @@ export function TeacherDashboard({
   const [selectedAssessmentId, setSelectedAssessmentId] = React.useState<
     string | null
   >(null);
+  // A task's # chip (test, homework, quiz) opens it here, in place.
+  const taskTagOpener = React.useMemo<TagOpener>(
+    () => ({
+      open: (tag, entry) => {
+        if (tag.kind === "assessment") {
+          setSection("assessments");
+          setSelectedAssessmentId(tag.id);
+        } else if (tag.kind === "homework") {
+          if (entry?.classId) setSelectedClassId(entry.classId);
+          setSection("classes");
+        } else if (tag.kind === "quiz") {
+          setSection("quizzes");
+        }
+      },
+    }),
+    [],
+  );
   // Owned here rather than inside <TeacherClassDetail> since that
   // component only ever sees one class's homework at a time (already
   // filtered below) but needs to write back into the full list.
@@ -2229,6 +2248,7 @@ export function TeacherDashboard({
         </TabsContent>
 
         <TabsContent value="calendar" className="mt-0">
+          <TagOpenerProvider value={taskTagOpener}>
           <TeacherCalendar
             events={calendarEvents}
             onEventsChange={setCalendarEvents}
@@ -2244,6 +2264,7 @@ export function TeacherDashboard({
             }}
             lessonRateByClassId={lessonRateByClassId}
           />
+          </TagOpenerProvider>
         </TabsContent>
 
         <TabsContent value="classes" className="mt-0">
@@ -4229,11 +4250,14 @@ export function TeacherDashboard({
         </TabsContent>
 
         <TabsContent value="business" className="mt-0">
-          <TeacherBusinessSettings
-            initialProfile={businessProfile}
-            initialIntegrations={integrationSettings}
-            initialCredentialStatuses={credentialStatuses}
-          />
+          <div className="space-y-6">
+            <TeacherContacts />
+            <TeacherBusinessSettings
+              initialProfile={businessProfile}
+              initialIntegrations={integrationSettings}
+              initialCredentialStatuses={credentialStatuses}
+            />
+          </div>
         </TabsContent>
 
         <TabsContent value="app" className="mt-0">

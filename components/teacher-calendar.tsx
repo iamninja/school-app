@@ -36,11 +36,16 @@ import {
   deleteTaskAction,
   listTasksAction,
   setTaskDoneAction,
+  updateTaskAction,
   type CreateTaskInput,
 } from "@/app/protected/teacher/task-actions";
 import { LessonTasks, MyTasks } from "@/components/teacher-tasks";
+import type { TaskDateChange } from "@/components/task-dates-ui";
 import {
+  anytimeDueOn,
+  anytimeTasks,
   groupDayTasks,
+  taskDueDay,
   lessonLabelFor,
   lessonRefFor,
   lessonRefKey,
@@ -713,11 +718,16 @@ export function TeacherCalendar({
   const overdue =
     selectedDate === todayForTasks ? overdueTasks(tasks, todayForTasks) : [];
 
+  const anytime = React.useMemo(() => anytimeTasks(tasks), [tasks]);
+  const dueAnytime = anytimeDueOn(tasks, selectedDate);
+
+  // A day's open tasks - an anytime task counts on its due day.
   const openTaskCountByDate = React.useMemo(() => {
     const map = new Map<string, number>();
     for (const task of tasks) {
-      if (task.done_at !== null) continue;
-      map.set(task.task_date, (map.get(task.task_date) ?? 0) + 1);
+      const day = taskDueDay(task);
+      if (task.done_at !== null || day === null) continue;
+      map.set(day, (map.get(day) ?? 0) + 1);
     }
     return map;
   }, [tasks]);
@@ -755,9 +765,27 @@ export function TeacherCalendar({
     }
   };
 
+  const setTaskDate = async (task: TeacherTask, change: TaskDateChange) => {
+    const replace = (next: TeacherTask) =>
+      setTasks((prev) => prev.map((item) => (item.id === next.id ? next : item)));
+    replace({
+      ...task,
+      task_date: change.date,
+      due_date: change.date === null ? (change.dueDate !== undefined ? change.dueDate : task.due_date) : null,
+      task_time: change.date === null ? null : task.task_time,
+    });
+    try {
+      replace(await updateTaskAction(task.id, change));
+    } catch (error: unknown) {
+      replace(task);
+      toast.error(getErrorMessage(error, "Failed to move the task"));
+    }
+  };
+
   const taskHandlers = {
     onToggle: (task: TeacherTask, done: boolean) => void toggleTask(task, done),
     onDelete: (task: TeacherTask) => void removeTask(task),
+    onSetDate: (task: TeacherTask, change: TaskDateChange) => void setTaskDate(task, change),
   };
 
   const renderLessonTasks = (occurrence: Occurrence) => {
@@ -767,8 +795,8 @@ export function TeacherCalendar({
       <LessonTasks
         tasks={dayTasks.byLesson.get(lessonRefKey(ref)) ?? []}
         lessonName={lessonLabelFor(occurrence)}
-        onAdd={(phase, title, isCall) =>
-          addTask({ kind: "lesson", title, date: occurrence.date, phase, lesson: ref, isCall })
+        onAdd={(phase, title, flags) =>
+          addTask({ kind: "lesson", title, date: occurrence.date, phase, lesson: ref, ...flags })
         }
         {...taskHandlers}
       />
@@ -1567,8 +1595,14 @@ export function TeacherCalendar({
             personal={dayTasks.personal}
             unlinked={dayTasks.unlinked}
             overdue={overdue}
-            onAdd={(title, time, isCall) =>
-              addTask({ kind: "personal", title, date: selectedDate, time, isCall })
+            dueAnytime={dueAnytime}
+            anytime={anytime}
+            today={todayForTasks}
+            onAdd={(title, time, flags) =>
+              addTask({ kind: "personal", title, date: selectedDate, time, ...flags })
+            }
+            onAddAnytime={(title, dueDate, flags) =>
+              addTask({ kind: "personal", title, date: null, dueDate, ...flags })
             }
             {...taskHandlers}
           />

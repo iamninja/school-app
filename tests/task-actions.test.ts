@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireTeacher } from "@/lib/auth/require-teacher";
 import { ExpectedError } from "@/lib/expected-error";
 import {
+  createContactAction,
   createTaskAction,
   deleteTaskAction,
   listTasksAction,
@@ -36,8 +37,10 @@ describe("teacher task actions", () => {
       kind: "personal",
       title: "Λογιστής",
       is_call: false,
+      is_email: false,
       task_date: "2026-10-26",
       task_time: "12:00",
+      due_date: null,
     });
   });
 
@@ -191,5 +194,114 @@ describe("teacher task actions", () => {
         createTaskAction({ kind: "personal", title, date: "2026-10-30" }),
       ).resolves.toBeDefined();
     });
+  });
+});
+
+describe("anytime tasks, email tasks and contacts", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(requireTeacher).mockResolvedValue(undefined);
+  });
+
+  it("adds an anytime email task with a due date", async () => {
+    const client = createMockSupabaseClient({ teacher_tasks: { data: { id: "t1" }, error: null } });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await createTaskAction({ kind: "personal", title: "Βιβλία", date: null, dueDate: "2026-11-05", isEmail: true });
+
+    expect(insertedRow(client)).toEqual(
+      expect.objectContaining({ task_date: null, due_date: "2026-11-05", task_time: null, is_email: true, is_call: false }),
+    );
+  });
+
+  it.each([
+    [{ kind: "personal", title: "x", date: "2026-10-26", dueDate: "2026-11-01" }],
+    [{ kind: "personal", title: "x", date: null, time: "10:00" }],
+    [{ kind: "personal", title: "x", date: null, dueDate: "2026-13-01" }],
+    [{ kind: "lesson", title: "x", date: null, phase: "before", lesson: { classId: "c", slotTime: "17:00" } }],
+  ])("refuses an anytime shape the table won't take: %o", async (input) => {
+    const client = createMockSupabaseClient({});
+    vi.mocked(createClient).mockResolvedValue(client as never);
+    await expect(createTaskAction(input as never)).rejects.toThrow(ExpectedError);
+    expect(client.from).not.toHaveBeenCalled();
+  });
+
+  it("moves a dated task to Anytime, dropping its time", async () => {
+    const client = createMockSupabaseClient({
+      teacher_tasks: [
+        { data: { kind: "personal", task_date: "2026-10-26" }, error: null },
+        { data: { id: "t1" }, error: null },
+      ],
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await updateTaskAction("t1", { date: null });
+
+    expect(client.from.mock.results[1].value.update).toHaveBeenCalledWith({ task_date: null, task_time: null });
+  });
+
+  it("puts an anytime task on a day, dropping its due date", async () => {
+    const client = createMockSupabaseClient({
+      teacher_tasks: [
+        { data: { kind: "personal", task_date: null }, error: null },
+        { data: { id: "t1" }, error: null },
+      ],
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await updateTaskAction("t1", { date: "2026-11-02" });
+
+    expect(client.from.mock.results[1].value.update).toHaveBeenCalledWith({ task_date: "2026-11-02", due_date: null });
+  });
+
+  it("won't give a dated task a due date", async () => {
+    const client = createMockSupabaseClient({
+      teacher_tasks: { data: { kind: "personal", task_date: "2026-10-26" }, error: null },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await expect(updateTaskAction("t1", { dueDate: "2026-11-02" })).rejects.toThrow(ExpectedError);
+  });
+
+  it("refuses a + tag for a contact that isn't the teacher's", async () => {
+    const client = createMockSupabaseClient({ teacher_contacts: { data: [], error: null } });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await expect(
+      createTaskAction({
+        kind: "personal",
+        title: "Πάρε @[Νίκας](contact:66666666-6666-6666-6666-666666666666)",
+        date: "2026-10-26",
+      }),
+    ).rejects.toThrow(ExpectedError);
+    const chain = client.from.mock.results[0].value;
+    expect(client.from).toHaveBeenCalledWith("teacher_contacts");
+    expect(chain.eq).toHaveBeenCalledWith("teacher_id", "teacher-1");
+  });
+
+  it("saves a contact with its number as E.164", async () => {
+    const client = createMockSupabaseClient({ teacher_contacts: { data: { id: "c1" }, error: null } });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await createContactAction({ name: "  Χαρτοπωλείο  Νίκας ", label: "Supplier", phone: "210 123 4567", email: "" });
+
+    expect(client.from.mock.results[0].value.insert).toHaveBeenCalledWith({
+      teacher_id: "teacher-1",
+      name: "Χαρτοπωλείο Νίκας",
+      label: "Supplier",
+      phone: "+302101234567",
+      email: null,
+    });
+  });
+
+  it.each([
+    [{ name: " " }],
+    [{ name: "X", phone: "12" }],
+    [{ name: "X", email: "not-an-email" }],
+  ])("refuses a contact that won't save: %o", async (input) => {
+    const client = createMockSupabaseClient({});
+    vi.mocked(createClient).mockResolvedValue(client as never);
+    await expect(createContactAction(input)).rejects.toThrow(ExpectedError);
+    expect(client.from).not.toHaveBeenCalled();
   });
 });

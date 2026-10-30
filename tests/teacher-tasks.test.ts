@@ -6,6 +6,9 @@ import {
   lessonRefFor,
   lessonRefKey,
   overdueTasks,
+  anytimeDueOn,
+  anytimeTasks,
+  taskDueDay,
   taskProgress,
   type TeacherTask,
 } from "@/lib/teacher-tasks";
@@ -20,7 +23,9 @@ function task(overrides: Partial<TeacherTask>): TeacherTask {
     kind: "personal",
     title: "Task",
     is_call: false,
+    is_email: false,
     task_date: MONDAY,
+    due_date: null,
     task_time: null,
     phase: null,
     class_id: null,
@@ -131,5 +136,48 @@ describe("overdueTasks / taskProgress", () => {
     ];
     expect(overdueTasks(tasks, "2026-10-26").map((t) => t.id)).toEqual(["older", "old"]);
     expect(taskProgress(tasks)).toEqual({ done: 1, total: 4 });
+  });
+});
+
+describe("anytime tasks", () => {
+  const anytime = (o: Partial<TeacherTask>) => task({ task_date: null, ...o });
+
+  it("counts an anytime task overdue once its due date has passed, and never without one", () => {
+    const tasks = [
+      anytime({ id: "late", due_date: "2026-10-20" }),
+      anytime({ id: "today", due_date: MONDAY }),
+      anytime({ id: "open" }),
+      anytime({ id: "done", due_date: "2026-10-01", done_at: "2026-10-02T10:00:00Z" }),
+      task({ id: "dated", task_date: "2026-10-22" }),
+    ];
+    expect(overdueTasks(tasks, MONDAY).map((item) => item.id)).toEqual(["late", "dated"]);
+    expect(taskDueDay(tasks[0])).toBe("2026-10-20");
+    expect(taskDueDay(tasks[2])).toBeNull();
+  });
+
+  it("lists open ones first - calls, then by due date, undated last - then done ones", () => {
+    const tasks = [
+      anytime({ id: "done", done_at: "2026-10-25T10:00:00Z" }),
+      anytime({ id: "undated" }),
+      anytime({ id: "later", due_date: "2026-11-10" }),
+      anytime({ id: "sooner", due_date: "2026-11-01" }),
+      anytime({ id: "call", is_call: true }),
+      task({ id: "dated" }),
+    ];
+    expect(anytimeTasks(tasks).map((item) => item.id)).toEqual(["call", "sooner", "later", "undated", "done"]);
+  });
+
+  it("marks the due day with the open anytime tasks due then", () => {
+    const tasks = [
+      anytime({ id: "due", due_date: MONDAY }),
+      anytime({ id: "due-done", due_date: MONDAY, done_at: "2026-10-25T10:00:00Z" }),
+      task({ id: "dated" }),
+    ];
+    expect(anytimeDueOn(tasks, MONDAY).map((item) => item.id)).toEqual(["due"]);
+  });
+
+  it("keeps anytime tasks out of any day", () => {
+    const grouped = groupDayTasks([anytime({ id: "a" })], MONDAY, []);
+    expect(grouped.personal).toEqual([]);
   });
 });

@@ -774,7 +774,9 @@ describe("TeacherCalendar", () => {
       kind: "lesson",
       title: "Print worksheets",
       is_call: false,
+      is_email: false,
       task_date: todayIso,
+      due_date: null,
       task_time: null,
       phase: "before",
       class_id: classA.id,
@@ -820,6 +822,7 @@ describe("TeacherCalendar", () => {
         date: todayIso,
         time: null,
         isCall: false,
+        isEmail: false,
       });
     });
     expect(await screen.findByText("Call the accountant")).toBeInTheDocument();
@@ -833,7 +836,9 @@ describe("TeacherCalendar", () => {
       kind: "lesson",
       title: "Bring the projector",
       is_call: false,
+      is_email: false,
       task_date: todayIso,
+      due_date: null,
       task_time: null,
       phase: "before",
       class_id: classA.id,
@@ -862,6 +867,7 @@ describe("TeacherCalendar", () => {
         phase: "before",
         lesson: { classId: classA.id, slotTime: "15:00" },
         isCall: false,
+        isEmail: false,
       });
     });
     expect(await screen.findByText("Bring the projector")).toBeInTheDocument();
@@ -882,7 +888,9 @@ describe("TeacherCalendar", () => {
       kind: "personal",
       title: input.title,
       is_call: input.isCall ?? false,
+      is_email: false,
       task_date: todayIso,
+      due_date: null,
       task_time: null,
       phase: null,
       class_id: null,
@@ -910,6 +918,7 @@ describe("TeacherCalendar", () => {
         date: todayIso,
         time: null,
         isCall: true,
+        isEmail: false,
       });
     });
     // The new task shows the parent as a chip, with a call menu.

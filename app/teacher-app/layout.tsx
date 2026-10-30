@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { CompanionShell } from "@/components/teacher-app/shell";
 import { requireCompanionTeacher } from "@/app/teacher-app/session";
+import { loadTestsBadge } from "@/lib/teacher-app/load";
+import { athensToday } from "@/lib/push/athens-time";
 
 export const metadata: Metadata = {
   title: "Modus — Teacher",
@@ -18,6 +20,8 @@ export const viewport: Viewport = {
 };
 
 export default async function TeacherAppLayout({ children }: { children: React.ReactNode }) {
-  await requireCompanionTeacher();
-  return <CompanionShell>{children}</CompanionShell>;
+  const { supabase, teacherId } = await requireCompanionTeacher();
+  // A missing badge never takes the app down.
+  const testsBadge = await loadTestsBadge(supabase, teacherId, athensToday()).catch(() => 0);
+  return <CompanionShell testsBadge={testsBadge}>{children}</CompanionShell>;
 }

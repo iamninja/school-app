@@ -8,6 +8,8 @@ import {
   addStudentToAssessmentAction,
   editAssessmentAssignmentScheduleAction,
   markAssessmentTakenAction,
+  markAllAssessmentTakenAction,
+  undoAssessmentTakenAction,
   enterAssessmentMarkAction,
   clearAssessmentMarkAction,
   checkGradedPaperLinkAction,
@@ -358,6 +360,80 @@ describe("markAssessmentTakenAction", () => {
     await expect(markAssessmentTakenAction("a1")).rejects.toThrow(
       ExpectedError,
     );
+  });
+});
+
+describe("undoAssessmentTakenAction", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(requireTeacher).mockResolvedValue(undefined);
+  });
+
+  it("puts a taken assignment back to registered with no taken_at", async () => {
+    const client = createMockSupabaseClient({
+      assessment_assignments: [
+        { data: { id: "a1", status: "taken" }, error: null },
+        {
+          data: { id: "a1", kind: "mock_exam", status: "registered", taken_at: null, students: null },
+          error: null,
+        },
+      ],
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    const row = await undoAssessmentTakenAction("a1");
+    expect(row.status).toBe("registered");
+    const update = client.from.mock.results[1].value.update;
+    expect(update).toHaveBeenCalledWith({ status: "registered", taken_at: null });
+  });
+
+  it("refuses to undo a marked assignment", async () => {
+    const client = createMockSupabaseClient({
+      assessment_assignments: { data: { id: "a1", status: "marked" }, error: null },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await expect(undoAssessmentTakenAction("a1")).rejects.toThrow("Clear the mark first");
+  });
+
+  it("refuses to undo an assignment that was never taken", async () => {
+    const client = createMockSupabaseClient({
+      assessment_assignments: { data: { id: "a1", status: "registered" }, error: null },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await expect(undoAssessmentTakenAction("a1")).rejects.toThrow(ExpectedError);
+  });
+});
+
+describe("markAllAssessmentTakenAction", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(requireTeacher).mockResolvedValue(undefined);
+  });
+
+  it("marks only the still-registered students of one assessment, scoped to the teacher", async () => {
+    const client = createMockSupabaseClient({
+      assessment_assignments: {
+        data: [
+          { id: "a1", kind: "mock_exam", status: "taken", taken_at: "2026-10-30T10:00:00Z", students: { first_name: "Νίκη", last_name: "Α" } },
+          { id: "a2", kind: "mock_exam", status: "taken", taken_at: "2026-10-30T10:00:00Z", students: null },
+        ],
+        error: null,
+      },
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    const rows = await markAllAssessmentTakenAction("assessment-1");
+    expect(rows.map((row) => row.id)).toEqual(["a1", "a2"]);
+    expect(rows[0].studentName).toBe("Νίκη Α");
+    const chain = client.from.mock.results[0].value;
+    expect(chain.update).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "taken", taken_at: expect.any(String) }),
+    );
+    expect(chain.eq).toHaveBeenCalledWith("assessment_id", "assessment-1");
+    expect(chain.eq).toHaveBeenCalledWith("teacher_id", "teacher-1");
+    expect(chain.eq).toHaveBeenCalledWith("status", "registered");
   });
 });
 

@@ -721,6 +721,68 @@ export async function markAssessmentTakenAction(
   return toTeacherAssignmentRow(data as unknown as RawAssignmentRow);
 }
 
+// Undoes a "taken" tapped by mistake (the phone's Tests tab). Only from
+// 'taken' - a marked paper keeps its taken_at, so clearing the score first
+// (clearAssessmentMarkAction) is deliberate and late history can't vanish
+// by a stray tap. Back to 'registered' means no taken_at (the table's
+// state check).
+export async function undoAssessmentTakenAction(
+  assignmentId: string,
+): Promise<TeacherAssessmentAssignmentRow> {
+  const { supabase, userId } = await requireTeacherSession();
+
+  const { data: existing, error: fetchError } = await supabase
+    .from("assessment_assignments")
+    .select("id, status")
+    .eq("id", assignmentId)
+    .eq("teacher_id", userId)
+    .maybeSingle();
+  if (fetchError || !existing) {
+    throw new ExpectedError("That assessment assignment no longer exists");
+  }
+  if (existing.status !== "taken") {
+    throw new ExpectedError(
+      existing.status === "marked"
+        ? "Clear the mark first"
+        : "This assessment hasn't been marked taken",
+    );
+  }
+
+  const { data, error } = await supabase
+    .from("assessment_assignments")
+    .update({ status: "registered", taken_at: null })
+    .eq("id", assignmentId)
+    .eq("teacher_id", userId)
+    .eq("status", "taken")
+    .select(ASSIGNMENT_COLUMNS_WITH_STUDENT)
+    .single();
+  if (error) throw error;
+
+  return toTeacherAssignmentRow(data as unknown as RawAssignmentRow);
+}
+
+// "Mark all remaining taken" - every student of one assessment still
+// 'registered', in one update, all at the same instant. Rows already
+// taken or marked are left alone (their taken_at never changes).
+export async function markAllAssessmentTakenAction(
+  assessmentId: string,
+): Promise<TeacherAssessmentAssignmentRow[]> {
+  const { supabase, userId } = await requireTeacherSession();
+
+  const { data, error } = await supabase
+    .from("assessment_assignments")
+    .update({ status: "taken", taken_at: new Date().toISOString() })
+    .eq("assessment_id", assessmentId)
+    .eq("teacher_id", userId)
+    .eq("status", "registered")
+    .select(ASSIGNMENT_COLUMNS_WITH_STUDENT);
+  if (error) throw error;
+
+  return ((data ?? []) as unknown as RawAssignmentRow[]).map(
+    toTeacherAssignmentRow,
+  );
+}
+
 export async function enterAssessmentMarkAction(
   assignmentId: string,
   input: {

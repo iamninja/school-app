@@ -3,7 +3,20 @@ import "server-only";
 import type { createClient } from "@/lib/supabase/server";
 import type { ProjectionEvent } from "@/lib/calendar-projection";
 import type { AttendanceStatus } from "@/lib/attendance-records";
-import type { Homework } from "@/lib/types/database";
+import type {
+  Assessment,
+  AssessmentAssignment,
+  Homework,
+  TeacherAssessmentAssignmentRow,
+} from "@/lib/types/database";
+import { isAssessmentAssignmentLate } from "@/lib/assessment-status";
+import {
+  groupTests,
+  overdueCount,
+  type TestsAssessment,
+  type TestsAssignment,
+  type TestsGroups,
+} from "@/lib/teacher-app/assessments";
 import type { SchoolBreakItem } from "@/lib/school-closures";
 import { projectOccurrences } from "@/lib/calendar-projection";
 import { athensToday } from "@/lib/push/athens-time";
@@ -13,6 +26,8 @@ import {
   lessonRefFor,
   lessonRefKey,
   overdueTasks as overdueTasksOf,
+  anytimeDueOn,
+  anytimeTasks as anytimeTasksOf,
   taskProgress,
   type LessonRef,
   type TeacherTask,
@@ -50,7 +65,7 @@ export type CompanionClass = {
 export type CompanionContact = {
   /** "Mother", "Parent", "Student" … - the parent's name when there is one. */
   name: string;
-  role: "parent" | "student";
+  role: "parent" | "student" | "contact";
   /** E.164, e.g. +306912345678. */
   phone: string;
 };
@@ -203,8 +218,12 @@ export type CompanionDay = {
   lessonTaskCounts: Record<string, { done: number; total: number }>;
   /** The day's own to-dos, plus lesson tasks whose lesson isn't on it any more. */
   dayTasks: TeacherTask[];
-  /** Still-open tasks from earlier days (only on today). */
+  /** Still-open tasks from earlier days, and anytime ones past due (only on today). */
   overdueTasks: TeacherTask[];
+  /** Tasks with no day: open ones, and ones done in the last two weeks. */
+  anytimeTasks: TeacherTask[];
+  /** Open anytime tasks due on this day. */
+  dueAnytime: TeacherTask[];
   previous: string | null;
   next: string | null;
 };
@@ -264,7 +283,9 @@ export async function loadDay(
     holidays: buildDayHolidays({ date, projection }),
     lessonTaskCounts,
     dayTasks: [...grouped.personal, ...grouped.unlinked],
-    overdueTasks: overdueTasksOf(tasks, today),
+    overdueTasks: date === today ? overdueTasksOf(tasks, today) : [],
+    anytimeTasks: anytimeTasksOf(tasks),
+    dueAnytime: anytimeDueOn(tasks, date),
     eventLessons: buildDayEventLessons({
       date,
       projection,
@@ -498,17 +519,22 @@ export async function loadOneOffLesson(
   };
 }
 
+// Done anytime tasks stay listed this long (same as listTasksAction).
+const ANYTIME_DONE_DAYS = 14;
+
 /**
- * A day's tasks, plus - when `overdueBefore` is given - every still-open
- * task from before that date.
+ * A day's tasks and the Anytime list, plus - when `overdueBefore` is given
+ * - every still-open task from before that date.
  */
 async function loadTasks(
   supabase: SupabaseServerClient,
   teacherId: string,
   date: string,
   overdueBefore: string | null,
+  withAnytime = true,
 ): Promise<TeacherTask[]> {
-  const [onDay, overdue] = await Promise.all([
+  const doneSince = new Date(Date.now() - ANYTIME_DONE_DAYS * 86_400_000).toISOString();
+  const [onDay, overdue, anytime] = await Promise.all([
     supabase
       .from("teacher_tasks")
       .select(TEACHER_TASK_COLUMNS)
@@ -522,12 +548,22 @@ async function loadTasks(
           .is("done_at", null)
           .lt("task_date", overdueBefore)
       : Promise.resolve({ data: [], error: null }),
+    withAnytime
+      ? supabase
+          .from("teacher_tasks")
+          .select(TEACHER_TASK_COLUMNS)
+          .eq("teacher_id", teacherId)
+          .is("task_date", null)
+          .or(`done_at.is.null,done_at.gte.${doneSince}`)
+      : Promise.resolve({ data: [], error: null }),
   ]);
   if (onDay.error) throw onDay.error;
   if (overdue.error) throw overdue.error;
+  if (anytime.error) throw anytime.error;
   return [
     ...((onDay.data ?? []) as unknown as TeacherTask[]),
     ...((overdue.data ?? []) as unknown as TeacherTask[]),
+    ...((anytime.data ?? []) as unknown as TeacherTask[]),
   ];
 }
 
@@ -549,7 +585,7 @@ export async function loadLessonTasks(
 ): Promise<CompanionLessonTasks> {
   const [{ projection }, tasks] = await Promise.all([
     loadSchool(supabase, teacherId, date, date),
-    loadTasks(supabase, teacherId, date, null),
+    loadTasks(supabase, teacherId, date, null, false),
   ]);
   const occurrences = projectOccurrences({ from: date, to: date, ...projection, includeBlocks: false })
     .filter((occurrence) =>
@@ -570,4 +606,133 @@ export async function loadLessonTasks(
     lessonRef: live ? lessonRefFor(live) : (refs[0] ?? null),
     tasks: refs.flatMap((ref) => grouped.byLesson.get(lessonRefKey(ref)) ?? []),
   };
+}
+
+const TESTS_ASSIGNMENT_COLUMNS =
+  "assessment_id, status, effective_scheduled_date, effective_scheduled_time, effective_deadline_at";
+
+/** Tests tab: every assessment with its students' states, sorted into groups. */
+export async function loadTestsView(
+  supabase: SupabaseServerClient,
+  teacherId: string,
+  today: string,
+): Promise<TestsGroups> {
+  const [{ data: assessments, error: assessmentsError }, { data: rows, error: rowsError }] =
+    await Promise.all([
+      supabase
+        .from("assessments")
+        .select("id, kind, title, class_name, max_score")
+        .eq("teacher_id", teacherId),
+      supabase
+        .from("assessment_assignments")
+        .select(TESTS_ASSIGNMENT_COLUMNS)
+        .eq("teacher_id", teacherId),
+    ]);
+  if (assessmentsError) throw assessmentsError;
+  if (rowsError) throw rowsError;
+  return groupTests(
+    (assessments ?? []) as TestsAssessment[],
+    (rows ?? []) as TestsAssignment[],
+    today,
+  );
+}
+
+/** The Tests tab's badge - students overdue to take a test. */
+export async function loadTestsBadge(
+  supabase: SupabaseServerClient,
+  teacherId: string,
+  today: string,
+): Promise<number> {
+  const [{ data: assessments, error: assessmentsError }, { data: rows, error: rowsError }] =
+    await Promise.all([
+      supabase.from("assessments").select("id, kind").eq("teacher_id", teacherId),
+      supabase
+        .from("assessment_assignments")
+        .select(TESTS_ASSIGNMENT_COLUMNS)
+        .eq("teacher_id", teacherId)
+        .eq("status", "registered"),
+    ]);
+  if (assessmentsError) throw assessmentsError;
+  if (rowsError) throw rowsError;
+  return overdueCount(
+    (assessments ?? []) as Pick<TestsAssessment, "id" | "kind">[],
+    (rows ?? []) as TestsAssignment[],
+    today,
+  );
+}
+
+export type CompanionAssessment = Pick<
+  Assessment,
+  | "id"
+  | "kind"
+  | "title"
+  | "description"
+  | "max_score"
+  | "duration_minutes"
+  | "scheduled_date"
+  | "scheduled_time"
+  | "deadline_at"
+  | "class_name"
+  | "notifications_disabled"
+>;
+
+export type CompanionAssessmentView = {
+  assessment: CompanionAssessment;
+  /** By last name, then first. */
+  roster: TeacherAssessmentAssignmentRow[];
+};
+
+/** One assessment's roster for marking "taken" - null if it isn't the teacher's. */
+export async function loadTestsAssessment(
+  supabase: SupabaseServerClient,
+  teacherId: string,
+  assessmentId: string,
+): Promise<CompanionAssessmentView | null> {
+  const [{ data: assessment, error: assessmentError }, { data: rows, error: rowsError }] =
+    await Promise.all([
+      supabase
+        .from("assessments")
+        .select(
+          "id, kind, title, description, max_score, duration_minutes, scheduled_date, " +
+            "scheduled_time, deadline_at, class_name, notifications_disabled",
+        )
+        .eq("teacher_id", teacherId)
+        .eq("id", assessmentId)
+        .maybeSingle(),
+      supabase
+        .from("assessment_assignments")
+        .select(
+          "id, assessment_id, student_id, kind, effective_scheduled_date, effective_scheduled_time, " +
+            "effective_deadline_at, taken_at, status, score, teacher_comment, graded_paper_url, " +
+            "created_at, students:student_id (first_name, last_name)",
+        )
+        .eq("teacher_id", teacherId)
+        .eq("assessment_id", assessmentId),
+    ]);
+  if (assessmentError) throw assessmentError;
+  if (rowsError) throw rowsError;
+  if (!assessment) return null;
+
+  type Row = AssessmentAssignment & {
+    students: { first_name: string; last_name: string } | null;
+  };
+  const roster = ((rows ?? []) as unknown as Row[])
+    .map(({ students, ...row }) => ({
+      row: {
+        ...row,
+        studentName: students ? `${students.first_name} ${students.last_name}`.trim() : "",
+        isLate: isAssessmentAssignmentLate({
+          kind: row.kind,
+          effectiveScheduledDate: row.effective_scheduled_date,
+          effectiveScheduledTime: row.effective_scheduled_time,
+          effectiveDeadlineAt: row.effective_deadline_at,
+          takenAt: row.taken_at,
+        }),
+      },
+      sortKey: students ? `${students.last_name} ${students.first_name}` : "",
+    }))
+    .sort((a, b) => a.sortKey.localeCompare(b.sortKey, "el"))
+    .map(({ row }) => row);
+
+  return { assessment: assessment as unknown as CompanionAssessment, roster };
 }
