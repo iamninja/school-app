@@ -39,7 +39,8 @@ describe("app manifest", () => {
 
   it("uses the portals' paper background for the splash screen and status bar", () => {
     expect(m.background_color).toBe(APP_BACKGROUND_COLOR);
-    expect(m.theme_color).toBe(APP_BACKGROUND_COLOR);
+    // Its one fixed colour would paint Android's navigation bar white in dark mode.
+    expect(m.theme_color).toBeUndefined();
   });
 
   it("lists 192 and 512 icons plus a maskable one, and every file exists at its stated size", () => {

@@ -21,8 +21,13 @@ export default function manifest(): MetadataRoute.Manifest {
     scope: "/",
     display: "standalone",
     orientation: "portrait",
+    // Splash screen only. No theme_color on purpose: an installed app's
+    // Android navigation bar takes the manifest's one fixed colour, which
+    // was white under dark mode (3-button navigation draws no page under
+    // it). Without one, the bar follows the phone's light/dark mode, and
+    // the status bar still follows the page's media-aware theme-color
+    // (app/layout.tsx).
     background_color: APP_BACKGROUND_COLOR,
-    theme_color: APP_BACKGROUND_COLOR,
     icons: [
       {
         src: "/icons/icon-192.png",
