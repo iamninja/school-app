@@ -4,6 +4,7 @@ import path from "node:path";
 import manifest from "@/app/manifest";
 import { config } from "@/proxy";
 import { APP_BACKGROUND_COLOR } from "@/lib/app-colors";
+import { viewport as companionViewport } from "@/app/teacher-app/layout";
 
 const publicDir = path.join(process.cwd(), "public");
 
@@ -112,5 +113,22 @@ describe("files the installed app needs before anyone signs in", () => {
     expect(pngSize(badge)).toEqual({ width: 96, height: 96 });
     // Colour type 6 (RGBA): Android draws the badge from its transparency.
     expect(readFileSync(badge)[25]).toBe(6);
+  });
+});
+
+describe("the companion's system bars", () => {
+  it("draws edge to edge, so the bar under it takes the app's colour, not the manifest's", () => {
+    expect(companionViewport.viewportFit).toBe("cover");
+    // ...which only works because the shell pads its header and tab bar for
+    // the insets itself.
+    const shell = readFileSync(path.join(process.cwd(), "components/teacher-app/shell.tsx"), "utf8");
+    expect(shell).toContain("pt-[env(safe-area-inset-top)]");
+    expect(shell).toContain("pb-[env(safe-area-inset-bottom)]");
+  });
+
+  it("leaves the portals as they were (they don't pad for the insets everywhere)", () => {
+    // Read, not imported: the root layout loads next/font, which only runs in Next.
+    const rootLayout = readFileSync(path.join(process.cwd(), "app/layout.tsx"), "utf8");
+    expect(rootLayout).not.toContain("viewportFit");
   });
 });
