@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { CalendarCheck, LogOut, Monitor, MoreVertical, NotebookPen } from "lucide-react";
+import { CalendarCheck, ClipboardCheck, LogOut, Monitor, MoreVertical, NotebookPen } from "lucide-react";
 
 import { ModusLogo } from "@/components/brand";
 import { NotificationBell } from "@/components/notification-bell";
@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 const NAV = [
   { href: "/teacher-app", label: "Today", icon: CalendarCheck },
   { href: "/teacher-app/homework", label: "Homework", icon: NotebookPen },
+  { href: "/teacher-app/assessments", label: "Tests", icon: ClipboardCheck },
 ];
 
 /**
@@ -31,7 +32,14 @@ const NAV = [
  * within thumb reach.
  * Padding respects the notch/home-indicator safe areas of an installed app.
  */
-export function CompanionShell({ children }: { children: React.ReactNode }) {
+export function CompanionShell({
+  children,
+  testsBadge = 0,
+}: {
+  children: React.ReactNode;
+  /** Students who should have taken a test by now and haven't. */
+  testsBadge?: number;
+}) {
   const pathname = usePathname();
   const router = useRouter();
 
@@ -42,9 +50,9 @@ export function CompanionShell({ children }: { children: React.ReactNode }) {
   };
 
   // The lesson screen belongs to Today; everything else matches its own tab.
-  const activeHref = pathname.startsWith("/teacher-app/homework")
-    ? "/teacher-app/homework"
-    : "/teacher-app";
+  const activeHref =
+    NAV.find(({ href }) => href !== "/teacher-app" && pathname.startsWith(href))?.href ??
+    "/teacher-app";
 
   return (
     <div className="flex min-h-dvh flex-col bg-background">
@@ -89,7 +97,7 @@ export function CompanionShell({ children }: { children: React.ReactNode }) {
         aria-label="Teacher app"
         className="fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur"
       >
-        <div className="mx-auto grid h-16 w-full max-w-md grid-cols-2">
+        <div className="mx-auto grid h-16 w-full max-w-md grid-cols-3">
           {NAV.map(({ href, label, icon: Icon }) => {
             const active = activeHref === href;
             return (
@@ -102,7 +110,17 @@ export function CompanionShell({ children }: { children: React.ReactNode }) {
                   active ? "text-brand" : "text-muted-foreground",
                 )}
               >
-                <Icon className="size-5" aria-hidden="true" />
+                <span className="relative">
+                  <Icon className="size-5" aria-hidden="true" />
+                  {href === "/teacher-app/assessments" && testsBadge > 0 && (
+                    <span
+                      className="absolute -right-2.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-bold leading-none text-white"
+                      aria-label={`${testsBadge} not taken yet`}
+                    >
+                      {testsBadge > 99 ? "99+" : testsBadge}
+                    </span>
+                  )}
+                </span>
                 {label}
               </Link>
             );
