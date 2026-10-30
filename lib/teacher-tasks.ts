@@ -14,7 +14,12 @@ export interface TeacherTask {
   title: string;
   /** A phone call: a call button for the people it tags, listed first. */
   is_call: boolean;
-  task_date: string;
+  /** An email: a mail button addressed to the people it tags. */
+  is_email: boolean;
+  /** Null: an "Anytime" task (personal only), not on any day. */
+  task_date: string | null;
+  /** Anytime tasks only, optional: overdue once it has passed. */
+  due_date: string | null;
   task_time: string | null;
   phase: TaskPhase | null;
   class_id: string | null;
@@ -26,7 +31,7 @@ export interface TeacherTask {
 }
 
 export const TEACHER_TASK_COLUMNS =
-  "id, kind, title, is_call, task_date, task_time, phase, class_id, slot_time, " +
+  "id, kind, title, is_call, is_email, task_date, due_date, task_time, phase, class_id, slot_time, " +
   "calendar_event_id, lesson_label, done_at, created_at";
 
 /** Of the visible text (tags read as "@Name"); stored tokens are longer. */
@@ -143,13 +148,52 @@ export function groupDayTasks(
   return { byLesson, personal, unlinked };
 }
 
-/** Open tasks from days before `today`, oldest first. */
+/** The day a task is late after: its own day, or an anytime task's due date. */
+export function taskDueDay(task: TeacherTask): string | null {
+  return task.task_date ?? task.due_date;
+}
+
+/**
+ * Open tasks from days before `today` - and anytime tasks whose due date
+ * has passed - oldest first.
+ */
 export function overdueTasks(tasks: TeacherTask[], today: string): TeacherTask[] {
   return tasks
-    .filter((task) => task.done_at === null && task.task_date < today)
-    .sort((a, b) =>
-      a.task_date === b.task_date ? byCreated(a, b) : a.task_date < b.task_date ? -1 : 1,
-    );
+    .filter((task) => {
+      const due = taskDueDay(task);
+      return task.done_at === null && due !== null && due < today;
+    })
+    .sort((a, b) => {
+      const [da, db] = [taskDueDay(a)!, taskDueDay(b)!];
+      return da === db ? byCreated(a, b) : da < db ? -1 : 1;
+    });
+}
+
+/**
+ * The Anytime list: open tasks first - calls first, then by due date
+ * (none last), then oldest - and done ones after. Overdue ones stay here
+ * too; the Overdue list shows them as well.
+ */
+export function anytimeTasks(tasks: TeacherTask[]): TeacherTask[] {
+  return tasks
+    .filter((task) => task.task_date === null)
+    .sort((a, b) => {
+      if ((a.done_at === null) !== (b.done_at === null)) return a.done_at === null ? -1 : 1;
+      if (a.is_call !== b.is_call) return Number(b.is_call) - Number(a.is_call);
+      if (a.due_date !== b.due_date) {
+        if (a.due_date === null) return 1;
+        if (b.due_date === null) return -1;
+        return a.due_date < b.due_date ? -1 : 1;
+      }
+      return byCreated(a, b);
+    });
+}
+
+/** Open anytime tasks due on `date` - the calendar marks that day. */
+export function anytimeDueOn(tasks: TeacherTask[], date: string): TeacherTask[] {
+  return tasks.filter(
+    (task) => task.task_date === null && task.done_at === null && task.due_date === date,
+  );
 }
 
 /** "2/3" style counts for a lesson's tasks. */

@@ -26,6 +26,8 @@ import {
   lessonRefFor,
   lessonRefKey,
   overdueTasks as overdueTasksOf,
+  anytimeDueOn,
+  anytimeTasks as anytimeTasksOf,
   taskProgress,
   type LessonRef,
   type TeacherTask,
@@ -63,7 +65,7 @@ export type CompanionClass = {
 export type CompanionContact = {
   /** "Mother", "Parent", "Student" … - the parent's name when there is one. */
   name: string;
-  role: "parent" | "student";
+  role: "parent" | "student" | "contact";
   /** E.164, e.g. +306912345678. */
   phone: string;
 };
@@ -216,8 +218,12 @@ export type CompanionDay = {
   lessonTaskCounts: Record<string, { done: number; total: number }>;
   /** The day's own to-dos, plus lesson tasks whose lesson isn't on it any more. */
   dayTasks: TeacherTask[];
-  /** Still-open tasks from earlier days (only on today). */
+  /** Still-open tasks from earlier days, and anytime ones past due (only on today). */
   overdueTasks: TeacherTask[];
+  /** Tasks with no day: open ones, and ones done in the last two weeks. */
+  anytimeTasks: TeacherTask[];
+  /** Open anytime tasks due on this day. */
+  dueAnytime: TeacherTask[];
   previous: string | null;
   next: string | null;
 };
@@ -277,7 +283,9 @@ export async function loadDay(
     holidays: buildDayHolidays({ date, projection }),
     lessonTaskCounts,
     dayTasks: [...grouped.personal, ...grouped.unlinked],
-    overdueTasks: overdueTasksOf(tasks, today),
+    overdueTasks: date === today ? overdueTasksOf(tasks, today) : [],
+    anytimeTasks: anytimeTasksOf(tasks),
+    dueAnytime: anytimeDueOn(tasks, date),
     eventLessons: buildDayEventLessons({
       date,
       projection,
@@ -511,17 +519,22 @@ export async function loadOneOffLesson(
   };
 }
 
+// Done anytime tasks stay listed this long (same as listTasksAction).
+const ANYTIME_DONE_DAYS = 14;
+
 /**
- * A day's tasks, plus - when `overdueBefore` is given - every still-open
- * task from before that date.
+ * A day's tasks and the Anytime list, plus - when `overdueBefore` is given
+ * - every still-open task from before that date.
  */
 async function loadTasks(
   supabase: SupabaseServerClient,
   teacherId: string,
   date: string,
   overdueBefore: string | null,
+  withAnytime = true,
 ): Promise<TeacherTask[]> {
-  const [onDay, overdue] = await Promise.all([
+  const doneSince = new Date(Date.now() - ANYTIME_DONE_DAYS * 86_400_000).toISOString();
+  const [onDay, overdue, anytime] = await Promise.all([
     supabase
       .from("teacher_tasks")
       .select(TEACHER_TASK_COLUMNS)
@@ -535,12 +548,22 @@ async function loadTasks(
           .is("done_at", null)
           .lt("task_date", overdueBefore)
       : Promise.resolve({ data: [], error: null }),
+    withAnytime
+      ? supabase
+          .from("teacher_tasks")
+          .select(TEACHER_TASK_COLUMNS)
+          .eq("teacher_id", teacherId)
+          .is("task_date", null)
+          .or(`done_at.is.null,done_at.gte.${doneSince}`)
+      : Promise.resolve({ data: [], error: null }),
   ]);
   if (onDay.error) throw onDay.error;
   if (overdue.error) throw overdue.error;
+  if (anytime.error) throw anytime.error;
   return [
     ...((onDay.data ?? []) as unknown as TeacherTask[]),
     ...((overdue.data ?? []) as unknown as TeacherTask[]),
+    ...((anytime.data ?? []) as unknown as TeacherTask[]),
   ];
 }
 
@@ -562,7 +585,7 @@ export async function loadLessonTasks(
 ): Promise<CompanionLessonTasks> {
   const [{ projection }, tasks] = await Promise.all([
     loadSchool(supabase, teacherId, date, date),
-    loadTasks(supabase, teacherId, date, null),
+    loadTasks(supabase, teacherId, date, null, false),
   ]);
   const occurrences = projectOccurrences({ from: date, to: date, ...projection, includeBlocks: false })
     .filter((occurrence) =>

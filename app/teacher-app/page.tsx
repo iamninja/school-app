@@ -325,11 +325,14 @@ export default async function TeacherAppTodayPage({
 
       <CompanionTasks
         // Fresh lists after a change re-reads the day (router.refresh()).
-        key={`${date}|${JSON.stringify([day.dayTasks, day.overdueTasks].map((list) => list.map((task) => [task.id, task.done_at])))}`}
+        key={`${date}|${JSON.stringify([day.dayTasks, day.overdueTasks, day.anytimeTasks].map((list) => list.map((task) => [task.id, task.done_at, task.task_date, task.due_date])))}`}
         title="My tasks"
         target={{ kind: "personal", date }}
         tasks={day.dayTasks}
         overdue={day.overdueTasks}
+        dueAnytime={day.dueAnytime}
+        anytime={day.anytimeTasks}
+        today={today}
       />
 
       <DeviceNotifications />
