@@ -199,6 +199,38 @@ describe("teacher actions - updateStudentAction", () => {
     expect(result.parentTwoName).toBe("Jamie Carter");
   });
 
+  it("adds a second parent next to an existing one without sending a null id", async () => {
+    const client = createMockSupabaseClient({
+      students: [
+        { data: { id: "student-1", family_id: "family-1" }, error: null },
+        { data: null, error: null },
+      ],
+      family_parents: [
+        { data: [{ id: "parent-1", is_primary: true }], error: null },
+        { data: null, error: null },
+        { data: null, error: null },
+      ],
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await updateStudentAction({
+      ...baseUpdateInput,
+      parentTwoName: "Jamie Carter",
+      parentTwoEmail: "jamie@example.com",
+    });
+
+    const parentCalls = client.from.mock.calls
+      .map((call, index) => ({ table: call[0], chain: client.from.mock.results[index].value }))
+      .filter((call) => call.table === "family_parents");
+    // The existing parent is upserted by id; the new one is a plain insert
+    // with no id key at all, so the column default fills it in.
+    const upserted = parentCalls.flatMap((call) => call.chain.upsert.mock.calls.map((args: unknown[]) => args[0]));
+    const inserted = parentCalls.flatMap((call) => call.chain.insert.mock.calls.map((args: unknown[]) => args[0]));
+    expect(upserted).toEqual([[expect.objectContaining({ id: "parent-1", is_primary: true })]]);
+    expect(inserted).toEqual([[expect.objectContaining({ name: "Jamie Carter", is_primary: false })]]);
+    expect(inserted[0][0]).not.toHaveProperty("id");
+  });
+
   it("inserts a primary parent row when none existed yet", async () => {
     vi.mocked(createClient).mockResolvedValue(
       createMockSupabaseClient({
