@@ -866,10 +866,19 @@ export async function updateStudentAction(data: UpdateStudentInput) {
     });
   }
 
-  if (parentUpserts.length > 0) {
-    const { error: parentError } = await supabase
-      .from("family_parents")
-      .upsert(parentUpserts);
+  // Existing parents (with an id) and new ones (without) go in separate
+  // calls: in one bulk upsert PostgREST sends every row with the union of
+  // the columns, so a new parent's missing id arrives as null instead of
+  // its default - the 23502 on adding a second parent to a family that
+  // already has one.
+  const existingRows = parentUpserts.filter((row) => row.id);
+  const newRows = parentUpserts.filter((row) => !row.id);
+  for (const write of [
+    existingRows.length > 0 ? supabase.from("family_parents").upsert(existingRows) : null,
+    newRows.length > 0 ? supabase.from("family_parents").insert(newRows) : null,
+  ]) {
+    if (!write) continue;
+    const { error: parentError } = await write;
 
     if (parentError) {
       // 23505 = unique_violation on family_parents_email_unique - this
