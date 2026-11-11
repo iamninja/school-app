@@ -47,7 +47,7 @@ export async function updateSiteSettingsAction(changes: Partial<SiteSettings>): 
     if (!MODES.includes(changes.christmas_mode)) throw new ExpectedError("Pick auto, on or off");
     update.christmas_mode = changes.christmas_mode;
   }
-  for (const key of ["christmas_snow", "christmas_hat", "christmas_banner"] as const) {
+  for (const key of ["christmas_snow", "christmas_hat", "christmas_banner", "christmas_portals"] as const) {
     if (changes[key] !== undefined) update[key] = changes[key] === true;
   }
   for (const key of ["christmas_decorations_from", "christmas_message_from", "christmas_until"] as const) {

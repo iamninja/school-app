@@ -205,6 +205,17 @@ export function TeacherSiteSettings() {
           }
         />
         <SettingRow
+          title="Also in the student & parent apps"
+          description="The same snow and Santa hat on the same days, behind their pages. The message stays on the front page."
+          control={
+            <Toggle
+              checked={settings.christmas_portals}
+              label="Also in the student & parent apps"
+              onChange={(value) => void update({ christmas_portals: value })}
+            />
+          }
+        />
+        <SettingRow
           title="Message"
           description="A short line above the login buttons."
           control={

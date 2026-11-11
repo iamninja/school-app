@@ -12,6 +12,8 @@ export interface SiteSettings {
   christmas_snow: boolean;
   christmas_hat: boolean;
   christmas_banner: boolean;
+  /** The snow and hat also in the student and parent apps. */
+  christmas_portals: boolean;
   /** Null or empty: DEFAULT_CHRISTMAS_MESSAGE. */
   christmas_message: string | null;
   /** Snow and the Santa hat show from this day... */
@@ -23,7 +25,7 @@ export interface SiteSettings {
 }
 
 export const SITE_SETTINGS_COLUMNS =
-  "christmas_mode, christmas_snow, christmas_hat, christmas_banner, christmas_message, " +
+  "christmas_mode, christmas_snow, christmas_hat, christmas_banner, christmas_portals, christmas_message, " +
   "christmas_decorations_from, christmas_message_from, christmas_until";
 
 /** Before the migration is applied, or if the row can't be read. */
@@ -32,6 +34,7 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   christmas_snow: true,
   christmas_hat: true,
   christmas_banner: true,
+  christmas_portals: true,
   christmas_message: null,
   christmas_decorations_from: "11-11",
   christmas_message_from: "12-24",
@@ -95,4 +98,15 @@ export function christmasLook(settings: SiteSettings, today: string): ChristmasL
         : null,
   };
   return look.snow || look.hat || look.message ? look : null;
+}
+
+/**
+ * The student and parent apps: the same snow and hat on the same days, when
+ * the teacher wants them there too - never the message (it's for visitors).
+ */
+export function portalChristmasLook(settings: SiteSettings, today: string): ChristmasLook | null {
+  if (!settings.christmas_portals) return null;
+  const look = christmasLook(settings, today);
+  if (!look || (!look.snow && !look.hat)) return null;
+  return { ...look, message: null };
 }

@@ -267,7 +267,7 @@ body.theme-console {
     transform: translate3d(0, 0, 0);
   }
   to {
-    transform: translate3d(var(--fall-drift, 0px), 950px, 0);
+    transform: translate3d(var(--fall-drift, 0px), var(--fall-to, 950px), 0);
   }
 }
 

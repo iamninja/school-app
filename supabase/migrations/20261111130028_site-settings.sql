@@ -20,6 +20,8 @@ create table public.site_settings (
   christmas_snow boolean not null default true,
   christmas_hat boolean not null default true,
   christmas_banner boolean not null default true,
+  -- The snow and Santa hat also in the student and parent apps (no message there).
+  christmas_portals boolean not null default true,
   christmas_message text check (length(christmas_message) <= 160),
   christmas_decorations_from text not null default '11-11'
     check (christmas_decorations_from ~ '^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$'),

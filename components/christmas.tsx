@@ -16,8 +16,13 @@ const SEQUENCE: Figure[] = [
   "flake", "snowman", "flake", "flake",
 ];
 
-/** On a phone only the first ones fall, so the screen stays calm. */
-const PHONE_COUNT = 12;
+// How many fall: the front page's hero has room for more; behind an app's
+// cards a light snowfall is enough. On a phone only the first ones fall,
+// so the screen stays calm.
+const DENSITY = {
+  hero: { desktop: SEQUENCE.length, phone: 12 },
+  light: { desktop: 14, phone: 7 },
+} as const;
 
 // A fixed pseudo-random sequence: the same layout on the server and every
 // visit, so nothing jumps when the page loads.
@@ -90,8 +95,18 @@ function FigureSvg({ figure }: { figure: Figure }) {
   }
 }
 
-/** Falling snow and figures - place inside a `relative overflow-hidden` box. */
-export function ChristmasSnow({ className }: { className?: string }) {
+/**
+ * Falling snow and figures - place inside a `relative overflow-hidden` box,
+ * or pass `fixed inset-0` to snow over the whole screen, behind the page.
+ */
+export function ChristmasSnow({
+  className,
+  density = "hero",
+}: {
+  className?: string;
+  density?: keyof typeof DENSITY;
+}) {
+  const counts = DENSITY[density];
   const random = seeded(24_12);
   const items = SEQUENCE.map((figure, index) => {
     const isFlake = figure === "flake";
@@ -117,12 +132,12 @@ export function ChristmasSnow({ className }: { className?: string }) {
 
   return (
     <div className={cn("pointer-events-none absolute inset-0 overflow-hidden", className)} aria-hidden="true">
-      {items.map((item) => (
+      {items.slice(0, counts.desktop).map((item) => (
         <span
           key={item.index}
           className={cn(
             "modus-fall absolute -top-8",
-            item.index >= PHONE_COUNT && "hidden sm:block",
+            item.index >= counts.phone && "hidden sm:block",
             item.tone && "text-sky-400/70 dark:text-white/70",
           )}
           style={
@@ -149,23 +164,34 @@ export function ChristmasSnow({ className }: { className?: string }) {
   );
 }
 
+// Where the top dot sits: in BrandMark (viewBox 0 0 97 90) and in the
+// compact logo file public/branding/modus-logo-compact.svg (0 0 348 129,
+// its top dot at 60.25, 43 - 12 right and 19 down of the mark's).
+const HAT_ON = {
+  mark: { viewBox: "0 0 97 90", shift: "" },
+  logo: { viewBox: "0 0 348 129", shift: "translate(12 19)" },
+} as const;
+
 /**
- * A Santa hat for the brand mark's top dot - an overlay with BrandMark's
- * own viewBox, so it sits on the dot at any size. Put it in the same
- * `relative inline-block` box as the mark.
+ * A Santa hat for the logo's top dot - an overlay with the logo's own
+ * viewBox, so it sits on the dot at any size. Put it in the same
+ * `relative inline-block` box as BrandMark (`on="mark"`) or the compact
+ * ModusLogo (`on="logo"`).
  */
-export function SantaHat({ className }: { className?: string }) {
+export function SantaHat({ className, on = "mark" }: { className?: string; on?: keyof typeof HAT_ON }) {
   return (
     <svg
-      viewBox="0 0 97 90"
+      viewBox={HAT_ON[on].viewBox}
       className={cn("pointer-events-none absolute inset-0 size-full overflow-visible", className)}
       aria-hidden="true"
       focusable="false"
     >
-      {/* the hat, leaning right over the top dot (cx 48.25, cy 24, r 12) */}
-      <path d="M33 15 C 36 0, 52 -12, 72 -6 C 66 -2, 63 6, 63 15 Z" className="fill-red-600 dark:fill-red-500" />
-      <circle cx="74" cy="-6" r="5" className="fill-white stroke-slate-300" strokeWidth="1" />
-      <rect x="30" y="11" width="37" height="9" rx="4.5" className="fill-white stroke-slate-300" strokeWidth="1" />
+      {/* the hat, leaning right over the top dot (mark: cx 48.25, cy 24, r 12) */}
+      <g transform={HAT_ON[on].shift || undefined}>
+        <path d="M33 15 C 36 0, 52 -12, 72 -6 C 66 -2, 63 6, 63 15 Z" className="fill-red-600 dark:fill-red-500" />
+        <circle cx="74" cy="-6" r="5" className="fill-white stroke-slate-300" strokeWidth="1" />
+        <rect x="30" y="11" width="37" height="9" rx="4.5" className="fill-white stroke-slate-300" strokeWidth="1" />
+      </g>
     </svg>
   );
 }

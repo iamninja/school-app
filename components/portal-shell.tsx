@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LogOut } from "lucide-react";
@@ -11,6 +12,14 @@ import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { forgetPushDeviceBeforeSignOut } from "@/components/use-push-device";
 import { NotificationBell } from "@/components/notification-bell";
+import { ChristmasSnow, SantaHat } from "@/components/christmas";
+import { athensToday } from "@/lib/push/athens-time";
+import {
+  SITE_SETTINGS_COLUMNS,
+  portalChristmasLook,
+  type ChristmasLook,
+  type SiteSettings,
+} from "@/lib/site-season";
 
 const PORTAL_SHELL_LABELS = {
   el: {
@@ -33,6 +42,33 @@ const PORTAL_SHELL_LABELS = {
 };
 
 /**
+ * The Christmas snow and hat for the apps, as the teacher set them in the
+ * App tab (lib/site-season.ts). Read in the browser - the setting is
+ * public - so every portal page gets it without passing it down; until it
+ * arrives (or if it can't be read) there's simply no decoration.
+ */
+function usePortalChristmas(): ChristmasLook | null {
+  const [look, setLook] = React.useState<ChristmasLook | null>(null);
+  React.useEffect(() => {
+    let active = true;
+    void Promise.resolve()
+      .then(() =>
+        createClient().from("site_settings").select(SITE_SETTINGS_COLUMNS).eq("id", 1).maybeSingle(),
+      )
+      .then(({ data }) => {
+        if (active && data) {
+          setLook(portalChristmasLook(data as unknown as SiteSettings, athensToday()));
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+  return look;
+}
+
+/**
  * Shared chrome for the parent and student portal views: branded top bar,
  * content column, and a signage footer. Real families only ever see the
  * Greek copy (locale defaults to "el") - the English strings exist for the
@@ -52,6 +88,7 @@ export function PortalShell({
 }) {
   const router = useRouter();
   const labels = PORTAL_SHELL_LABELS[locale];
+  const christmas = usePortalChristmas();
 
   const handleSignOut = async () => {
     if (demoMode) {
@@ -65,7 +102,12 @@ export function PortalShell({
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="relative isolate flex min-h-screen flex-col bg-background">
+      {/* Behind everything: header, cards and footer are solid, so the snow
+          only shows in the gaps and never over what families read. */}
+      {christmas?.snow && (
+        <ChristmasSnow density="light" className="fixed -z-10 [--fall-to:110vh]" />
+      )}
       {demoMode && (
         <div className="border-b border-brand/20 bg-brand/10 px-5 py-2 text-center text-xs font-medium text-foreground sm:text-sm">
           {labels.demoBanner}
@@ -77,7 +119,10 @@ export function PortalShell({
               is a "home" button inside the installed app rather than a way
               out to the public landing page. The demo has no session. */}
           <Link href={demoMode ? "/" : "/start"} aria-label={labels.homeAriaLabel}>
-            <ModusLogo size={30} variant="compact" priority />
+            <span className="relative inline-block">
+              <ModusLogo size={30} variant="compact" priority />
+              {christmas?.hat && <SantaHat on="logo" />}
+            </span>
           </Link>
           <div className="flex items-center gap-3">
             <span className="hidden rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-muted-foreground sm:inline-flex">

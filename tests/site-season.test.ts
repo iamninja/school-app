@@ -5,6 +5,7 @@ import {
   DEFAULT_SITE_SETTINGS,
   christmasLook,
   formatDayOfYear,
+  portalChristmasLook,
   inYearWindow,
   parseDayOfYear,
 } from "@/lib/site-season";
@@ -89,5 +90,19 @@ describe("christmasLook", () => {
         "2026-12-28",
       ),
     ).toBeNull();
+  });
+});
+
+describe("portalChristmasLook", () => {
+  it("shows the snow and hat in the apps, but never the message", () => {
+    expect(portalChristmasLook(DEFAULT_SITE_SETTINGS, "2026-12-28")).toEqual({ snow: true, hat: true, message: null });
+  });
+
+  it("is off when the apps are switched off, or nothing but the message is on", () => {
+    expect(portalChristmasLook({ ...DEFAULT_SITE_SETTINGS, christmas_portals: false }, "2026-12-28")).toBeNull();
+    expect(
+      portalChristmasLook({ ...DEFAULT_SITE_SETTINGS, christmas_snow: false, christmas_hat: false }, "2026-12-28"),
+    ).toBeNull();
+    expect(portalChristmasLook(DEFAULT_SITE_SETTINGS, "2026-10-01")).toBeNull();
   });
 });
