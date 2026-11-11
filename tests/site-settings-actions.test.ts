@@ -33,6 +33,17 @@ describe("updateSiteSettingsAction", () => {
     expect(revalidatePath).toHaveBeenCalledWith("/");
   });
 
+  it("saves the dates as day-of-year values", async () => {
+    const client = createMockSupabaseClient({ site_settings: { data: {}, error: null } });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await updateSiteSettingsAction({ christmas_decorations_from: "11-15", christmas_message_from: "12-24", christmas_until: "01-07" });
+
+    expect(client.from.mock.results[0].value.update).toHaveBeenCalledWith(
+      expect.objectContaining({ christmas_decorations_from: "11-15", christmas_message_from: "12-24", christmas_until: "01-07" }),
+    );
+  });
+
   it("stores an empty message as none, so the default shows", async () => {
     const client = createMockSupabaseClient({ site_settings: { data: {}, error: null } });
     vi.mocked(createClient).mockResolvedValue(client as never);
@@ -47,6 +58,8 @@ describe("updateSiteSettingsAction", () => {
   it.each([
     [{ christmas_mode: "sometimes" }],
     [{ christmas_message: "x".repeat(161) }],
+    [{ christmas_until: "13-01" }],
+    [{ christmas_message_from: "24/12" }],
   ])("refuses %o before writing", async (changes) => {
     const client = createMockSupabaseClient({});
     vi.mocked(createClient).mockResolvedValue(client as never);

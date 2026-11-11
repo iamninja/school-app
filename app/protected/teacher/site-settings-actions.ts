@@ -8,6 +8,7 @@ import { ExpectedError } from "@/lib/expected-error";
 import {
   CHRISTMAS_MESSAGE_MAX_LENGTH,
   SITE_SETTINGS_COLUMNS,
+  isDayOfYear,
   type ChristmasMode,
   type SiteSettings,
 } from "@/lib/site-season";
@@ -35,7 +36,7 @@ export async function getSiteSettingsAction(): Promise<SiteSettings> {
     .eq("id", 1)
     .single();
   if (error) throw error;
-  return data as SiteSettings;
+  return data as unknown as SiteSettings;
 }
 
 export async function updateSiteSettingsAction(changes: Partial<SiteSettings>): Promise<SiteSettings> {
@@ -48,6 +49,11 @@ export async function updateSiteSettingsAction(changes: Partial<SiteSettings>): 
   }
   for (const key of ["christmas_snow", "christmas_hat", "christmas_banner"] as const) {
     if (changes[key] !== undefined) update[key] = changes[key] === true;
+  }
+  for (const key of ["christmas_decorations_from", "christmas_message_from", "christmas_until"] as const) {
+    if (changes[key] === undefined) continue;
+    if (!isDayOfYear(changes[key])) throw new ExpectedError("Write the date as day/month, e.g. 24/12");
+    update[key] = changes[key];
   }
   if (changes.christmas_message !== undefined) {
     const message = changes.christmas_message?.replace(/\s+/g, " ").trim() || null;
@@ -66,5 +72,5 @@ export async function updateSiteSettingsAction(changes: Partial<SiteSettings>): 
   if (error) throw error;
   // The front page reads these on each visit; refresh any cached copy.
   revalidatePath("/");
-  return data as SiteSettings;
+  return data as unknown as SiteSettings;
 }

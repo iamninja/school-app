@@ -95,7 +95,7 @@ async function loadSiteSettings(): Promise<SiteSettings> {
       .eq("id", 1)
       .maybeSingle();
     if (error || !data) return DEFAULT_SITE_SETTINGS;
-    return data as SiteSettings;
+    return data as unknown as SiteSettings;
   } catch {
     // The front page never fails over a decoration.
     return DEFAULT_SITE_SETTINGS;

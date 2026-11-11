@@ -1,11 +1,13 @@
 -- The public front page's seasonal look (lib/site-season.ts), set from the
 -- console's App tab. One row, like notification_settings.
 --
--- christmas_mode: 'auto' shows the Christmas look from 1 December to
--- 7 January (Athens time) every year; 'on' shows it now (to preview it, or
--- to keep it a few days longer); 'off' never. The three switches pick its
--- parts: falling snow and figures, a Santa hat on the logo, and a short
--- message (christmas_message; empty means the built-in default).
+-- christmas_mode: 'auto' follows the dates below every year (Athens time);
+-- 'on' shows everything now (to preview it, or keep it a few days longer);
+-- 'off' never. The decorations (falling snow and figures, the Santa hat)
+-- and the message each start on their own day and both end on
+-- christmas_until - days of the year as 'MM-DD', so a window may run over
+-- New Year. The three switches pick the parts; christmas_message empty
+-- means the built-in default.
 --
 -- Readable by everyone, signed in or not: the front page shows it to
 -- visitors, and nothing here is private. Only the teacher can change it.
@@ -19,6 +21,12 @@ create table public.site_settings (
   christmas_hat boolean not null default true,
   christmas_banner boolean not null default true,
   christmas_message text check (length(christmas_message) <= 160),
+  christmas_decorations_from text not null default '11-11'
+    check (christmas_decorations_from ~ '^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$'),
+  christmas_message_from text not null default '12-24'
+    check (christmas_message_from ~ '^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$'),
+  christmas_until text not null default '01-07'
+    check (christmas_until ~ '^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$'),
 
   updated_at timestamptz not null default now(),
 
