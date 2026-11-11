@@ -101,7 +101,9 @@ export function ChristmasSnow({ className }: { className?: string }) {
     return {
       figure,
       index,
-      left: `${(index / SEQUENCE.length) * 100 + random() * 3}%`,
+      // Columns in a stride across the width (11 and 28 share no factor), so
+      // any first few - the ones a phone shows - are spread over all of it.
+      left: `${(((index * 11) % SEQUENCE.length) / SEQUENCE.length) * 100 + random() * 3}%`,
       size,
       duration,
       // Negative delays: the snow is already falling when the page opens.
