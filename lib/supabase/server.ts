@@ -51,3 +51,20 @@ export function createServiceRoleClient() {
     },
   );
 }
+
+/**
+ * A signed-out client with no cookies, for public pages that can stay
+ * cached (the front page): reads only what RLS lets anyone read.
+ */
+export function createPublicClient() {
+  return createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    },
+  );
+}

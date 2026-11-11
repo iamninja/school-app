@@ -43,7 +43,7 @@ import type { NotificationSettings } from "@/lib/push/settings";
 // Small building blocks
 // ---------------------------------------------------------------------------
 
-function Toggle({
+export function Toggle({
   checked,
   onChange,
   label,
@@ -77,7 +77,7 @@ function Toggle({
   );
 }
 
-function SettingRow({
+export function SettingRow({
   title,
   description,
   control,

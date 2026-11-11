@@ -258,6 +258,49 @@ body.theme-console {
 }
 
 /*
+ * The front page's Christmas snow (components/christmas.tsx): each flake
+ * falls past the hero (which clips it) at its own pace, swaying a little.
+ * With reduced motion they stay still, scattered over the hero instead.
+ */
+@keyframes modus-fall {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(var(--fall-drift, 0px), 950px, 0);
+  }
+}
+
+@keyframes modus-sway {
+  from {
+    transform: translateX(-6px) rotate(-12deg);
+  }
+  to {
+    transform: translateX(6px) rotate(12deg);
+  }
+}
+
+.modus-fall {
+  animation: modus-fall var(--fall-duration, 20s) linear var(--fall-delay, 0s) infinite;
+  will-change: transform;
+}
+
+.modus-sway {
+  animation: modus-sway var(--sway-duration, 4s) ease-in-out infinite alternate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modus-fall,
+  .modus-sway {
+    animation: none;
+  }
+
+  .modus-fall {
+    top: var(--fall-rest, 50%);
+  }
+}
+
+/*
  * Printing a receipt. Rather than pull in a PDF-rendering dependency, the
  * receipt is laid out as normal DOM and everything else on the page is
  * hidden at print time - the browser's own dialog then covers both "print
