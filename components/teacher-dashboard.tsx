@@ -92,6 +92,7 @@ import type { TeacherSectionId } from "@/lib/teacher-sections";
 import { TeacherClassDetail } from "@/components/teacher-class-detail";
 import { TeacherQuizBuilder } from "@/components/teacher-quiz-builder";
 import { TeacherContacts } from "@/components/teacher-contacts";
+import { examSittings } from "@/lib/calendar-exams";
 import { TeacherSiteSettings } from "@/components/teacher-site-settings";
 import { TagOpenerProvider, type TagOpener } from "@/components/task-tags-ui";
 import { TeacherAssessments } from "@/components/teacher-assessments";
@@ -807,39 +808,13 @@ export function TeacherDashboard({
     [classes],
   );
 
-  // Read-only overlay for the Calendar tab (requirement: mock exam dates
-  // visible on the grid, without writing assessments into calendar_events
-  // or touching lib/calendar-projection.ts). One marker per (assessment,
-  // date), counting how many students have that effective date.
-  const assessmentDateMarkers = React.useMemo(() => {
-    const titleByAssessmentId = new Map(
-      assessments.map((assessment) => [assessment.id, assessment.title]),
-    );
-    const byKey = new Map<
-      string,
-      {
-        assessmentId: string;
-        date: string;
-        label: string;
-        studentCount: number;
-      }
-    >();
-    for (const assignment of assessmentAssignments) {
-      if (assignment.kind !== "mock_exam" || !assignment.effective_scheduled_date) {
-        continue;
-      }
-      const key = `${assignment.assessment_id}|${assignment.effective_scheduled_date}`;
-      const entry = byKey.get(key) ?? {
-        assessmentId: assignment.assessment_id,
-        date: assignment.effective_scheduled_date,
-        label: titleByAssessmentId.get(assignment.assessment_id) ?? "Mock exam",
-        studentCount: 0,
-      };
-      entry.studentCount += 1;
-      byKey.set(key, entry);
-    }
-    return [...byKey.values()];
-  }, [assessments, assessmentAssignments]);
+  // Read-only overlay for the Calendar tab: mock exams at their times,
+  // never written into calendar_events (lib/calendar-exams.ts). One
+  // sitting per (assessment, date, time), counting the students there.
+  const examSittingsForCalendar = React.useMemo(
+    () => examSittings(assessments, assessmentAssignments),
+    [assessments, assessmentAssignments],
+  );
 
   const resetClassForm = () => {
     setClassFormName("");
@@ -2258,7 +2233,7 @@ export function TeacherDashboard({
             slots={scheduleSlotList}
             attendanceRecords={attendanceRecords}
             onAttendanceRecordsChange={setAttendanceRecords}
-            assessmentMarkers={assessmentDateMarkers}
+            examSittings={examSittingsForCalendar}
             onViewAssessment={(assessmentId) => {
               setSection("assessments");
               setSelectedAssessmentId(assessmentId);
