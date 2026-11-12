@@ -10,6 +10,7 @@ import type {
   TeacherAssessmentAssignmentRow,
 } from "@/lib/types/database";
 import { isAssessmentAssignmentLate } from "@/lib/assessment-status";
+import { examBlocksForDay, examSittings, type ExamBlock } from "@/lib/calendar-exams";
 import {
   groupTests,
   overdueCount,
@@ -224,6 +225,8 @@ export type CompanionDay = {
   anytimeTasks: TeacherTask[];
   /** Open anytime tasks due on this day. */
   dueAnytime: TeacherTask[];
+  /** The day's mock exams, merged where they share a time (lib/calendar-exams.ts). */
+  examBlocks: ExamBlock[];
   previous: string | null;
   next: string | null;
 };
@@ -250,7 +253,10 @@ export async function loadDay(
   >;
 
   const today = athensToday();
-  const tasks = await loadTasks(supabase, teacherId, date, date === today ? today : null);
+  const [tasks, examBlocks] = await Promise.all([
+    loadTasks(supabase, teacherId, date, date === today ? today : null),
+    loadExamBlocks(supabase, teacherId, date),
+  ]);
   const occurrences = projectOccurrences({ from: date, to: date, ...projection, includeBlocks: false });
   const grouped = groupDayTasks(tasks, date, occurrences);
   const lessonTaskCounts: Record<string, { done: number; total: number }> = {};
@@ -286,6 +292,7 @@ export async function loadDay(
     overdueTasks: date === today ? overdueTasksOf(tasks, today) : [],
     anytimeTasks: anytimeTasksOf(tasks),
     dueAnytime: anytimeDueOn(tasks, date),
+    examBlocks,
     eventLessons: buildDayEventLessons({
       date,
       projection,
@@ -517,6 +524,43 @@ export async function loadOneOffLesson(
       ]),
     ),
   };
+}
+
+/** The day's mock exam sittings, as blocks - the console Calendar's overlay, on the phone. */
+async function loadExamBlocks(
+  supabase: SupabaseServerClient,
+  teacherId: string,
+  date: string,
+): Promise<ExamBlock[]> {
+  const { data, error } = await supabase
+    .from("assessment_assignments")
+    .select(
+      "assessment_id, kind, effective_scheduled_date, effective_scheduled_time, " +
+        "assessments:assessment_id (id, kind, title, duration_minutes, scheduled_time, class_name)",
+    )
+    .eq("teacher_id", teacherId)
+    .eq("kind", "mock_exam")
+    .eq("effective_scheduled_date", date);
+  if (error) throw error;
+  type Row = {
+    assessment_id: string;
+    kind: "mock_exam" | "short_assessment";
+    effective_scheduled_date: string | null;
+    effective_scheduled_time: string | null;
+    assessments: {
+      id: string;
+      kind: "mock_exam" | "short_assessment";
+      title: string;
+      duration_minutes: number;
+      scheduled_time: string | null;
+      class_name: string | null;
+    } | null;
+  };
+  const rows = (data ?? []) as unknown as Row[];
+  const assessments = [
+    ...new Map(rows.flatMap((row) => (row.assessments ? [[row.assessments.id, row.assessments] as const] : []))).values(),
+  ];
+  return examBlocksForDay(examSittings(assessments, rows), date);
 }
 
 // Done anytime tasks stay listed this long (same as listTasksAction).

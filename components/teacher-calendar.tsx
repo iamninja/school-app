@@ -40,6 +40,12 @@ import {
   type CreateTaskInput,
 } from "@/app/protected/teacher/task-actions";
 import { LessonTasks, MyTasks } from "@/components/teacher-tasks";
+import {
+  examBlocksForDay,
+  layoutDay,
+  type ExamBlock,
+  type ExamSitting,
+} from "@/lib/calendar-exams";
 import type { TaskDateChange } from "@/components/task-dates-ui";
 import {
   anytimeDueOn,
@@ -160,12 +166,35 @@ const ASSESSMENT_DOT_CLASS = "bg-indigo-500";
 // A day with tasks still to do (lib/teacher-tasks.ts).
 const TASK_DOT_CLASS = "bg-orange-500";
 
-export type AssessmentDateMarker = {
-  assessmentId: string;
-  date: string;
-  label: string;
-  studentCount: number;
-};
+// A mock exam block (lib/calendar-exams.ts): its own indigo, the same as
+// the month view's exam dot.
+const EXAM_BLOCK_CLASS =
+  "border-indigo-500/40 bg-indigo-500/10 text-indigo-950 dark:text-indigo-100";
+
+function examBlockTime(block: ExamBlock): string {
+  return block.start && block.end ? `${block.start}–${block.end}` : "All day";
+}
+
+function examStudents(count: number): string {
+  return `${count} student${count === 1 ? "" : "s"}`;
+}
+
+/** The week view's exam block: the time, then each exam in it. */
+function WeekExamChip({ block }: { block: ExamBlock }) {
+  return (
+    <div className={cn("rounded border px-1.5 py-1 text-xs", EXAM_BLOCK_CLASS)}>
+      <p className="font-medium">{examBlockTime(block)}</p>
+      {block.exams.map((exam) => (
+        <p key={`${exam.assessmentId}|${exam.startTime}`} className="truncate">
+          {exam.title}
+        </p>
+      ))}
+      <p className="text-[10px] tracking-wide uppercase opacity-70">
+        {block.exams.length === 1 ? "Mock exam" : `${block.exams.length} mock exams`}
+      </p>
+    </div>
+  );
+}
 
 const WEEK_ROW_CLASSES: Record<OccurrenceKind, string> = {
   recurring: "border-border bg-muted/40",
@@ -240,6 +269,18 @@ function effectiveWindow(
   return { start: occurrence.startTime, end: `${endHours}:${endMinutes}` };
 }
 
+
+type DayItem = ReturnType<typeof collapseSchoolBreaksByDay>[number];
+
+// When a day-list item happens, for sitting an exam block beside it
+// (lib/calendar-exams.ts): a lesson's real window; a holiday break, a
+// personal block or a cancelled lesson never pairs.
+function dayItemWindow(item: DayItem): { start: string; end: string } | null {
+  if (item.type === "break") return null;
+  const occurrence = item.occurrence;
+  if (occurrence.kind === "cancelled" || occurrence.kind === "block") return null;
+  return effectiveWindow(occurrence);
+}
 
 // Cancelled occurrences and blocks are excluded - a cancelled lesson
 // doesn't happen, and a block isn't a class. Reported pairwise rather than
@@ -325,6 +366,7 @@ function WeekOccurrenceChip({ occurrence }: { occurrence: Occurrence }) {
 }
 
 function WeeklyOverview({
+  examSittings,
   selectedDate,
   slots,
   classes,
@@ -339,6 +381,7 @@ function WeeklyOverview({
   onSelectDate: (date: string) => void;
   /** Tasks still to do, per day - a small count in the day's header. */
   openTaskCountByDate?: Map<string, number>;
+  examSittings: ExamSitting[];
 }) {
   const weekStart = startOfWeek(fromIsoDate(selectedDate), {
     weekStartsOn: 1,
@@ -367,6 +410,7 @@ function WeeklyOverview({
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-7">
           {days.map((day) => {
             const dayOccurrences = occurrencesByDate.get(day) ?? [];
+            const dayExams = examBlocksForDay(examSittings, day);
             return (
               <button
                 key={day}
@@ -407,10 +451,12 @@ function WeeklyOverview({
                   )}
                 </p>
                 <div className="mt-1.5 space-y-1.5">
-                  {dayOccurrences.length === 0 ? (
+                  {dayOccurrences.length === 0 && dayExams.length === 0 ? (
                     <p className="text-xs text-muted-foreground">—</p>
                   ) : (
-                    collapseSchoolBreaksByDay(dayOccurrences).map((item, idx) =>
+                    layoutDay(collapseSchoolBreaksByDay(dayOccurrences), dayItemWindow, dayExams).map((row, rowIdx) => {
+                      if (row.type === "exam") return <WeekExamChip key={`exam-${rowIdx}`} block={row.exam} />;
+                      const renderItem = (item: DayItem, idx: number) =>
                       item.type === "break" ? (
                         <div
                           key={idx}
@@ -434,8 +480,16 @@ function WeeklyOverview({
                           key={idx}
                           occurrence={item.occurrence}
                         />
-                      ),
-                    )
+                      );
+                      if (row.type === "item") return <React.Fragment key={`item-${rowIdx}`}>{renderItem(row.item, rowIdx)}</React.Fragment>;
+                      // Side by side, in the column's width.
+                      return (
+                        <div key={`pair-${rowIdx}`} className="grid grid-cols-2 items-stretch gap-1">
+                          <div className="min-w-0 space-y-1">{row.items.map(renderItem)}</div>
+                          <WeekExamChip block={row.exam} />
+                        </div>
+                      );
+                    })
                   )}
                 </div>
               </button>
@@ -562,7 +616,7 @@ export function TeacherCalendar({
   slots,
   attendanceRecords,
   onAttendanceRecordsChange,
-  assessmentMarkers = [],
+  examSittings = [],
   onViewAssessment,
   lessonRateByClassId,
 }: {
@@ -575,10 +629,9 @@ export function TeacherCalendar({
   onAttendanceRecordsChange: React.Dispatch<
     React.SetStateAction<AttendanceRecord[]>
   >;
-  // Read-only overlay of mock exam dates - never written back into
-  // calendar_events, see supabase/migrations/*_assessments.sql and
-  // lib/assessment-status.ts. Purely for visibility on the grid.
-  assessmentMarkers?: AssessmentDateMarker[];
+  // Read-only overlay of mock exams at their times - never written back
+  // into calendar_events (lib/calendar-exams.ts).
+  examSittings?: ExamSitting[];
   onViewAssessment?: (assessmentId: string) => void;
   // ProjectionClass deliberately carries no billing fields (wrong altitude
   // for a calendar projection) - keyed by class id instead, for the
@@ -644,18 +697,11 @@ export function TeacherCalendar({
     return map;
   }, [monthOccurrences]);
 
-  const assessmentMarkersByDate = React.useMemo(() => {
-    const map = new Map<string, AssessmentDateMarker[]>();
-    for (const marker of assessmentMarkers) {
-      const list = map.get(marker.date) ?? [];
-      list.push(marker);
-      map.set(marker.date, list);
-    }
-    return map;
-  }, [assessmentMarkers]);
-
-  const selectedAssessmentMarkers =
-    assessmentMarkersByDate.get(selectedDate) ?? [];
+  // Days with a mock exam - the month view's indigo dot.
+  const examDates = React.useMemo(
+    () => new Set(examSittings.map((sitting) => sitting.date)),
+    [examSittings],
+  );
 
   const selectedOccurrences = React.useMemo(
     () =>
@@ -673,6 +719,46 @@ export function TeacherCalendar({
   const selectedItems = React.useMemo(
     () => collapseSchoolBreaksByDay(selectedOccurrences),
     [selectedOccurrences],
+  );
+
+  const selectedExamBlocks = React.useMemo(
+    () => examBlocksForDay(examSittings, selectedDate),
+    [examSittings, selectedDate],
+  );
+
+  // The day panel's exam block: each exam with its students, and a way
+  // to open it in the Assessments tab.
+  const renderExamBlock = (block: ExamBlock) => (
+    <div className={cn("h-full space-y-1.5 rounded-md border p-3 text-sm", EXAM_BLOCK_CLASS)}>
+      <p className="flex flex-wrap items-baseline gap-x-2">
+        <span className="font-semibold">{examBlockTime(block)}</span>
+        <span className="text-xs font-medium uppercase tracking-wide opacity-70">
+          {block.exams.length === 1 ? "Mock exam" : `${block.exams.length} mock exams`}
+        </span>
+      </p>
+      {block.exams.map((exam) => (
+        <div key={`${exam.assessmentId}|${exam.startTime}`} className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+          <span className="min-w-0">
+            <span className="font-medium">{exam.title}</span>
+            <span className="text-xs opacity-80">
+              {" · "}
+              {[exam.className, examStudents(exam.studentCount)].filter(Boolean).join(" · ")}
+            </span>
+          </span>
+          {onViewAssessment ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7"
+              onClick={() => onViewAssessment(exam.assessmentId)}
+            >
+              Open
+            </Button>
+          ) : null}
+        </div>
+      ))}
+    </div>
   );
 
   // The teacher's own to-dos (lib/teacher-tasks.ts): the visible month's
@@ -953,8 +1039,7 @@ export function TeacherCalendar({
     (dayButtonProps: React.ComponentProps<typeof CalendarDayButton>) => {
       const iso = toIsoDate(dayButtonProps.day.date);
       const kinds = kindsByDate.get(iso);
-      const hasAssessmentMarker =
-        (assessmentMarkersByDate.get(iso)?.length ?? 0) > 0;
+      const hasAssessmentMarker = examDates.has(iso);
       const hasOpenTasks = (openTaskCountByDate.get(iso) ?? 0) > 0;
       return (
         <CalendarDayButton
@@ -991,7 +1076,7 @@ export function TeacherCalendar({
         </CalendarDayButton>
       );
     },
-    [kindsByDate, assessmentMarkersByDate, openTaskCountByDate, todayIso],
+    [kindsByDate, examDates, openTaskCountByDate, todayIso],
   );
 
   const openCreate = (type: AddableEventType) => {
@@ -1579,16 +1664,24 @@ export function TeacherCalendar({
           </DropdownMenu>
         </CardHeader>
         <CardContent className="space-y-2">
-          {selectedOccurrences.length === 0 ? (
+          {selectedOccurrences.length === 0 && selectedExamBlocks.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               Nothing scheduled.
             </p>
           ) : (
-            selectedItems.map((item) =>
-              item.type === "break"
-                ? renderBreakRow(item)
-                : renderOccurrenceRow(item.occurrence),
-            )
+            layoutDay(selectedItems, dayItemWindow, selectedExamBlocks).map((row, idx) => {
+              const renderItem = (item: (typeof selectedItems)[number]) =>
+                item.type === "break" ? renderBreakRow(item) : renderOccurrenceRow(item.occurrence);
+              if (row.type === "item") return renderItem(row.item);
+              if (row.type === "exam") return <React.Fragment key={`exam-${idx}`}>{renderExamBlock(row.exam)}</React.Fragment>;
+              // Side by side: the lesson(s) on the left, the exam block on the right.
+              return (
+                <div key={`pair-${idx}`} className="grid grid-cols-2 items-stretch gap-2">
+                  <div className="min-w-0 space-y-2">{row.items.map(renderItem)}</div>
+                  <div className="min-w-0">{renderExamBlock(row.exam)}</div>
+                </div>
+              );
+            })
           )}
 
           <MyTasks
@@ -1607,39 +1700,12 @@ export function TeacherCalendar({
             {...taskHandlers}
           />
 
-          {selectedAssessmentMarkers.length > 0 ? (
-            <div className="mt-3 space-y-2 border-t pt-3">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Assessments
-              </p>
-              {selectedAssessmentMarkers.map((marker) => (
-                <div
-                  key={marker.assessmentId}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-2 text-sm"
-                >
-                  <span>
-                    {marker.label} · {marker.studentCount} student
-                    {marker.studentCount === 1 ? "" : "s"}
-                  </span>
-                  {onViewAssessment ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => onViewAssessment(marker.assessmentId)}
-                    >
-                      View in Assessments
-                    </Button>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          ) : null}
         </CardContent>
       </Card>
     </div>
 
     <WeeklyOverview
+      examSittings={examSittings}
       selectedDate={selectedDate}
       slots={slots}
       classes={classes}

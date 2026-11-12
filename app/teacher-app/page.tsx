@@ -8,7 +8,8 @@ import { formatCompanionDate } from "@/components/teacher-app/format";
 import { requireCompanionTeacher, parseDateParam } from "@/app/teacher-app/session";
 import { loadDay } from "@/lib/teacher-app/load";
 import { athensMinutesNow, athensToday } from "@/lib/push/athens-time";
-import { lessonInProgress, type DayLesson } from "@/lib/teacher-app/day";
+import { lessonInProgress, type DayEventLesson, type DayLesson } from "@/lib/teacher-app/day";
+import { fromMinutes, layoutDay, toMinutes, type ExamBlock } from "@/lib/calendar-exams";
 import { TrialOutcomeButtons } from "@/components/teacher-app/trial-outcome";
 import { CompanionTasks } from "@/components/teacher-app/task-list";
 
@@ -71,6 +72,24 @@ function TaskChip({ counts }: { counts?: { done: number; total: number } }) {
   );
 }
 
+// A Today row, or - side by side with a mock exam (compact) - half of
+// one: the time then moves above the name.
+function rowClass(compact: boolean): string {
+  return compact
+    ? "flex min-h-16 flex-wrap items-center gap-x-2 gap-y-0.5 rounded-lg border px-3 py-2"
+    : "flex min-h-16 items-center gap-3 rounded-lg border px-4";
+}
+
+function timeClass(compact: boolean): string {
+  return compact
+    ? "w-full text-xs font-semibold tabular-nums"
+    : "w-20 shrink-0 text-sm font-semibold tabular-nums";
+}
+
+// Mock exams: indigo, as on the console's calendar and the Tests tab.
+const EXAM_ROW = "border-indigo-500/40 bg-indigo-500/10";
+const EXAM_CHIP = "bg-indigo-500/15 text-indigo-800 dark:text-indigo-300";
+
 const STATUS_LABELS: Record<string, string> = {
   present: "Present",
   late: "Late",
@@ -113,18 +132,36 @@ export default async function TeacherAppTodayPage({
     })),
   ].sort((a, b) => (a.start ?? "").localeCompare(b.start ?? ""));
 
+  // Mock exams among the lessons (lib/calendar-exams.ts): a lesson at the
+  // same time sits beside the exam block. A cancelled lesson or a personal
+  // block never pairs; a one-off or trial counts as 45 minutes, as in the
+  // console's calendar.
+  const rows = layoutDay(
+    items,
+    (item) => {
+      if (item.type === "class") {
+        const { lesson } = item;
+        if (lesson.kind === "cancelled" || lesson.startMinutes === null || lesson.endMinutes === null) return null;
+        return { start: fromMinutes(lesson.startMinutes), end: fromMinutes(lesson.endMinutes) };
+      }
+      if (item.lesson.kind === "block" || !item.lesson.startTime) return null;
+      return { start: item.lesson.startTime, end: fromMinutes(toMinutes(item.lesson.startTime) + 45) };
+    },
+    day.examBlocks,
+  );
+
   // Opening the app (/start adds ?open=1) during a lesson goes straight to
   // it; the tab bar and "back" link to plain /teacher-app, so they never jump.
   if (query.open === "1" && now) {
     redirect(`/teacher-app/lesson/${now.classId}?date=${date}`);
   }
 
-  const renderClassLesson = (lesson: DayLesson) => {
+  const renderClassLesson = (lesson: DayLesson, compact = false) => {
     const cancelled = lesson.kind === "cancelled";
     const allMarked = lesson.rosterSize > 0 && lesson.marked >= lesson.rosterSize;
     const body = (
       <>
-        <div className="w-20 shrink-0 text-sm font-semibold tabular-nums">
+        <div className={timeClass(compact)}>
           {lesson.timeLabel ?? "—"}
         </div>
         <div className="min-w-0 flex-1">
@@ -168,14 +205,15 @@ export default async function TeacherAppTodayPage({
     return (
       <li key={lesson.classId}>
         {cancelled ? (
-          <div className="flex min-h-16 items-center gap-3 rounded-lg border border-border bg-muted/40 px-4 text-muted-foreground">
+          <div className={cn(rowClass(compact), "border-border bg-muted/40 text-muted-foreground")}>
             {body}
           </div>
         ) : (
           <Link
             href={`/teacher-app/lesson/${lesson.classId}?date=${date}`}
             className={cn(
-              "flex min-h-16 items-center gap-3 rounded-lg border px-4 active:bg-muted",
+              rowClass(compact),
+              "active:bg-muted",
               lesson.kind === "extra_session"
                 ? KIND_STYLES.extra_session.row
                 : "border-border bg-card",
@@ -187,6 +225,116 @@ export default async function TeacherAppTodayPage({
       </li>
     );
   };
+
+  const renderEventLesson = (lesson: DayEventLesson, compact = false) => (
+    <li key={lesson.eventId}>
+      {lesson.kind === "ad_hoc_lesson" ? (
+        <Link
+          href={`/teacher-app/one-off/${lesson.eventId}`}
+          className={cn(
+            "flex min-h-16 items-center gap-3 rounded-lg border px-4 active:bg-muted",
+            KIND_STYLES.ad_hoc_lesson.row,
+          )}
+        >
+          <div className={timeClass(compact)}>
+            {lesson.timeLabel ?? "—"}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <span className="truncate font-medium">{lesson.name}</span>
+              <KindChip kind="ad_hoc_lesson" />
+            </div>
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              {lesson.status
+                ? (STATUS_LABELS[lesson.status] ?? lesson.status)
+                : "Not marked"}
+              <TaskChip counts={day.lessonTaskCounts[`event:${lesson.eventId}`]} />
+            </div>
+          </div>
+          <span
+            className={cn(
+              "size-2.5 shrink-0 rounded-full",
+              lesson.status ? "bg-emerald-500" : "bg-amber-400",
+            )}
+            aria-hidden="true"
+          />
+          <ChevronRight className="size-4 text-muted-foreground" aria-hidden="true" />
+        </Link>
+      ) : lesson.kind === "trial_lesson" ? (
+        <div
+          className={cn(
+            "flex min-h-16 items-center gap-3 rounded-lg border px-4",
+            KIND_STYLES.trial_lesson.row,
+          )}
+        >
+          <div className={timeClass(compact)}>
+            {lesson.timeLabel ?? "—"}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <span className="truncate font-medium">{lesson.name}</span>
+              <KindChip kind="trial_lesson" />
+            </div>
+            <TaskChip counts={day.lessonTaskCounts[`event:${lesson.eventId}`]} />
+          </div>
+          <TrialOutcomeButtons
+            eventId={lesson.eventId}
+            initialOutcome={lesson.trialOutcome}
+          />
+        </div>
+      ) : (
+        <div
+          className={cn(
+            "flex min-h-12 items-center gap-3 rounded-lg border px-4 py-2",
+            KIND_STYLES.block.row,
+          )}
+        >
+          <div className={timeClass(compact)}>
+            {lesson.timeLabel ?? "All day"}
+          </div>
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <span className="truncate font-medium">{lesson.name}</span>
+            <KindChip kind="block" />
+          </div>
+        </div>
+      )}
+    </li>
+  );
+
+  const renderItem = (item: (typeof items)[number], compact = false) =>
+    item.type === "event" ? renderEventLesson(item.lesson, compact) : renderClassLesson(item.lesson, compact);
+
+  // One or more mock exams sharing a time: one block marking it, opening
+  // the exam (or the Tests tab, for several).
+  const renderExamBlock = (block: ExamBlock, compact = false) => (
+    <Link
+      href={
+        block.exams.length === 1
+          ? `/teacher-app/assessments/${block.exams[0].assessmentId}`
+          : "/teacher-app/assessments"
+      }
+      className={cn(rowClass(compact), "h-full active:bg-muted", EXAM_ROW)}
+    >
+      <div className={timeClass(compact)}>
+        {block.start && block.end ? `${block.start}–${block.end}` : "All day"}
+      </div>
+      <div className="min-w-0 flex-1">
+        <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide", EXAM_CHIP)}>
+          {block.exams.length === 1 ? "Mock exam" : `${block.exams.length} mock exams`}
+        </span>
+        {block.exams.map((exam) => (
+          <p key={`${exam.assessmentId}|${exam.startTime}`} className="mt-0.5 truncate text-sm font-medium">
+            {exam.title}
+            <span className="block truncate text-xs font-normal text-muted-foreground">
+              {[exam.className, `${exam.studentCount} student${exam.studentCount === 1 ? "" : "s"}`]
+                .filter(Boolean)
+                .join(" · ")}
+            </span>
+          </p>
+        ))}
+      </div>
+    </Link>
+  );
 
   return (
     <div className="space-y-4">
@@ -219,7 +367,7 @@ export default async function TeacherAppTodayPage({
         );
       })}
 
-      {items.length === 0 && day.holidays.length > 0 ? (
+      {items.length === 0 && day.examBlocks.length === 0 && day.holidays.length > 0 ? (
         day.next && (
           <Link
             href={`/teacher-app?date=${day.next}`}
@@ -228,7 +376,7 @@ export default async function TeacherAppTodayPage({
             Next lessons: {formatCompanionDate(day.next)}
           </Link>
         )
-      ) : items.length === 0 ? (
+      ) : items.length === 0 && day.examBlocks.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border px-4 py-10 text-center">
           <p className="font-medium">No lessons {date === today ? "today" : "this day"}</p>
           {day.next && (
@@ -242,82 +390,17 @@ export default async function TeacherAppTodayPage({
         </div>
       ) : (
         <ul className="space-y-2">
-          {items.map((item) =>
-            item.type === "event" ? (
-              <li key={item.lesson.eventId}>
-                {item.lesson.kind === "ad_hoc_lesson" ? (
-                  <Link
-                    href={`/teacher-app/one-off/${item.lesson.eventId}`}
-                    className={cn(
-                      "flex min-h-16 items-center gap-3 rounded-lg border px-4 active:bg-muted",
-                      KIND_STYLES.ad_hoc_lesson.row,
-                    )}
-                  >
-                    <div className="w-20 shrink-0 text-sm font-semibold tabular-nums">
-                      {item.lesson.timeLabel ?? "—"}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="truncate font-medium">{item.lesson.name}</span>
-                        <KindChip kind="ad_hoc_lesson" />
-                      </div>
-                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                        {item.lesson.status
-                          ? (STATUS_LABELS[item.lesson.status] ?? item.lesson.status)
-                          : "Not marked"}
-                        <TaskChip counts={day.lessonTaskCounts[`event:${item.lesson.eventId}`]} />
-                      </div>
-                    </div>
-                    <span
-                      className={cn(
-                        "size-2.5 shrink-0 rounded-full",
-                        item.lesson.status ? "bg-emerald-500" : "bg-amber-400",
-                      )}
-                      aria-hidden="true"
-                    />
-                    <ChevronRight className="size-4 text-muted-foreground" aria-hidden="true" />
-                  </Link>
-                ) : item.lesson.kind === "trial_lesson" ? (
-                  <div
-                    className={cn(
-                      "flex min-h-16 items-center gap-3 rounded-lg border px-4",
-                      KIND_STYLES.trial_lesson.row,
-                    )}
-                  >
-                    <div className="w-20 shrink-0 text-sm font-semibold tabular-nums">
-                      {item.lesson.timeLabel ?? "—"}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="truncate font-medium">{item.lesson.name}</span>
-                        <KindChip kind="trial_lesson" />
-                      </div>
-                      <TaskChip counts={day.lessonTaskCounts[`event:${item.lesson.eventId}`]} />
-                    </div>
-                    <TrialOutcomeButtons
-                      eventId={item.lesson.eventId}
-                      initialOutcome={item.lesson.trialOutcome}
-                    />
-                  </div>
-                ) : (
-                  <div
-                    className={cn(
-                      "flex min-h-12 items-center gap-3 rounded-lg border px-4 py-2",
-                      KIND_STYLES.block.row,
-                    )}
-                  >
-                    <div className="w-20 shrink-0 text-sm font-semibold tabular-nums">
-                      {item.lesson.timeLabel ?? "All day"}
-                    </div>
-                    <div className="flex min-w-0 flex-1 items-center gap-2">
-                      <span className="truncate font-medium">{item.lesson.name}</span>
-                      <KindChip kind="block" />
-                    </div>
-                  </div>
-                )}
-              </li>
+          {rows.map((row, idx) =>
+            row.type === "item" ? (
+              renderItem(row.item)
+            ) : row.type === "exam" ? (
+              <li key={`exam-${idx}`}>{renderExamBlock(row.exam)}</li>
             ) : (
-              renderClassLesson(item.lesson)
+              // An exam at the same time as a lesson: side by side.
+              <li key={`pair-${idx}`} className="grid grid-cols-2 items-stretch gap-2">
+                <ul className="min-w-0 space-y-2">{row.items.map((item) => renderItem(item, true))}</ul>
+                <div className="min-w-0">{renderExamBlock(row.exam, true)}</div>
+              </li>
             ),
           )}
         </ul>
