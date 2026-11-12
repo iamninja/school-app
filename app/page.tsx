@@ -11,8 +11,18 @@ import {
 } from "lucide-react";
 
 import { BrandDots, BrandMark, MathDoodles, ModusLogo } from "@/components/brand";
+import { ChristmasMessage, ChristmasSnow, SantaHat } from "@/components/christmas";
+import { createPublicClient } from "@/lib/supabase/server";
+import { athensToday } from "@/lib/push/athens-time";
+import {
+  DEFAULT_SITE_SETTINGS,
+  SITE_SETTINGS_COLUMNS,
+  christmasLook,
+  type SiteSettings,
+} from "@/lib/site-season";
 import { ThemeSwitcher } from "@/components/theme-switcher";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 const CENTER_FEATURES = [
   {
@@ -72,7 +82,28 @@ const PORTAL_POINTS = [
   },
 ];
 
-export default function Home() {
+// Cached, and rebuilt at most hourly - often enough for the Christmas look
+// to switch on and off with the date. A change in the App tab refreshes it
+// at once (updateSiteSettingsAction).
+export const revalidate = 3600;
+
+async function loadSiteSettings(): Promise<SiteSettings> {
+  try {
+    const { data, error } = await createPublicClient()
+      .from("site_settings")
+      .select(SITE_SETTINGS_COLUMNS)
+      .eq("id", 1)
+      .maybeSingle();
+    if (error || !data) return DEFAULT_SITE_SETTINGS;
+    return data as unknown as SiteSettings;
+  } catch {
+    // The front page never fails over a decoration.
+    return DEFAULT_SITE_SETTINGS;
+  }
+}
+
+export default async function Home() {
+  const christmas = christmasLook(await loadSiteSettings(), athensToday());
   return (
     <main className="flex min-h-screen flex-col bg-background">
       {/* Top bar */}
@@ -96,9 +127,13 @@ export default function Home() {
       <section className="relative overflow-hidden border-b border-border/70">
         <div className="bg-grid-paper mask-fade-b absolute inset-0" aria-hidden="true" />
         <MathDoodles className="pointer-events-none absolute -right-16 top-1/2 hidden w-[420px] -translate-y-1/2 text-muted-foreground/60 lg:block xl:right-4" />
+        {christmas?.snow && <ChristmasSnow />}
         <div className="relative mx-auto w-full max-w-6xl px-5 py-20 lg:py-28">
           <div className="max-w-2xl">
-            <BrandMark className="mb-8 h-16 w-auto text-foreground" />
+            <div className="relative mb-8 inline-block">
+              <BrandMark className="h-16 w-auto text-foreground" />
+              {christmas?.hat && <SantaHat />}
+            </div>
             <p className="text-sm font-semibold uppercase tracking-[0.3em] text-muted-foreground">
               Φροντιστήριο Μαθηματικών
             </p>
@@ -126,11 +161,8 @@ export default function Home() {
                 694 784 6590
               </a>
             </div>
-            <p className="mt-8 inline-flex items-center gap-2 rounded-full border border-brand/40 bg-brand/10 px-4 py-2 text-sm font-semibold">
-              <CalendarDays className="size-4 text-brand" aria-hidden="true" />
-              Εγγραφές από 24/8
-            </p>
-            <div className="mt-4 flex flex-wrap items-center gap-3">
+            {christmas?.message && <ChristmasMessage message={christmas.message} />}
+            <div className={cn("flex flex-wrap items-center gap-3", christmas?.message ? "mt-4" : "mt-8")}>
               <Button asChild size="lg">
                 <Link href="/auth/student-login">
                   Είσοδος μαθητή

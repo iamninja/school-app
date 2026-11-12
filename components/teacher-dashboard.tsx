@@ -92,6 +92,7 @@ import type { TeacherSectionId } from "@/lib/teacher-sections";
 import { TeacherClassDetail } from "@/components/teacher-class-detail";
 import { TeacherQuizBuilder } from "@/components/teacher-quiz-builder";
 import { TeacherContacts } from "@/components/teacher-contacts";
+import { TeacherSiteSettings } from "@/components/teacher-site-settings";
 import { TagOpenerProvider, type TagOpener } from "@/components/task-tags-ui";
 import { TeacherAssessments } from "@/components/teacher-assessments";
 import { AssessmentStatusBadge } from "@/components/assessment-status-badge";
@@ -4261,7 +4262,10 @@ export function TeacherDashboard({
         </TabsContent>
 
         <TabsContent value="app" className="mt-0">
-          <TeacherAppSettings initialData={appSettings} />
+          <div className="space-y-4">
+            <TeacherSiteSettings />
+            <TeacherAppSettings initialData={appSettings} />
+          </div>
         </TabsContent>
           </main>
         </div>
