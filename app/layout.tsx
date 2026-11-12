@@ -30,6 +30,10 @@ export const metadata: Metadata = {
     statusBarStyle: "default",
   },
   icons: {
+    // The tab icon: the dots, with a Santa hat at Christmas
+    // (app/seasonal-favicon.png/route.ts). public/favicon.ico, the same
+    // dots, is there for anything that asks for /favicon.ico directly.
+    icon: [{ url: "/seasonal-favicon.png", type: "image/png", sizes: "64x64" }],
     apple: "/icons/apple-touch-icon.png",
   },
 };

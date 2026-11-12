@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { forgetPushDeviceBeforeSignOut } from "@/components/use-push-device";
 import { NotificationBell } from "@/components/notification-bell";
 import { ChristmasSnow, SantaHat } from "@/components/christmas";
+import { RememberChristmas } from "@/components/remember-christmas";
 import { athensToday } from "@/lib/push/athens-time";
 import {
   SITE_SETTINGS_COLUMNS,
@@ -108,6 +109,7 @@ export function PortalShell({
       {christmas?.snow && (
         <ChristmasSnow density="light" className="fixed -z-10 [--fall-to:110vh]" />
       )}
+      {christmas && <RememberChristmas hat={christmas.hat} snow={christmas.snow} />}
       {demoMode && (
         <div className="border-b border-brand/20 bg-brand/10 px-5 py-2 text-center text-xs font-medium text-foreground sm:text-sm">
           {labels.demoBanner}

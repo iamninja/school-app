@@ -6,6 +6,7 @@ import { CalendarCheck, ClipboardCheck, LogOut, Monitor, MoreVertical, NotebookP
 
 import { ModusLogo } from "@/components/brand";
 import { SantaHat } from "@/components/christmas";
+import { RememberChristmas } from "@/components/remember-christmas";
 import { NotificationBell } from "@/components/notification-bell";
 import { AttendanceSync } from "@/components/teacher-app/attendance-sync";
 import { ThemeSwitcher } from "@/components/theme-switcher";
@@ -60,6 +61,7 @@ export function CompanionShell({
 
   return (
     <div className="flex min-h-dvh flex-col bg-background">
+      <RememberChristmas hat={santaHat} snow={false} />
       <header className="sticky top-0 z-40 border-b border-border/70 bg-background/90 pt-[env(safe-area-inset-top)] backdrop-blur">
         <div className="mx-auto flex h-14 w-full max-w-md items-center justify-between px-4">
           <Link href="/teacher-app" aria-label="Modus — Today">
