@@ -95,7 +95,7 @@ import { TeacherClassDetail } from "@/components/teacher-class-detail";
 import { TeacherQuizBuilder } from "@/components/teacher-quiz-builder";
 import { TeacherContacts } from "@/components/teacher-contacts";
 import { examSittings } from "@/lib/calendar-exams";
-import { dayRoster, hoursToPlace, type HoursToPlace } from "@/lib/class-hours";
+import { dayRoster, dragSource, hoursToPlace, type HoursToPlace } from "@/lib/class-hours";
 import { TeacherSiteSettings } from "@/components/teacher-site-settings";
 import { TagOpenerProvider, type TagOpener } from "@/components/task-tags-ui";
 import { TeacherAssessments } from "@/components/teacher-assessments";
@@ -1467,20 +1467,14 @@ export function TeacherDashboard({
       studentIds?: string[] | null;
     };
     const sourceSlotId = activeData?.sourceSlotId;
-    const classId = activeId.startsWith("class:")
-      ? activeId.replace("class:", "")
-      : activeData?.classId;
+    // A student's own hour from the dock ("student:<classId>:<studentId>"),
+    // or a moved card's list, travels with the slot.
+    const { classId, studentIds } = dragSource(activeId, activeData);
     const classItem = classes.find((item) => item.id === classId);
 
     if (!classItem) {
       return;
     }
-
-    // A student's own hour from the dock ("student:<classId>:<studentId>"),
-    // or a moved card's list, travels with the slot.
-    const studentIds: string[] | null = activeId.startsWith("student:")
-      ? [activeId.split(":")[2]]
-      : (activeData?.studentIds ?? null);
 
     if (!sourceSlotId) {
       const remaining = remainingForHour(classItem.id, studentIds);
