@@ -10,6 +10,7 @@ import {
   CheckCircle2Icon,
   Loader2Icon,
   PencilIcon,
+  ChevronDownIcon,
   PlusIcon,
   Trash2Icon,
   UserPlusIcon,
@@ -60,6 +61,14 @@ import { AssessmentStatusBadge } from "@/components/assessment-status-badge";
 import { fromIsoDate } from "@/lib/calendar-projection";
 import { upsertAssessmentAssignment } from "@/lib/assessment-status";
 import { CLASS_GRADES, CLASS_GRADE_LABELS } from "@/lib/class-grades";
+import {
+  NO_FILTERS,
+  groupAssessments,
+  type AssessmentFilters,
+  type AssessmentListRow,
+} from "@/lib/assessment-list";
+import { athensToday } from "@/lib/push/athens-time";
+import { cn } from "@/lib/utils";
 import type {
   TeacherAssessmentAssignmentRow,
   TeacherAssessmentListItem,
@@ -240,35 +249,30 @@ export function TeacherAssessments({
     assignment: TeacherAssessmentAssignmentRow;
     maxScore: number;
   } | null>(null);
-  const [gradeFilter, setGradeFilter] = React.useState("");
+  const [filters, setFilters] = React.useState<AssessmentFilters>(NO_FILTERS);
+  const [showDone, setShowDone] = React.useState(false);
 
   const classesById = React.useMemo(
     () => new Map(classes.map((c) => [c.id, c])),
     [classes],
   );
 
-  const filteredAssessments = gradeFilter
-    ? assessments.filter((a) => a.grade === gradeFilter)
-    : assessments;
-
-  const summaryByAssessment = React.useMemo(() => {
-    const map = new Map<
-      string,
-      { count: number; marked: number; late: number }
-    >();
-    for (const assignment of assessmentAssignments) {
-      const entry = map.get(assignment.assessment_id) ?? {
-        count: 0,
-        marked: 0,
-        late: 0,
-      };
-      entry.count += 1;
-      if (assignment.status === "marked") entry.marked += 1;
-      if (assignment.isLate) entry.late += 1;
-      map.set(assignment.assessment_id, entry);
+  const groups = React.useMemo(
+    () => groupAssessments(assessments, assessmentAssignments, filters, athensToday()),
+    [assessments, assessmentAssignments, filters],
+  );
+  const shownCount = groups.attention.length + groups.upcoming.length + groups.done.length;
+  // The class filter lists the classes the assessments were given to -
+  // archived ones included, by their snapshot name.
+  const classFilterOptions = React.useMemo(() => {
+    const byId = new Map<string, string>();
+    for (const assessment of assessments) {
+      if (assessment.class_id) byId.set(assessment.class_id, assessment.class_name ?? "Class");
     }
-    return map;
-  }, [assessmentAssignments]);
+    return [...byId].sort((a, b) => a[1].localeCompare(b[1], "el"));
+  }, [assessments]);
+  const filtering =
+    filters.grade !== "" || filters.classId !== "" || filters.kind !== "" || filters.search.trim() !== "";
 
   const selectedAssessment = selectedAssessmentId
     ? assessments.find((a) => a.id === selectedAssessmentId) ?? null
@@ -446,12 +450,39 @@ export function TeacherAssessments({
         />
       ) : (
         <Card>
-          <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
-            <CardTitle>Assessments</CardTitle>
-            <div className="flex items-center gap-2">
+          <CardHeader className="space-y-3">
+            <div className="flex flex-row flex-wrap items-center justify-between gap-3">
+              <CardTitle>Assessments</CardTitle>
+              <Button size="sm" onClick={openCreateDialog}>
+                <PlusIcon className="mr-1.5 h-4 w-4" />
+                New assessment
+              </Button>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Input
+                type="search"
+                value={filters.search}
+                onChange={(e) => setFilters((prev) => ({ ...prev, search: e.target.value }))}
+                placeholder="Search by title"
+                aria-label="Search assessments by title"
+                className="h-9 w-48"
+              />
               <select
-                value={gradeFilter}
-                onChange={(e) => setGradeFilter(e.target.value)}
+                value={filters.classId}
+                onChange={(e) => setFilters((prev) => ({ ...prev, classId: e.target.value }))}
+                className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                aria-label="Filter by class"
+              >
+                <option value="">All classes</option>
+                {classFilterOptions.map(([id, name]) => (
+                  <option key={id} value={id}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={filters.grade}
+                onChange={(e) => setFilters((prev) => ({ ...prev, grade: e.target.value }))}
                 className="h-9 rounded-md border border-input bg-background px-3 text-sm"
                 aria-label="Filter by grade"
               >
@@ -462,84 +493,100 @@ export function TeacherAssessments({
                   </option>
                 ))}
               </select>
-              <Button size="sm" onClick={openCreateDialog}>
-                <PlusIcon className="mr-1.5 h-4 w-4" />
-                New assessment
-              </Button>
+              <select
+                value={filters.kind}
+                onChange={(e) =>
+                  setFilters((prev) => ({ ...prev, kind: e.target.value as AssessmentFilters["kind"] }))
+                }
+                className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                aria-label="Filter by kind"
+              >
+                <option value="">All kinds</option>
+                <option value="mock_exam">{KIND_LABELS.mock_exam}</option>
+                <option value="short_assessment">{KIND_LABELS.short_assessment}</option>
+              </select>
+              <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Checkbox
+                  checked={filters.includeEarlierYears}
+                  onCheckedChange={(checked) =>
+                    setFilters((prev) => ({ ...prev, includeEarlierYears: checked === true }))
+                  }
+                />
+                Earlier school years
+              </label>
+              {filtering ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() =>
+                    setFilters((prev) => ({ ...NO_FILTERS, includeEarlierYears: prev.includeEarlierYears }))
+                  }
+                >
+                  Clear filters
+                </Button>
+              ) : null}
             </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-6">
             {assessments.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 No assessments registered yet.
               </p>
-            ) : filteredAssessments.length === 0 ? (
+            ) : shownCount === 0 ? (
               <p className="text-sm text-muted-foreground">
-                No assessments match this grade.
+                {filtering ? "No assessments match these filters." : "Nothing this school year yet."}
+                {groups.earlierYears > 0 && !filters.includeEarlierYears
+                  ? ` ${groups.earlierYears} finished from earlier school years are hidden.`
+                  : ""}
               </p>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Assessment</TableHead>
-                    <TableHead>Assigned to</TableHead>
-                    <TableHead>When</TableHead>
-                    <TableHead>Progress</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredAssessments.map((assessment) => {
-                    const summary = summaryByAssessment.get(assessment.id) ?? {
-                      count: 0,
-                      marked: 0,
-                      late: 0,
-                    };
-                    return (
-                      <TableRow
-                        key={assessment.id}
-                        className="cursor-pointer"
-                        onClick={() => onSelectedAssessmentIdChange(assessment.id)}
-                      >
-                        <TableCell>
-                          <div className="font-medium">{assessment.title}</div>
-                          <div className="text-xs text-muted-foreground">
-                            <Badge variant="outline" className="mr-1.5">
-                              {KIND_LABELS[assessment.kind]}
-                            </Badge>
-                            {assessment.grade ? (
-                              <Badge variant="secondary" className="mr-1.5">
-                                {CLASS_GRADE_LABELS[assessment.grade]}
-                              </Badge>
-                            ) : null}
-                            out of {assessment.max_score}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          {assessment.class_name ?? `${summary.count} student(s)`}
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          {scheduleSummary({
-                            kind: assessment.kind,
-                            scheduledDate: assessment.scheduled_date,
-                            scheduledTime: assessment.scheduled_time,
-                            deadlineAt: assessment.deadline_at,
-                          })}
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          <div>
-                            {summary.marked}/{summary.count} marked
-                          </div>
-                          {summary.late > 0 ? (
-                            <Badge variant="destructive" className="mt-1">
-                              {summary.late} late
-                            </Badge>
-                          ) : null}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
+              <>
+                <AssessmentGroupTable
+                  title="Needs attention"
+                  hint="Not taken yet past its date, waiting for marks, or no students yet."
+                  tone="attention"
+                  rows={groups.attention}
+                  onOpen={onSelectedAssessmentIdChange}
+                />
+                <AssessmentGroupTable
+                  title="Upcoming"
+                  tone="upcoming"
+                  rows={groups.upcoming}
+                  onOpen={onSelectedAssessmentIdChange}
+                />
+                {groups.done.length > 0 || groups.earlierYears > 0 ? (
+                  <div className="space-y-3">
+                    <button
+                      type="button"
+                      aria-expanded={showDone}
+                      onClick={() => setShowDone((value) => !value)}
+                      className="flex w-full items-center gap-2 text-left text-sm font-semibold"
+                    >
+                      <ChevronDownIcon
+                        className={cn("h-4 w-4 transition-transform", showDone && "rotate-180")}
+                        aria-hidden="true"
+                      />
+                      Done
+                      <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                        {groups.done.length}
+                      </span>
+                      {groups.earlierYears > 0 && !filters.includeEarlierYears ? (
+                        <span className="text-xs font-normal text-muted-foreground">
+                          + {groups.earlierYears} from earlier school years (hidden)
+                        </span>
+                      ) : null}
+                    </button>
+                    {showDone ? (
+                      <AssessmentGroupTable
+                        tone="done"
+                        rows={groups.done}
+                        onOpen={onSelectedAssessmentIdChange}
+                      />
+                    ) : null}
+                  </div>
+                ) : null}
+              </>
             )}
           </CardContent>
         </Card>
@@ -888,6 +935,109 @@ export function TeacherAssessments({
         }}
       />
     </div>
+  );
+}
+
+/** One group of the Assessments list - a heading and its table, or nothing when empty. */
+function AssessmentGroupTable({
+  title,
+  hint,
+  tone,
+  rows,
+  onOpen,
+}: {
+  title?: string;
+  hint?: string;
+  tone: "attention" | "upcoming" | "done";
+  rows: AssessmentListRow[];
+  onOpen: (assessmentId: string) => void;
+}) {
+  if (rows.length === 0) return null;
+  return (
+    <section aria-label={title ?? "Done"} className="space-y-2">
+      {title ? (
+        <div className="flex flex-wrap items-baseline gap-x-2">
+          <h3
+            className={cn(
+              "text-sm font-semibold",
+              tone === "attention" && "text-amber-700 dark:text-amber-400",
+            )}
+          >
+            {title}
+            <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+              {rows.length}
+            </span>
+          </h3>
+          {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
+        </div>
+      ) : null}
+      {/* Fixed widths, so the groups' columns line up under each other. */}
+      <Table className="table-fixed">
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-[38%]">Assessment</TableHead>
+            <TableHead className="w-[17%]">Assigned to</TableHead>
+            <TableHead className="w-[22%]">When</TableHead>
+            <TableHead className="w-[23%]">Progress</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map(({ assessment, progress }) => (
+            <TableRow
+              key={assessment.id}
+              className="cursor-pointer"
+              onClick={() => onOpen(assessment.id)}
+            >
+              <TableCell>
+                <div className="font-medium">{assessment.title}</div>
+                <div className="text-xs text-muted-foreground">
+                  <Badge variant="outline" className="mr-1.5">
+                    {KIND_LABELS[assessment.kind]}
+                  </Badge>
+                  {assessment.grade ? (
+                    <Badge variant="secondary" className="mr-1.5">
+                      {CLASS_GRADE_LABELS[assessment.grade]}
+                    </Badge>
+                  ) : null}
+                  out of {assessment.max_score}
+                </div>
+              </TableCell>
+              <TableCell className="text-sm">
+                {assessment.class_name ?? `${progress.count} student(s)`}
+              </TableCell>
+              <TableCell className="text-sm">
+                {scheduleSummary({
+                  kind: assessment.kind,
+                  scheduledDate: assessment.scheduled_date,
+                  scheduledTime: assessment.scheduled_time,
+                  deadlineAt: assessment.deadline_at,
+                })}
+              </TableCell>
+              <TableCell className="text-sm">
+                {progress.count === 0 ? (
+                  <span className="text-muted-foreground">No students yet</span>
+                ) : (
+                  <div>
+                    {progress.marked}/{progress.count} marked
+                  </div>
+                )}
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {progress.overdue > 0 ? (
+                    <Badge variant="destructive">{progress.overdue} not taken yet</Badge>
+                  ) : null}
+                  {progress.toMark > 0 ? (
+                    <Badge variant="outline" className="border-amber-500/50 text-amber-700 dark:text-amber-400">
+                      {progress.toMark} to mark
+                    </Badge>
+                  ) : null}
+                  {progress.late > 0 ? <Badge variant="secondary">{progress.late} late</Badge> : null}
+                </div>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </section>
   );
 }
 
