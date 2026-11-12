@@ -196,6 +196,7 @@ export function TeacherSiteSettings() {
         />
         <SettingRow
           title="Santa hat on the logo"
+          description="On the front page, and on the logo of your companion app (no snow there)."
           control={
             <Toggle
               checked={settings.christmas_hat}

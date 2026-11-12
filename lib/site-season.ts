@@ -110,3 +110,11 @@ export function portalChristmasLook(settings: SiteSettings, today: string): Chri
   if (!look || (!look.snow && !look.hat)) return null;
   return { ...look, message: null };
 }
+
+/**
+ * The teacher's companion app: only the Santa hat on its logo, on the
+ * decorations' days, when the hat is switched on - no snow there.
+ */
+export function companionHat(settings: SiteSettings, today: string): boolean {
+  return christmasLook(settings, today)?.hat === true;
+}
