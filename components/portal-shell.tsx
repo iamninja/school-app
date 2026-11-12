@@ -119,7 +119,7 @@ export function PortalShell({
               is a "home" button inside the installed app rather than a way
               out to the public landing page. The demo has no session. */}
           <Link href={demoMode ? "/" : "/start"} aria-label={labels.homeAriaLabel}>
-            <span className="relative inline-block">
+            <span className="relative inline-flex">
               <ModusLogo size={30} variant="compact" priority />
               {christmas?.hat && <SantaHat on="logo" />}
             </span>

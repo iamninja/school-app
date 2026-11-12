@@ -63,7 +63,7 @@ export function CompanionShell({
       <header className="sticky top-0 z-40 border-b border-border/70 bg-background/90 pt-[env(safe-area-inset-top)] backdrop-blur">
         <div className="mx-auto flex h-14 w-full max-w-md items-center justify-between px-4">
           <Link href="/teacher-app" aria-label="Modus — Today">
-            <span className="relative inline-block">
+            <span className="relative inline-flex">
               <ModusLogo size={26} variant="compact" priority />
               {santaHat && <SantaHat on="logo" />}
             </span>

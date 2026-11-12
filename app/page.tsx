@@ -130,7 +130,7 @@ export default async function Home() {
         {christmas?.snow && <ChristmasSnow />}
         <div className="relative mx-auto w-full max-w-6xl px-5 py-20 lg:py-28">
           <div className="max-w-2xl">
-            <div className="relative mb-8 inline-block">
+            <div className="relative mb-8 inline-flex">
               <BrandMark className="h-16 w-auto text-foreground" />
               {christmas?.hat && <SantaHat />}
             </div>
