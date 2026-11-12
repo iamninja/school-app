@@ -10,6 +10,11 @@
       Shown by public/sw.js when a page can't load because the phone is
       offline. Fully self-contained (inline styles, inline logo): nothing
       else can be fetched while offline.
+
+      At Christmas it wears the Santa hat and a little snow, as the app did
+      the last time it was online (components/remember-christmas.tsx keeps
+      that in localStorage under "modus-christmas"); a note older than
+      three days is ignored, so the hat never outstays the season.
     -->
     <style>
       :root {
@@ -50,7 +55,24 @@
         background: var(--card);
         text-align: center;
       }
-      svg { width: 56px; height: auto; margin-bottom: 20px; }
+      svg { width: 56px; height: auto; margin-bottom: 20px; overflow: visible; }
+      .hat, .snow { display: none; }
+      .christmas-hat .hat { display: inline; }
+      .christmas-snow .snow { display: block; }
+      .snow { position: fixed; inset: 0; overflow: hidden; pointer-events: none; z-index: -1; }
+      .snow span {
+        position: absolute;
+        top: -12px;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #7dd3fc;
+        opacity: 0.7;
+        animation: fall linear infinite;
+      }
+      @media (prefers-color-scheme: dark) { .snow span { background: #fff; opacity: 0.6; } }
+      @keyframes fall { to { transform: translate3d(20px, 110vh, 0); } }
+      @media (prefers-reduced-motion: reduce) { .snow span { animation: none; top: var(--rest); } }
       h1 { margin: 0 0 8px; font-size: 1.25rem; }
       p { margin: 0 0 24px; color: var(--muted); line-height: 1.5; }
       button {
@@ -72,10 +94,35 @@
         <circle cx="48.249" cy="24" r="12" fill="currentColor" />
         <circle cx="24" cy="66" r="12" fill="currentColor" />
         <circle cx="72.497" cy="66" r="12" fill="#f2b705" />
+        <g class="hat">
+          <path d="M36 20 C 38 5, 53 -6, 72 -2 C 66 2, 63 10, 61 20 Z" fill="#dc2626" />
+          <circle cx="73.5" cy="-2" r="4.5" fill="#fff" stroke="#cbd5e1" stroke-width="1" />
+          <rect x="33.5" y="17" width="30" height="7" rx="3.5" fill="#fff" stroke="#cbd5e1" stroke-width="1" />
+        </g>
       </svg>
       <h1>Δεν υπάρχει σύνδεση στο διαδίκτυο</h1>
       <p>Ελέγξτε το Wi-Fi ή τα δεδομένα κινητής και δοκιμάστε ξανά.</p>
       <button type="button" onclick="location.reload()">Δοκιμάστε ξανά</button>
     </main>
+    <div class="snow" aria-hidden="true"></div>
+    <script>
+      try {
+        var look = JSON.parse(localStorage.getItem("modus-christmas") || "null");
+        var fresh = look && Date.now() - Date.parse(look.day) < 3 * 86400000;
+        if (fresh && look.hat) document.body.classList.add("christmas-hat");
+        if (fresh && look.snow) {
+          document.body.classList.add("christmas-snow");
+          var snow = document.querySelector(".snow");
+          for (var i = 0; i < 14; i++) {
+            var flake = document.createElement("span");
+            flake.style.left = ((i * 11) % 14) / 14 * 100 + 3 + "%";
+            flake.style.animationDuration = 12 + (i % 5) * 3 + "s";
+            flake.style.animationDelay = -i * 1.7 + "s";
+            flake.style.setProperty("--rest", 10 + ((i * 37) % 80) + "%");
+            snow.appendChild(flake);
+          }
+        }
+      } catch (e) {}
+    </script>
   </body>
 </html>

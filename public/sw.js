@@ -14,7 +14,7 @@
 // It also shows push notifications (lib/push/notify.ts sends them) and opens
 // the right portal page when one is tapped.
 
-const OFFLINE_CACHE = "modus-offline-v1";
+const OFFLINE_CACHE = "modus-offline-v2";
 const OFFLINE_URL = "/offline.html";
 
 self.addEventListener("install", (event) => {

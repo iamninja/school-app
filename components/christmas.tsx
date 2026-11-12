@@ -164,18 +164,22 @@ export function ChristmasSnow({
   );
 }
 
-// Where the top dot sits: in BrandMark (viewBox 0 0 97 90) and in the
-// compact logo file public/branding/modus-logo-compact.svg (0 0 348 129,
-// its top dot at 60.25, 43 - 12 right and 19 down of the mark's).
+// Where the top dot sits: in BrandMark (viewBox 0 0 97 90, the dot at
+// 48.25, 24, r 12) and in the compact logo file
+// public/branding/modus-logo-compact.svg (0 0 348 129). There the dots are
+// at 60.25, 43 inside a group scaled by its own
+// matrix(1.158117, 0, 0, 1.158117, 0.510825, -9.632235) - the hat takes
+// the same scale, shifted by the 12, 19 between the two dots.
 const HAT_ON = {
   mark: { viewBox: "0 0 97 90", shift: "" },
-  logo: { viewBox: "0 0 348 129", shift: "translate(12 19)" },
+  logo: { viewBox: "0 0 348 129", shift: "matrix(1.158117 0 0 1.158117 14.408229 12.371988)" },
 } as const;
 
 /**
  * A Santa hat for the logo's top dot - an overlay with the logo's own
  * viewBox, so it sits on the dot at any size. Put it in the same
- * `relative inline-block` box as BrandMark (`on="mark"`) or the compact
+ * `relative inline-flex` box (exactly the logo's size - an inline-block
+ * would add a line's spacing below) as BrandMark (`on="mark"`) or the compact
  * ModusLogo (`on="logo"`).
  */
 export function SantaHat({ className, on = "mark" }: { className?: string; on?: keyof typeof HAT_ON }) {
@@ -186,11 +190,13 @@ export function SantaHat({ className, on = "mark" }: { className?: string; on?: 
       aria-hidden="true"
       focusable="false"
     >
-      {/* the hat, leaning right over the top dot (mark: cx 48.25, cy 24, r 12) */}
+      {/* The hat on the top dot (mark: cx 48.25, cy 24, r 12), leaning
+          right: its white trim crosses the dot just above the middle, so
+          the top half is under the hat and the lower half shows. */}
       <g transform={HAT_ON[on].shift || undefined}>
-        <path d="M33 15 C 36 0, 52 -12, 72 -6 C 66 -2, 63 6, 63 15 Z" className="fill-red-600 dark:fill-red-500" />
-        <circle cx="74" cy="-6" r="5" className="fill-white stroke-slate-300" strokeWidth="1" />
-        <rect x="30" y="11" width="37" height="9" rx="4.5" className="fill-white stroke-slate-300" strokeWidth="1" />
+        <path d="M36 20 C 38 5, 53 -6, 72 -2 C 66 2, 63 10, 61 20 Z" className="fill-red-600 dark:fill-red-500" />
+        <circle cx="73.5" cy="-2" r="4.5" className="fill-white stroke-slate-300" strokeWidth="1" />
+        <rect x="33.5" y="17" width="30" height="7" rx="3.5" className="fill-white stroke-slate-300" strokeWidth="1" />
       </g>
     </svg>
   );

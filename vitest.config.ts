@@ -50,6 +50,7 @@ export default defineConfig({
       "tests/calendar-actions.test.ts",
       "tests/task-actions.test.ts",
       "tests/site-settings-actions.test.ts",
+      "tests/seasonal-favicon-route.test.ts",
       "tests/assessments-actions.test.ts",
       "tests/billing-actions.test.ts",
       "tests/cron-monthly-charges-route.test.ts",

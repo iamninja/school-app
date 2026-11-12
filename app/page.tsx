@@ -12,6 +12,7 @@ import {
 
 import { BrandDots, BrandMark, MathDoodles, ModusLogo } from "@/components/brand";
 import { ChristmasMessage, ChristmasSnow, SantaHat } from "@/components/christmas";
+import { RememberChristmas } from "@/components/remember-christmas";
 import { createPublicClient } from "@/lib/supabase/server";
 import { athensToday } from "@/lib/push/athens-time";
 import {
@@ -128,9 +129,10 @@ export default async function Home() {
         <div className="bg-grid-paper mask-fade-b absolute inset-0" aria-hidden="true" />
         <MathDoodles className="pointer-events-none absolute -right-16 top-1/2 hidden w-[420px] -translate-y-1/2 text-muted-foreground/60 lg:block xl:right-4" />
         {christmas?.snow && <ChristmasSnow />}
+        <RememberChristmas hat={christmas?.hat ?? false} snow={christmas?.snow ?? false} />
         <div className="relative mx-auto w-full max-w-6xl px-5 py-20 lg:py-28">
           <div className="max-w-2xl">
-            <div className="relative mb-8 inline-block">
+            <div className="relative mb-8 inline-flex">
               <BrandMark className="h-16 w-auto text-foreground" />
               {christmas?.hat && <SantaHat />}
             </div>

@@ -3,6 +3,7 @@ import { CompanionShell } from "@/components/teacher-app/shell";
 import { requireCompanionTeacher } from "@/app/teacher-app/session";
 import { loadTestsBadge } from "@/lib/teacher-app/load";
 import { athensToday } from "@/lib/push/athens-time";
+import { SITE_SETTINGS_COLUMNS, companionHat, type SiteSettings } from "@/lib/site-season";
 
 export const metadata: Metadata = {
   title: "Modus — Teacher",
@@ -22,6 +23,18 @@ export const viewport: Viewport = {
 export default async function TeacherAppLayout({ children }: { children: React.ReactNode }) {
   const { supabase, teacherId } = await requireCompanionTeacher();
   // A missing badge never takes the app down.
-  const testsBadge = await loadTestsBadge(supabase, teacherId, athensToday()).catch(() => 0);
-  return <CompanionShell testsBadge={testsBadge}>{children}</CompanionShell>;
+  const today = athensToday();
+  const [testsBadge, santaHat] = await Promise.all([
+    loadTestsBadge(supabase, teacherId, today).catch(() => 0),
+    // The front page's Christmas hat (App tab), on this app's logo too; a
+    // settings read that fails just means no hat.
+    Promise.resolve(supabase.from("site_settings").select(SITE_SETTINGS_COLUMNS).eq("id", 1).maybeSingle())
+      .then(({ data }) => (data ? companionHat(data as unknown as SiteSettings, today) : false))
+      .catch(() => false),
+  ]);
+  return (
+    <CompanionShell testsBadge={testsBadge} santaHat={santaHat}>
+      {children}
+    </CompanionShell>
+  );
 }

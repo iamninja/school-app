@@ -4,6 +4,7 @@ import {
   DEFAULT_CHRISTMAS_MESSAGE,
   DEFAULT_SITE_SETTINGS,
   christmasLook,
+  companionHat,
   formatDayOfYear,
   portalChristmasLook,
   inYearWindow,
@@ -104,5 +105,18 @@ describe("portalChristmasLook", () => {
       portalChristmasLook({ ...DEFAULT_SITE_SETTINGS, christmas_snow: false, christmas_hat: false }, "2026-12-28"),
     ).toBeNull();
     expect(portalChristmasLook(DEFAULT_SITE_SETTINGS, "2026-10-01")).toBeNull();
+  });
+});
+
+describe("companionHat", () => {
+  it("wears the hat on the decorations' days, when the hat is on", () => {
+    expect(companionHat(DEFAULT_SITE_SETTINGS, "2026-11-20")).toBe(true);
+    expect(companionHat(DEFAULT_SITE_SETTINGS, "2026-10-01")).toBe(false);
+    expect(companionHat({ ...DEFAULT_SITE_SETTINGS, christmas_hat: false }, "2026-11-20")).toBe(false);
+    expect(companionHat({ ...DEFAULT_SITE_SETTINGS, christmas_mode: "off" }, "2026-12-25")).toBe(false);
+  });
+
+  it("ignores the student & parent apps switch", () => {
+    expect(companionHat({ ...DEFAULT_SITE_SETTINGS, christmas_portals: false }, "2026-11-20")).toBe(true);
   });
 });

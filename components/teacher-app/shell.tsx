@@ -5,6 +5,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { CalendarCheck, ClipboardCheck, LogOut, Monitor, MoreVertical, NotebookPen } from "lucide-react";
 
 import { ModusLogo } from "@/components/brand";
+import { SantaHat } from "@/components/christmas";
+import { RememberChristmas } from "@/components/remember-christmas";
 import { NotificationBell } from "@/components/notification-bell";
 import { AttendanceSync } from "@/components/teacher-app/attendance-sync";
 import { ThemeSwitcher } from "@/components/theme-switcher";
@@ -35,10 +37,13 @@ const NAV = [
 export function CompanionShell({
   children,
   testsBadge = 0,
+  santaHat = false,
 }: {
   children: React.ReactNode;
   /** Students who should have taken a test by now and haven't. */
   testsBadge?: number;
+  /** Christmas: the Santa hat on the logo (lib/site-season.ts). */
+  santaHat?: boolean;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -56,10 +61,14 @@ export function CompanionShell({
 
   return (
     <div className="flex min-h-dvh flex-col bg-background">
+      <RememberChristmas hat={santaHat} snow={false} />
       <header className="sticky top-0 z-40 border-b border-border/70 bg-background/90 pt-[env(safe-area-inset-top)] backdrop-blur">
         <div className="mx-auto flex h-14 w-full max-w-md items-center justify-between px-4">
           <Link href="/teacher-app" aria-label="Modus — Today">
-            <ModusLogo size={26} variant="compact" priority />
+            <span className="relative inline-flex">
+              <ModusLogo size={26} variant="compact" priority />
+              {santaHat && <SantaHat on="logo" />}
+            </span>
           </Link>
           <div className="flex items-center gap-1">
             {/* Teacher alerts land here too, so a swiped-away one stays findable. */}
