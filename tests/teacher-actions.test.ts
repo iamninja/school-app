@@ -15,6 +15,7 @@ import {
   restoreStudentAction,
   setAttendanceAction,
   setScheduleSlotAction,
+  setScheduleSlotStudentsAction,
   unenrollStudentFromClassAction,
   updateClassAction,
   updateStudentAction,
@@ -1552,5 +1553,102 @@ describe("teacher actions - resetParentAccountAction", () => {
     await expect(
       resetParentAccountAction({ studentId: "student-1", parentSlot: "primary" }),
     ).rejects.toThrow("Student not found");
+  });
+});
+
+describe("teacher actions - split class hours", () => {
+  beforeEach(() => {
+    vi.mocked(requireTeacher).mockResolvedValue(undefined);
+  });
+
+  const slot = { day: "Mon", time: "17:00", class_id: "class-1", is_two_hour: false, end_time: null, student_ids: null };
+  const enrolled = { data: [{ student_id: "a" }, { student_id: "b" }, { student_id: "c" }], error: null };
+
+  it("keeps a moved hour's students in the upsert, checked against the class", async () => {
+    const client = createMockSupabaseClient({
+      class_schedule_slots: [
+        { data: [], error: null },
+        { data: { ...slot, day: "Wed", student_ids: ["c"] }, error: null },
+      ],
+      student_class_assignments: enrolled,
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    const saved = await setScheduleSlotAction({ day: "Wed", time: "17:00", classId: "class-1", studentIds: ["c"] });
+
+    const upsert = client.from.mock.results
+      .map((result) => result.value.upsert)
+      .find((fn) => fn.mock.calls.length > 0);
+    expect(upsert.mock.calls[0][0]).toEqual(expect.objectContaining({ student_ids: ["c"], end_time: null }));
+    expect("studentIds" in saved ? saved.studentIds : undefined).toEqual(["c"]);
+  });
+
+  it("refuses an hour for someone outside the class", async () => {
+    const client = createMockSupabaseClient({
+      class_schedule_slots: { data: [], error: null },
+      student_class_assignments: enrolled,
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await expect(
+      setScheduleSlotAction({ day: "Wed", time: "17:00", classId: "class-1", studentIds: ["x"] }),
+    ).rejects.toThrow(ExpectedError);
+  });
+
+  it("splits a one-hour slot in place, and an all-ticked list means everyone", async () => {
+    const client = createMockSupabaseClient({
+      class_schedule_slots: [
+        { data: slot, error: null },
+        { data: { ...slot, student_ids: ["a", "b"] }, error: null },
+      ],
+      student_class_assignments: enrolled,
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    const saved = await setScheduleSlotStudentsAction({ day: "Mon", time: "17:00", studentIds: ["b", "a"] });
+    expect(saved).toHaveLength(1);
+    const update = client.from.mock.results[2].value.update;
+    expect(update).toHaveBeenCalledWith({ student_ids: ["a", "b"] });
+
+    const again = createMockSupabaseClient({
+      class_schedule_slots: [{ data: slot, error: null }, { data: slot, error: null }],
+      student_class_assignments: enrolled,
+    });
+    vi.mocked(createClient).mockResolvedValue(again as never);
+    await setScheduleSlotStudentsAction({ day: "Mon", time: "17:00", studentIds: ["a", "b", "c"] });
+    expect(again.from.mock.results[2].value.update).toHaveBeenCalledWith({ student_ids: null });
+  });
+
+  it("cuts a two-hour lesson in two and gives only the chosen hour the list", async () => {
+    const two = { ...slot, time: "15:15", is_two_hour: true };
+    const client = createMockSupabaseClient({
+      class_schedule_slots: [
+        { data: two, error: null },
+        { data: { ...two, is_two_hour: false }, error: null },
+        { data: { ...slot, time: "16:00", student_ids: ["a", "b"] }, error: null },
+      ],
+      student_class_assignments: enrolled,
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    const saved = await setScheduleSlotStudentsAction({ day: "Mon", time: "15:15", studentIds: ["a", "b"], hour: "second" });
+
+    expect(saved.map((s) => s.time)).toEqual(["15:15", "16:00"]);
+    const calls = client.from.mock.results.map((result) => result.value);
+    expect(calls[2].update).toHaveBeenCalledWith({ is_two_hour: false, end_time: null, student_ids: null });
+    expect(calls[3].upsert.mock.calls[0][0]).toEqual(
+      expect.objectContaining({ time: "16:00", class_id: "class-1", is_two_hour: false, student_ids: ["a", "b"] }),
+    );
+  });
+
+  it("asks which hour for a two-hour lesson", async () => {
+    const client = createMockSupabaseClient({
+      class_schedule_slots: { data: { ...slot, is_two_hour: true }, error: null },
+      student_class_assignments: enrolled,
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+    await expect(
+      setScheduleSlotStudentsAction({ day: "Mon", time: "15:15", studentIds: ["a"] }),
+    ).rejects.toThrow("Pick which of the two hours");
   });
 });

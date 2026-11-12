@@ -51,6 +51,7 @@ import {
   restoreClassAction,
   restoreStudentAction,
   setScheduleSlotAction,
+  setScheduleSlotStudentsAction,
   setScheduleSlotTimesAction,
   unenrollStudentFromClassAction,
   updateClassAction,
@@ -66,6 +67,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -93,6 +95,7 @@ import { TeacherClassDetail } from "@/components/teacher-class-detail";
 import { TeacherQuizBuilder } from "@/components/teacher-quiz-builder";
 import { TeacherContacts } from "@/components/teacher-contacts";
 import { examSittings } from "@/lib/calendar-exams";
+import { dayRoster, hoursToPlace, type HoursToPlace } from "@/lib/class-hours";
 import { TeacherSiteSettings } from "@/components/teacher-site-settings";
 import { TagOpenerProvider, type TagOpener } from "@/components/task-tags-ui";
 import { TeacherAssessments } from "@/components/teacher-assessments";
@@ -247,6 +250,8 @@ type ScheduleSlotValue = {
   classId: string;
   isTwoHour: boolean;
   endTime: string | null;
+  /** Who this hour is for, when not the whole class (lib/class-hours.ts). */
+  studentIds: string[] | null;
 };
 type ScheduleState = Record<string, ScheduleSlotValue | null>;
 
@@ -298,6 +303,7 @@ type TeacherDashboardProps = {
     classId: string;
     isTwoHour?: boolean;
     endTime?: string | null;
+    studentIds?: string[] | null;
   }>;
   initialStudents: StudentItem[];
   initialFamilies?: FamilyItem[];
@@ -394,6 +400,246 @@ function DraggableClassChip({
   );
 }
 
+/**
+ * "Who comes to this hour": tick the students of one of a class's hours.
+ * Some of them splits the hour; all of them joins it back for everyone.
+ * A two-hour lesson asks which of its hours. Joining back offers to
+ * remove the students' own hours that would then be one too many.
+ */
+function HourStudentsDialog({
+  slotId,
+  value,
+  classItem,
+  enrolled,
+  schedule,
+  onClose,
+  onSaved,
+}: {
+  slotId: string;
+  value: ScheduleSlotValue;
+  classItem: ClassItem | undefined;
+  enrolled: StudentItem[];
+  schedule: ScheduleState;
+  onClose: () => void;
+  onSaved: (changes: ScheduleState) => void;
+}) {
+  const { day, time } = parseSlotId(slotId);
+  const nextId = nextSlotId(day, time);
+  const [hour, setHour] = React.useState<"first" | "second">("second");
+  const [picked, setPicked] = React.useState<string[]>(
+    value.studentIds ?? enrolled.map((student) => student.id),
+  );
+  const [saving, setSaving] = React.useState(false);
+  const everyone = enrolled.length > 0 && enrolled.every((student) => picked.includes(student.id));
+
+  // The class's other hours that only some students have: once this hour
+  // includes them again, those may be one hour too many.
+  const hoursPerWeek = classItem?.hoursPerWeek ?? 0;
+  const ownHours = Object.entries(schedule).filter(
+    (entry): entry is [string, ScheduleSlotValue] =>
+      entry[0] !== slotId && entry[1]?.classId === value.classId && !!entry[1]?.studentIds,
+  );
+  const afterChange = (studentId: string) => {
+    const others = Object.entries(schedule).filter(
+      ([id, slot]) => id !== slotId && slot?.classId === value.classId,
+    );
+    const otherHours = others.reduce(
+      (sum, [, slot]) => sum + (slot && (!slot.studentIds || slot.studentIds.includes(studentId)) ? (slot.isTwoHour ? 2 : 1) : 0),
+      0,
+    );
+    const thisHour = picked.includes(studentId) ? (value.isTwoHour ? 2 : 1) : 0;
+    return otherHours + thisHour;
+  };
+  const removable = ownHours.filter(([, slot]) =>
+    slot.studentIds!.every((id) => afterChange(id) > hoursPerWeek),
+  );
+  // Suggested for removal unless unticked.
+  const [kept, setKept] = React.useState<Set<string>>(() => new Set());
+  const remove = new Set(removable.map(([id]) => id).filter((id) => !kept.has(id)));
+
+  const studentName = (id: string) => enrolled.find((student) => student.id === id)?.firstName ?? "Student";
+
+  const save = async () => {
+    if (picked.length === 0) {
+      toast.error("Pick at least one student for this hour");
+      return;
+    }
+    setSaving(true);
+    try {
+      const saved = await setScheduleSlotStudentsAction({
+        day,
+        time,
+        studentIds: everyone ? null : picked,
+        hour: value.isTwoHour ? hour : undefined,
+      });
+      const changes: ScheduleState = {};
+      for (const slot of saved) {
+        changes[createSlotId(slot.day, slot.time)] = {
+          classId: slot.classId,
+          isTwoHour: slot.isTwoHour,
+          endTime: slot.endTime,
+          studentIds: slot.studentIds,
+        };
+      }
+      for (const id of remove) {
+        const target = parseSlotId(id);
+        await setScheduleSlotAction({ day: target.day, time: target.time, classId: null });
+        changes[id] = null;
+      }
+      onSaved(changes);
+      toast.success(everyone ? "Back to the whole class" : "Hour split");
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, "Couldn't save who comes to this hour"));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const nextTime = nextId ? parseSlotId(nextId).time : null;
+  return (
+    <Dialog open onOpenChange={(open) => (!open ? onClose() : undefined)}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Who comes to this hour</DialogTitle>
+          <DialogDescription>
+            {classItem?.name} · {day} {time}. Students left out get their own hour to place, in
+            the class dock.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          {value.isTwoHour ? (
+            <div className="space-y-2">
+              <Label>Which hour</Label>
+              <RadioGroup
+                value={hour}
+                onValueChange={(next) => setHour(next as "first" | "second")}
+                className="flex gap-4"
+              >
+                <label className="flex items-center gap-2 text-sm">
+                  <RadioGroupItem value="first" /> First hour ({time})
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <RadioGroupItem value="second" /> Second hour{nextTime ? ` (${nextTime})` : ""}
+                </label>
+              </RadioGroup>
+              <p className="text-xs text-muted-foreground">
+                The lesson becomes two one-hour blocks; the other hour stays as it is.
+              </p>
+            </div>
+          ) : null}
+          <div className="space-y-2">
+            <Label>Students</Label>
+            {enrolled.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No students in this class yet.</p>
+            ) : (
+              <ul className="space-y-1.5">
+                {enrolled.map((student) => (
+                  <li key={student.id}>
+                    <label className="flex items-center gap-2 text-sm">
+                      <Checkbox
+                        checked={picked.includes(student.id)}
+                        onCheckedChange={(checked) =>
+                          setPicked((prev) =>
+                            checked === true
+                              ? [...prev, student.id]
+                              : prev.filter((id) => id !== student.id),
+                          )
+                        }
+                      />
+                      {student.firstName} {student.lastName}
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="text-xs text-muted-foreground">
+              {everyone ? "Everyone ticked: the hour is for the whole class." : `${picked.length} of ${enrolled.length} students.`}
+            </p>
+          </div>
+          {removable.length > 0 ? (
+            <div className="space-y-1.5 rounded-md border border-dashed p-2">
+              {removable.map(([id, slot]) => {
+                const where = parseSlotId(id);
+                return (
+                  <label key={id} className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={remove.has(id)}
+                      onCheckedChange={(checked) =>
+                        setKept((prev) => {
+                          const next = new Set(prev);
+                          if (checked === true) next.delete(id);
+                          else next.add(id);
+                          return next;
+                        })
+                      }
+                    />
+                    Also remove {slot.studentIds!.map(studentName).join(", ")}&apos;s own hour ({where.day}{" "}
+                    {where.time})
+                  </label>
+                );
+              })}
+            </div>
+          ) : null}
+        </div>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="button" onClick={() => void save()} disabled={saving || picked.length === 0}>
+            {everyone ? "Join back" : "Split this hour"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** A split hour's badge: "Νίκος only", "Μαρία, Γιώργος" - null for everyone. */
+function hourWhoLabel(studentIds: string[] | null, enrolled: StudentItem[]): string | null {
+  if (!studentIds) return null;
+  const names = enrolled.filter((student) => studentIds.includes(student.id)).map((student) => student.firstName);
+  if (names.length === 0) return "No one enrolled";
+  if (names.length === 1) return `${names[0]} only`;
+  return `${names.length} of ${enrolled.length} · ${names.join(", ")}`;
+}
+
+/** A student's own hour to place, after a split hour left them short. */
+function DraggableStudentHourChip({
+  classItem,
+  studentId,
+  studentName,
+  remaining,
+}: {
+  classItem: ClassItem;
+  studentId: string;
+  studentName: string;
+  remaining: number;
+}) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: `student:${classItem.id}:${studentId}`,
+  });
+  return (
+    <div
+      ref={setNodeRef}
+      {...attributes}
+      {...listeners}
+      style={{ transform: CSS.Transform.toString(transform) }}
+      className={
+        "inline-flex items-center gap-2 rounded-md border border-dashed px-3 py-1 text-xs font-semibold shadow-xs transition " +
+        classItem.color +
+        (isDragging ? " opacity-60" : "")
+      }
+      title={`${studentName}'s own hour of ${classItem.name}`}
+    >
+      <UsersIcon className="h-3 w-3 shrink-0" aria-hidden="true" />
+      <span className="truncate">
+        {classItem.name} · {studentName}
+      </span>
+      <span className="text-[10px] uppercase tracking-wide opacity-70">{remaining} left</span>
+    </div>
+  );
+}
+
 function ScheduledClassCard({
   classItem,
   slotId,
@@ -403,6 +649,9 @@ function ScheduledClassCard({
   onClear,
   onToggleTwoHour,
   onEditTime,
+  onEditStudents,
+  studentIds,
+  whoLabel,
 }: {
   classItem: ClassItem;
   slotId: string;
@@ -412,6 +661,9 @@ function ScheduledClassCard({
   onClear: (slotId: string) => void;
   onToggleTwoHour: (slotId: string) => void;
   onEditTime: (slotId: string) => void;
+  onEditStudents: (slotId: string) => void;
+  studentIds: string[] | null;
+  whoLabel: string | null;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({
@@ -420,6 +672,7 @@ function ScheduledClassCard({
         sourceSlotId: slotId,
         classId: classItem.id,
         isTwoHour,
+        studentIds,
       },
     });
 
@@ -467,12 +720,33 @@ function ScheduledClassCard({
         <div className="truncate" title={label}>
           {label}
         </div>
-        <div>{classItem.hoursPerWeek} hrs/week</div>
+        {whoLabel ? (
+          <div
+            className="mt-0.5 inline-flex max-w-full items-center gap-1 truncate rounded-full bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800 dark:text-violet-300"
+            title={whoLabel}
+          >
+            <UsersIcon className="h-2.5 w-2.5 shrink-0" aria-hidden="true" />
+            <span className="truncate">{whoLabel}</span>
+          </div>
+        ) : (
+          <div>{classItem.hoursPerWeek} hrs/week</div>
+        )}
       </div>
       <div className="mt-auto flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
-        <div className="text-[10px] whitespace-nowrap uppercase tracking-wide text-muted-foreground/80">
-          Drag to reschedule
-        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 gap-1 px-1.5 text-[10px]"
+          onClick={(event) => {
+            event.stopPropagation();
+            onEditStudents(slotId);
+          }}
+          aria-label="Who comes to this hour"
+          title="Who comes to this hour - split it for some students"
+        >
+          <UsersIcon className="h-3 w-3" aria-hidden="true" />
+          Who
+        </Button>
         <Button
           variant="ghost"
           size="sm"
@@ -506,6 +780,9 @@ function ScheduleCell({
   onClear,
   onToggleTwoHour,
   onEditTime,
+  onEditStudents,
+  studentIds,
+  whoLabel,
   tinted = false,
   style,
   showBottomBorder = true,
@@ -518,6 +795,9 @@ function ScheduleCell({
   onClear: (slotId: string) => void;
   onToggleTwoHour: (slotId: string) => void;
   onEditTime: (slotId: string) => void;
+  onEditStudents: (slotId: string) => void;
+  studentIds: string[] | null;
+  whoLabel: string | null;
   tinted?: boolean;
   style?: React.CSSProperties;
   showBottomBorder?: boolean;
@@ -546,6 +826,9 @@ function ScheduleCell({
           onClear={onClear}
           onToggleTwoHour={onToggleTwoHour}
           onEditTime={onEditTime}
+          onEditStudents={onEditStudents}
+          studentIds={studentIds}
+          whoLabel={whoLabel}
         />
       ) : (
         <div className="text-[11px] text-muted-foreground/60">
@@ -662,6 +945,7 @@ export function TeacherDashboard({
         classId: slot.classId,
         isTwoHour: slot.isTwoHour ?? false,
         endTime: slot.endTime ?? null,
+        studentIds: slot.studentIds ?? null,
       };
     });
     return initial;
@@ -782,26 +1066,68 @@ export function TeacherDashboard({
     initialHomework,
   );
 
-  const scheduledCounts = React.useMemo(() => {
-    const counts = new Map<string, number>();
-    Object.values(schedule).forEach((value) => {
-      if (!value) {
-        return;
+  // Each class's enrolled students, for split hours (lib/class-hours.ts).
+  const enrolledByClass = React.useMemo(() => {
+    const map = new Map<string, StudentItem[]>();
+    for (const student of students) {
+      if (student.withdrawnAt) continue;
+      for (const classId of student.assignedClassIds) {
+        map.set(classId, [...(map.get(classId) ?? []), student]);
       }
-      const weight = value.isTwoHour ? 2 : 1;
-      counts.set(value.classId, (counts.get(value.classId) ?? 0) + weight);
+    }
+    return map;
+  }, [students]);
+
+  // Hours still to place: for the whole class (its dock chip), and for any
+  // student a split hour left short (their own chip).
+  const hoursToPlaceById = React.useMemo(() => {
+    const slotsByClass = new Map<string, ScheduleSlotValue[]>();
+    Object.values(schedule).forEach((value) => {
+      if (!value) return;
+      slotsByClass.set(value.classId, [...(slotsByClass.get(value.classId) ?? []), value]);
     });
-    return counts;
-  }, [schedule]);
+    const result = new Map<string, HoursToPlace>();
+    classes.forEach((item) => {
+      result.set(
+        item.id,
+        hoursToPlace(
+          item.hoursPerWeek,
+          (enrolledByClass.get(item.id) ?? []).map((student) => student.id),
+          slotsByClass.get(item.id) ?? [],
+        ),
+      );
+    });
+    return result;
+  }, [classes, schedule, enrolledByClass]);
 
   const remainingById = React.useMemo(() => {
     const remaining = new Map<string, number>();
-    classes.forEach((item) => {
-      const used = scheduledCounts.get(item.id) ?? 0;
-      remaining.set(item.id, Math.max(item.hoursPerWeek - used, 0));
-    });
+    hoursToPlaceById.forEach((value, classId) => remaining.set(classId, value.everyone));
     return remaining;
-  }, [classes, scheduledCounts]);
+  }, [hoursToPlaceById]);
+
+  // "N of H placed": full only when every student has their hours.
+  const placedHours = (item: ClassItem): number => {
+    const toPlace = hoursToPlaceById.get(item.id);
+    if (!toPlace) return 0;
+    const mostMissing = toPlace.everyone + Math.max(0, ...toPlace.students.map((s) => s.hours));
+    return Math.max(item.hoursPerWeek - mostMissing, 0);
+  };
+
+  /** Hours left for the students of one hour - all of them must have room. */
+  const remainingForHour = (classId: string, studentIds: string[] | null): number => {
+    const toPlace = hoursToPlaceById.get(classId);
+    if (!toPlace) return 0;
+    if (!studentIds) return toPlace.everyone;
+    return Math.min(
+      ...studentIds.map(
+        (id) => toPlace.everyone + (toPlace.students.find((item) => item.studentId === id)?.hours ?? 0),
+      ),
+    );
+  };
+
+  // "Who comes to this hour" dialog (Split this hour / Join back).
+  const [whoSlotId, setWhoSlotId] = React.useState<string | null>(null);
 
   const activeClasses = React.useMemo(
     () => classes.filter((item) => !item.archivedAt),
@@ -1138,6 +1464,7 @@ export function TeacherDashboard({
       sourceSlotId?: string;
       classId?: string;
       isTwoHour?: boolean;
+      studentIds?: string[] | null;
     };
     const sourceSlotId = activeData?.sourceSlotId;
     const classId = activeId.startsWith("class:")
@@ -1149,8 +1476,14 @@ export function TeacherDashboard({
       return;
     }
 
+    // A student's own hour from the dock ("student:<classId>:<studentId>"),
+    // or a moved card's list, travels with the slot.
+    const studentIds: string[] | null = activeId.startsWith("student:")
+      ? [activeId.split(":")[2]]
+      : (activeData?.studentIds ?? null);
+
     if (!sourceSlotId) {
-      const remaining = remainingById.get(classItem.id) ?? 0;
+      const remaining = remainingForHour(classItem.id, studentIds);
       if (remaining <= 0) {
         return;
       }
@@ -1189,7 +1522,7 @@ export function TeacherDashboard({
       // A moved/newly-placed slot always starts at its default window - see
       // setScheduleSlotAction's upsert, which resets end_time server-side
       // for the same reason.
-      next[slotId] = { classId: classItem.id, isTwoHour, endTime: null };
+      next[slotId] = { classId: classItem.id, isTwoHour, endTime: null, studentIds };
       return next;
     });
 
@@ -1202,10 +1535,10 @@ export function TeacherDashboard({
             time: source.time,
             classId: null,
           }),
-          setScheduleSlotAction({ day, time, classId: classItem.id, isTwoHour }),
+          setScheduleSlotAction({ day, time, classId: classItem.id, isTwoHour, studentIds }),
         ]);
       } else {
-        await setScheduleSlotAction({ day, time, classId: classItem.id });
+        await setScheduleSlotAction({ day, time, classId: classItem.id, studentIds });
       }
     } catch (error: unknown) {
       setSchedule(previousSchedule);
@@ -1233,7 +1566,7 @@ export function TeacherDashboard({
         toast.error("The next slot is already taken");
         return;
       }
-      const remaining = remainingById.get(current.classId) ?? 0;
+      const remaining = remainingForHour(current.classId, current.studentIds);
       if (remaining < 1) {
         toast.error("Not enough weekly hours left for this class");
         return;
@@ -1241,18 +1574,21 @@ export function TeacherDashboard({
     }
 
     try {
-      await setScheduleSlotAction({
+      const saved = await setScheduleSlotAction({
         day,
         time,
         classId: current.classId,
         isTwoHour: wantsTwoHour,
+        studentIds: current.studentIds,
       });
       setSchedule((prev) => ({
         ...prev,
         [slotId]: {
           classId: current.classId,
           isTwoHour: wantsTwoHour,
-          endTime: current.endTime,
+          // The server resets a custom time on any re-placement.
+          endTime: "endTime" in saved ? saved.endTime : null,
+          studentIds: current.studentIds,
         },
       }));
     } catch (error: unknown) {
@@ -1736,12 +2072,29 @@ export function TeacherDashboard({
     if (!attendanceClassId) {
       return [];
     }
-    return students.filter(
+    const enrolled = students.filter(
       (student) =>
         !student.withdrawnAt &&
         student.assignedClassIds.includes(attendanceClassId),
     );
-  }, [attendanceClassId, students]);
+    // On a day of split hours, only the students of that day's hours
+    // (lib/class-hours.ts): a weekday's slots for the class, or everyone
+    // when an extra session is on that date.
+    const weekday = format(attendanceDate, "EEE");
+    const dateKey = format(attendanceDate, "yyyy-MM-dd");
+    const hourLists: (string[] | null)[] = Object.entries(schedule)
+      .filter(([slotId, value]) => value?.classId === attendanceClassId && parseSlotId(slotId).day === weekday)
+      .map(([, value]) => value!.studentIds);
+    const hasExtraSession = calendarEvents.some(
+      (event) =>
+        event.event_type === "extra_session" &&
+        event.class_id === attendanceClassId &&
+        event.event_date === dateKey,
+    );
+    if (hasExtraSession) hourLists.push(null);
+    const dayIds = new Set(dayRoster(enrolled.map((student) => student.id), hourLists));
+    return enrolled.filter((student) => dayIds.has(student.id));
+  }, [attendanceClassId, attendanceDate, students, schedule, calendarEvents]);
 
   // Flattened once, shared by the attendance date-gating logic below and by
   // the Calendar tab's month projection.
@@ -1756,6 +2109,7 @@ export function TeacherDashboard({
           classId: value.classId,
           isTwoHour: value.isTwoHour,
           endTime: value.endTime,
+          studentIds: value.studentIds,
         })),
     [schedule],
   );
@@ -2017,11 +2371,25 @@ export function TeacherDashboard({
                   </p>
                 ) : (
                   activeClasses.map((item) => (
-                    <DraggableClassChip
-                      key={item.id}
-                      classItem={item}
-                      remaining={remainingById.get(item.id) ?? 0}
-                    />
+                    <React.Fragment key={item.id}>
+                      <DraggableClassChip
+                        classItem={item}
+                        remaining={remainingById.get(item.id) ?? 0}
+                      />
+                      {/* Students a split hour left short: their own hour to place. */}
+                      {(hoursToPlaceById.get(item.id)?.students ?? []).map(({ studentId, hours }) => {
+                        const student = students.find((s) => s.id === studentId);
+                        return (
+                          <DraggableStudentHourChip
+                            key={`${item.id}:${studentId}`}
+                            classItem={item}
+                            studentId={studentId}
+                            studentName={student ? student.firstName : "Student"}
+                            remaining={hours}
+                          />
+                        );
+                      })}
+                    </React.Fragment>
                   ))
                 )}
               </div>
@@ -2129,6 +2497,12 @@ export function TeacherDashboard({
                               onClear={handleClearSlot}
                               onToggleTwoHour={handleToggleTwoHour}
                               onEditTime={handleOpenEditTime}
+                              onEditStudents={setWhoSlotId}
+                              studentIds={value?.studentIds ?? null}
+                              whoLabel={hourWhoLabel(
+                                value?.studentIds ?? null,
+                                value ? enrolledByClass.get(value.classId) ?? [] : [],
+                              )}
                               tinted={day === "Sat"}
                               showBottomBorder={!cellEndRowIsLast}
                               style={{
@@ -2156,6 +2530,22 @@ export function TeacherDashboard({
               </div>
             </div>
           </DndContext>
+
+          {whoSlotId && schedule[whoSlotId] ? (
+            <HourStudentsDialog
+              key={whoSlotId}
+              slotId={whoSlotId}
+              value={schedule[whoSlotId]!}
+              classItem={classes.find((item) => item.id === schedule[whoSlotId]!.classId)}
+              enrolled={enrolledByClass.get(schedule[whoSlotId]!.classId) ?? []}
+              schedule={schedule}
+              onClose={() => setWhoSlotId(null)}
+              onSaved={(changes) => {
+                setSchedule((prev) => ({ ...prev, ...changes }));
+                setWhoSlotId(null);
+              }}
+            />
+          ) : null}
 
           <Dialog
             open={editingTimeSlotId !== null}
@@ -2403,7 +2793,7 @@ export function TeacherDashboard({
                           {item.hoursPerWeek}
                         </TableCell>
                         <TableCell className="text-muted-foreground">
-                          {scheduledCounts.get(item.id) ?? 0} of{" "}
+                          {placedHours(item)} of{" "}
                           {item.hoursPerWeek} slots
                         </TableCell>
                         <TableCell>

@@ -39,6 +39,7 @@ import {
   buildDayHolidays,
   buildDayLessons,
   classHasLessonOn,
+  dayRosterOf,
   neighbouringLessonDays,
   nextLessonDays,
   type DayAttendanceRow,
@@ -95,6 +96,7 @@ type SlotRow = {
   class_id: string;
   is_two_hour: boolean | null;
   end_time: string | null;
+  student_ids: string[] | null;
 };
 
 type StudentRow = {
@@ -126,7 +128,7 @@ async function loadSchool(
       .order("name", { ascending: true }),
     supabase
       .from("class_schedule_slots")
-      .select("day, time, class_id, is_two_hour, end_time")
+      .select("day, time, class_id, is_two_hour, end_time, student_ids")
       .eq("teacher_id", teacherId),
     supabase
       .from("calendar_events")
@@ -167,6 +169,7 @@ async function loadSchool(
         time: slot.time,
         isTwoHour: Boolean(slot.is_two_hour),
         endTime: slot.end_time,
+        studentIds: slot.student_ids ?? null,
       })),
       events: (events.data ?? []) as ProjectionEvent[],
     },
@@ -363,6 +366,21 @@ export async function loadLesson(
     attendance: [],
   });
   const lesson = lessons.find((item) => item.classId === classId);
+  // The day's roster: only the students of that day's hours when they're
+  // split (lib/class-hours.ts); anyone already marked stays listed.
+  const enrolledIds = students
+    .filter((student) => (student.student_class_assignments ?? []).some((a) => a.class_id === classId))
+    .map((student) => student.id);
+  const dayRosterIds = new Set(
+    dayRosterOf(
+      classId,
+      projectOccurrences({ from: date, to: date, ...projection, includeBlocks: false }),
+      enrolledIds,
+    ),
+  );
+  const markedIds = new Set(
+    (rows ?? []).map((row) => row.student_id as string).filter((id) => enrolledIds.includes(id)),
+  );
 
   return {
     date,
@@ -371,9 +389,7 @@ export async function loadLesson(
     isTwoHour: occurrence?.isTwoHour ?? false,
     timeLabel: lesson?.kind === "cancelled" ? null : (lesson?.timeLabel ?? null),
     roster: students
-      .filter((student) =>
-        (student.student_class_assignments ?? []).some((a) => a.class_id === classId),
-      )
+      .filter((student) => dayRosterIds.has(student.id) || markedIds.has(student.id))
       .map((student) => ({
         id: student.id,
         firstName: student.first_name,

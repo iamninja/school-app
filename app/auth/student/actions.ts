@@ -1,5 +1,6 @@
 "use server";
 
+import { hourIncludes } from "@/lib/class-hours";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import {
@@ -153,10 +154,14 @@ export async function getStudentDashboardDataAction(): Promise<
     (classAssignments as StudentClassAssignmentWithClass[] | null)
       ?.map((a) => a.class_id)
       .filter(Boolean) || [];
-  const { data: schedules } = await supabase
+  const { data: scheduleRows } = await supabase
     .from("class_schedule_slots")
-    .select("class_id, day, time, is_two_hour, end_time")
+    .select("class_id, day, time, is_two_hour, end_time, student_ids")
     .in("class_id", classIds);
+// Only the hours that include this student (lib/class-hours.ts): a split
+// hour's list never reaches the browser, and a student's own hour shows
+// only to them and their parents.
+  const schedules = ownHours(scheduleRows, student.id);
 
   // Get attendance records
   const { data: attendance } = await supabase
@@ -421,11 +426,23 @@ export async function getStudentDashboardDataAction(): Promise<
           finishDate: a.classes.finish_date ?? null,
         }),
       ) || [],
-    schedules: (schedules as ClassScheduleSlot[] | null) || [],
+    schedules,
     attendance: (attendance as AttendanceRecord[] | null) || [],
     quizzes,
     calendarEvents,
     assessments,
     homework,
   };
+}
+
+function ownHours(
+  rows: unknown[] | null,
+  studentId: string,
+): ClassScheduleSlot[] {
+  return ((rows ?? []) as (ClassScheduleSlot & { student_ids?: string[] | null })[])
+    .filter((row) => hourIncludes(row.student_ids, studentId))
+    .map(({ student_ids: _omit, ...slot }) => {
+      void _omit;
+      return slot;
+    });
 }

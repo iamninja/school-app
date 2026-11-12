@@ -13,7 +13,13 @@ import { slotWindow, timeToMinutes } from "@/lib/schedule-grid";
  * sessions, cancellations, the class's start/finish dates) - with each
  * lesson's end time worked out.
  */
-export type ClassLesson = { date: string; start: string | null; end: string | null };
+export type ClassLesson = {
+  date: string;
+  start: string | null;
+  end: string | null;
+  /** One of the class's split hours: only these students (lib/class-hours.ts). */
+  studentIds: string[] | null;
+};
 
 function minutesToTime(minutes: number): string {
   return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
@@ -33,7 +39,7 @@ export async function classLessons(
       .maybeSingle(),
     supabase
       .from("class_schedule_slots")
-      .select("day, time, class_id, is_two_hour, end_time")
+      .select("day, time, class_id, is_two_hour, end_time, student_ids")
       .eq("class_id", classId),
     supabase
       .from("calendar_events")
@@ -52,6 +58,7 @@ export async function classLessons(
     class_id: string;
     is_two_hour: boolean | null;
     end_time: string | null;
+    student_ids: string[] | null;
   }[];
 
   return projectOccurrences({
@@ -63,6 +70,7 @@ export async function classLessons(
       time: slot.time,
       isTwoHour: Boolean(slot.is_two_hour),
       endTime: slot.end_time,
+      studentIds: slot.student_ids ?? null,
     })),
     classes: [
       {
@@ -84,7 +92,10 @@ export async function classLessons(
       let end = o.endTime;
       if (!end && o.startTime) {
         if (o.kind === "recurring" && o.slotTime) {
-          const slot = slotRows.find((s) => s.time === o.slotTime);
+          const weekday = weekdayLabelFromDate(fromIsoDate(o.date));
+          const slot =
+            slotRows.find((s) => s.time === o.slotTime && s.day === weekday) ??
+            slotRows.find((s) => s.time === o.slotTime);
           end = slotWindow(weekdayLabelFromDate(fromIsoDate(o.date)), o.slotTime, {
             isTwoHour: Boolean(slot?.is_two_hour),
           }).end;
@@ -92,7 +103,7 @@ export async function classLessons(
           end = minutesToTime(timeToMinutes(o.startTime) + (o.isTwoHour ? 120 : 60));
         }
       }
-      return { date: o.date, start: o.startTime, end };
+      return { date: o.date, start: o.startTime, end, studentIds: o.studentIds ?? null };
     })
     .sort((a, b) => (a.date + (a.start ?? "")).localeCompare(b.date + (b.start ?? "")));
 }

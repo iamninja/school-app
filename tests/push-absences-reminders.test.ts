@@ -93,7 +93,7 @@ describe("absence notices - 2 hours after the lesson", () => {
   const settings = { ...DEFAULT_NOTIFICATION_SETTINGS, absence_timing: "after_lesson" as const };
 
   it("queues the notice for the lesson's end + 2h", async () => {
-    vi.mocked(classLessons).mockResolvedValue([{ date: TODAY, start: "17:15", end: "19:00" }]);
+    vi.mocked(classLessons).mockResolvedValue([{ date: TODAY, start: "17:15", end: "19:00", studentIds: null }]);
     const c = client({
       notification_settings: { data: settings, error: null },
       absence_notifications: { data: null, error: null },
@@ -130,7 +130,7 @@ describe("absence notices - 2 hours after the lesson", () => {
   });
 
   it("a mark saved after that point the same day goes out at the next run", async () => {
-    vi.mocked(classLessons).mockResolvedValue([{ date: TODAY, start: "10:15", end: "11:00" }]);
+    vi.mocked(classLessons).mockResolvedValue([{ date: TODAY, start: "10:15", end: "11:00", studentIds: null }]);
     const c = client({
       notification_settings: { data: settings, error: null },
       absence_notifications: { data: null, error: null },
@@ -179,7 +179,7 @@ describe("homework target date", () => {
   });
 
   it("otherwise the class's next lesson after the day it was set (cancellations already applied)", async () => {
-    vi.mocked(classLessons).mockResolvedValue([{ date: "2026-10-16", start: "17:15", end: "18:00" }]);
+    vi.mocked(classLessons).mockResolvedValue([{ date: "2026-10-16", start: "17:15", end: "18:00", studentIds: null }]);
     expect(
       await homeworkTargetDate(asClient(client({})), { class_id: "c1", due_date: null, created_at: NOW.toISOString() }),
     ).toBe("2026-10-16");

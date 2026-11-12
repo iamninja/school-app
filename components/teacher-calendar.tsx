@@ -40,6 +40,7 @@ import {
   type CreateTaskInput,
 } from "@/app/protected/teacher/task-actions";
 import { LessonTasks, MyTasks } from "@/components/teacher-tasks";
+import { dayRosterOf } from "@/lib/teacher-app/day";
 import {
   examBlocksForDay,
   layoutDay,
@@ -1787,9 +1788,15 @@ export function TeacherCalendar({
             })}
             {attendanceLessons.map((occurrence) => {
               const classId = occurrence.classId!;
-              const roster = attendanceStudentOptions.filter((student) =>
+              // Only the students of the day's hours when some are split
+              // (lib/class-hours.ts).
+              const enrolled = attendanceStudentOptions.filter((student) =>
                 student.assignedClassIds.includes(classId),
               );
+              const dayIds = new Set(
+                dayRosterOf(classId, selectedOccurrences, enrolled.map((student) => student.id)),
+              );
+              const roster = enrolled.filter((student) => dayIds.has(student.id));
               return (
                 <TabsContent key={classId} value={classId} className="mt-3">
                   <AttendanceRosterTable

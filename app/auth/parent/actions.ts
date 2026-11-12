@@ -1,5 +1,6 @@
 "use server";
 
+import { hourIncludes } from "@/lib/class-hours";
 import { createClient } from "@/lib/supabase/server";
 import { RECEIPT_COLUMNS, attachLineItems } from "@/lib/receipts";
 import { toParentHistory } from "@/lib/billing/parent-history";
@@ -254,9 +255,17 @@ export async function getParentDashboardDataAction(): Promise<
       if (classIds.length > 0) {
         const { data } = await supabase
           .from("class_schedule_slots")
-          .select("class_id, day, time, is_two_hour, end_time")
+          .select("class_id, day, time, is_two_hour, end_time, student_ids")
           .in("class_id", classIds);
-        schedules = (data as ClassScheduleSlot[] | null) || [];
+        // Only the hours that include this student (lib/class-hours.ts): a split
+        // hour's list never reaches the browser, and a student's own hour shows
+        // only to them and their parents.
+        schedules = ((data ?? []) as (ClassScheduleSlot & { student_ids?: string[] | null })[])
+          .filter((row) => hourIncludes(row.student_ids, student.id))
+          .map(({ student_ids: _omit, ...slot }) => {
+            void _omit;
+            return slot;
+          });
       }
 
       const { data: attendance } = await supabase
