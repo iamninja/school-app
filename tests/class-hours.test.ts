@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   dayRoster,
+  dragSource,
   hourIncludes,
   hoursForStudent,
   hoursToPlace,
@@ -77,5 +78,23 @@ describe("normalizeHourStudents", () => {
     expect(normalizeHourStudents([B, A, A], [A, B, C])).toEqual({ ok: true, studentIds: [A, B] });
     expect(normalizeHourStudents([], [A, B, C]).ok).toBe(false);
     expect(normalizeHourStudents(["x"], [A, B, C]).ok).toBe(false);
+  });
+});
+
+describe("dragSource", () => {
+  it("reads the class from a dock class chip", () => {
+    expect(dragSource("class:c1", undefined)).toEqual({ classId: "c1", studentIds: null });
+  });
+
+  it("reads the class and student from a student's own hour chip", () => {
+    expect(dragSource("student:c1:s9", undefined)).toEqual({ classId: "c1", studentIds: ["s9"] });
+  });
+
+  it("takes a placed card's class and list from its drag data", () => {
+    expect(dragSource("scheduled:Mon-17:00", { classId: "c1", studentIds: ["a", "b"] })).toEqual({
+      classId: "c1",
+      studentIds: ["a", "b"],
+    });
+    expect(dragSource("scheduled:Mon-17:00", { classId: "c1" })).toEqual({ classId: "c1", studentIds: null });
   });
 });

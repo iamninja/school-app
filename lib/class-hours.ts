@@ -111,3 +111,23 @@ export function normalizeHourStudents(
   if (enrolledStudentIds.every((id) => unique.includes(id))) return { ok: true, studentIds: null };
   return { ok: true, studentIds: unique.sort() };
 }
+
+/**
+ * What a Schedule-tab drag carries: the class, and the students the hour
+ * is for. Dock class chips are "class:<classId>", a student's own hour
+ * "student:<classId>:<studentId>", and placed cards carry their class and
+ * list in their drag data.
+ */
+export function dragSource(
+  activeId: string,
+  data: { classId?: string; studentIds?: string[] | null } | undefined,
+): { classId: string | undefined; studentIds: string[] | null } {
+  if (activeId.startsWith("class:")) {
+    return { classId: activeId.slice("class:".length), studentIds: null };
+  }
+  if (activeId.startsWith("student:")) {
+    const [, classId, studentId] = activeId.split(":");
+    return { classId, studentIds: studentId ? [studentId] : null };
+  }
+  return { classId: data?.classId, studentIds: data?.studentIds ?? null };
+}
