@@ -3,6 +3,7 @@
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { requireTeacher } from "@/lib/auth/require-teacher";
 import { ExpectedError } from "@/lib/expected-error";
+import { normalizeHourStudents } from "@/lib/class-hours";
 import { SCHEDULE_ROWS, slotWindow, timeToMinutes } from "@/lib/schedule-grid";
 import { runAfterResponse } from "@/lib/push/hooks";
 import { handleAttendanceChange } from "@/lib/push/absences";
@@ -415,11 +416,61 @@ async function assertNoOverlap(
   }
 }
 
+// The students of a class, for checking a split hour's list against.
+async function enrolledStudentIds(
+  supabase: SupabaseServerClient,
+  classId: string,
+): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("student_class_assignments")
+    .select("student_id")
+    .eq("class_id", classId);
+  if (error) throw error;
+  return (data ?? []).map((row) => row.student_id as string);
+}
+
+async function checkedHourStudents(
+  supabase: SupabaseServerClient,
+  classId: string,
+  studentIds: string[] | null | undefined,
+): Promise<string[] | null> {
+  if (!studentIds) return null;
+  const result = normalizeHourStudents(studentIds, await enrolledStudentIds(supabase, classId));
+  if (!result.ok) throw new ExpectedError(result.error);
+  return result.studentIds;
+}
+
+const SLOT_COLUMNS = "day, time, class_id, is_two_hour, end_time, student_ids";
+
+function slotResult(row: {
+  day: string;
+  time: string;
+  class_id: string;
+  is_two_hour: boolean;
+  end_time: string | null;
+  student_ids: string[] | null;
+}) {
+  return {
+    day: row.day,
+    time: row.time,
+    classId: row.class_id,
+    isTwoHour: row.is_two_hour,
+    endTime: row.end_time,
+    studentIds: row.student_ids,
+  };
+}
+
 export async function setScheduleSlotAction(data: {
   day: string;
   time: string;
   classId: string | null;
   isTwoHour?: boolean;
+  /**
+   * Who this hour is for (lib/class-hours.ts): null/absent for everyone.
+   * A move or a two-hour toggle passes the slot's list along, since a
+   * move re-creates the row.
+   */
+  studentIds?: string[] | null;
 }) {
   const supabase = await createClient();
   const {
@@ -481,10 +532,14 @@ export async function setScheduleSlotAction(data: {
     slotWindow(data.day, data.time, { isTwoHour }),
   );
 
+  const studentIds = await checkedHourStudents(supabase, data.classId, data.studentIds);
+
   // Always reset end_time on placement (a fresh row, a move, or a different
   // class taking over this cell) - a custom window belongs to whichever
   // placement created it, never inherited by whatever gets dropped there
   // next. Only setScheduleSlotTimesAction ever sets a non-null end_time.
+  // student_ids is always written too, so a cell another class held never
+  // keeps that class's list.
   const { data: row, error } = await supabase
     .from("class_schedule_slots")
     .upsert(
@@ -495,23 +550,97 @@ export async function setScheduleSlotAction(data: {
         class_id: data.classId,
         is_two_hour: isTwoHour,
         end_time: null,
+        student_ids: studentIds,
       },
       { onConflict: "teacher_id,day,time" }
     )
-    .select("day, time, class_id, is_two_hour, end_time")
+    .select(SLOT_COLUMNS)
     .single();
 
   if (error) {
     throw error;
   }
 
-  return {
-    day: row.day,
-    time: row.time,
-    classId: row.class_id,
-    isTwoHour: row.is_two_hour,
-    endTime: row.end_time,
-  };
+  return slotResult(row);
+}
+
+/**
+ * Who comes to one of a class's hours (lib/class-hours.ts): some of its
+ * students ("Split this hour"), or everyone again ("Join back", null).
+ * A two-hour slot is first cut in two, and only the chosen hour gets the
+ * list; the other keeps the slot's old one. Returns every slot it wrote.
+ */
+export async function setScheduleSlotStudentsAction(data: {
+  day: string;
+  time: string;
+  studentIds: string[] | null;
+  /** A two-hour slot: which of its hours. */
+  hour?: "first" | "second";
+}) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    throw new Error("Not authenticated");
+  }
+  await requireTeacher(supabase, user.id);
+
+  const { data: slot, error: slotError } = await supabase
+    .from("class_schedule_slots")
+    .select(SLOT_COLUMNS)
+    .match({ teacher_id: user.id, day: data.day, time: data.time })
+    .maybeSingle();
+  if (slotError) throw slotError;
+  if (!slot) throw new ExpectedError("That hour is no longer on the schedule");
+
+  const studentIds = await checkedHourStudents(supabase, slot.class_id, data.studentIds);
+
+  if (!slot.is_two_hour) {
+    const { data: row, error } = await supabase
+      .from("class_schedule_slots")
+      .update({ student_ids: studentIds })
+      .match({ teacher_id: user.id, day: data.day, time: data.time })
+      .select(SLOT_COLUMNS)
+      .single();
+    if (error) throw error;
+    return [slotResult(row)];
+  }
+
+  if (data.hour !== "first" && data.hour !== "second") {
+    throw new ExpectedError("Pick which of the two hours");
+  }
+  const nextTime = nextScheduleRowTime(data.day, data.time);
+  if (!nextTime) throw new ExpectedError("That two-hour lesson can't be split here");
+  // Two one-hour slots in place of the two-hour one; a custom time doesn't
+  // carry over (it described the two-hour window).
+  const firstIds = data.hour === "first" ? studentIds : slot.student_ids;
+  const secondIds = data.hour === "second" ? studentIds : slot.student_ids;
+  const { data: first, error: firstError } = await supabase
+    .from("class_schedule_slots")
+    .update({ is_two_hour: false, end_time: null, student_ids: firstIds })
+    .match({ teacher_id: user.id, day: data.day, time: data.time })
+    .select(SLOT_COLUMNS)
+    .single();
+  if (firstError) throw firstError;
+  const { data: second, error: secondError } = await supabase
+    .from("class_schedule_slots")
+    .upsert(
+      {
+        teacher_id: user.id,
+        day: data.day,
+        time: nextTime,
+        class_id: slot.class_id,
+        is_two_hour: false,
+        end_time: null,
+        student_ids: secondIds,
+      },
+      { onConflict: "teacher_id,day,time" },
+    )
+    .select(SLOT_COLUMNS)
+    .single();
+  if (secondError) throw secondError;
+  return [slotResult(first), slotResult(second)];
 }
 
 // A slot's custom end time - null resets it to the grid-derived default.
@@ -562,20 +691,14 @@ export async function setScheduleSlotTimesAction(data: {
     .from("class_schedule_slots")
     .update({ end_time: data.endTime })
     .match({ teacher_id: user.id, day: data.day, time: data.time })
-    .select("day, time, class_id, is_two_hour, end_time")
+    .select(SLOT_COLUMNS)
     .single();
 
   if (error) {
     throw error;
   }
 
-  return {
-    day: row.day,
-    time: row.time,
-    classId: row.class_id,
-    isTwoHour: row.is_two_hour,
-    endTime: row.end_time,
-  };
+  return slotResult(row);
 }
 
 type CreateStudentBase = {

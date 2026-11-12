@@ -1,3 +1,4 @@
+import { dayRoster } from "@/lib/class-hours";
 import {
   fromIsoDate,
   projectOccurrences,
@@ -111,6 +112,8 @@ export function buildDayLessons({
   });
 
   const lessons = new Map<string, DayLesson>();
+  const rosterOf = (classId: string) =>
+    new Set(dayRosterOf(classId, occurrences, [...(rosterByClass.get(classId) ?? [])]));
   for (const occurrence of occurrences) {
     if (!occurrence.classId) continue;
     const isCancelled = occurrence.kind === "cancelled";
@@ -122,7 +125,9 @@ export function buildDayLessons({
     if (existing && (existing.kind !== "cancelled" || isCancelled)) continue;
 
     const window = occurrenceWindow(occurrence);
-    const roster = rosterByClass.get(occurrence.classId) ?? new Set<string>();
+    // Only the students of that day's hours when some are split
+    // (lib/class-hours.ts) - C's own hour lists only C.
+    const roster = rosterOf(occurrence.classId);
     const marks = attendance.filter(
       (row) => row.class_id === occurrence.classId && roster.has(row.student_id),
     );
@@ -295,6 +300,22 @@ export function classHasLessonOn(
 }
 
 /**
+ * Who a class's lesson on a day is for, from that day's occurrences:
+ * everyone enrolled, unless all of its hours that day are split
+ * (lib/class-hours.ts). An extra session is for the whole class.
+ */
+export function dayRosterOf(
+  classId: string,
+  occurrences: Occurrence[],
+  enrolledStudentIds: string[],
+): string[] {
+  const lists = occurrences
+    .filter((occurrence) => occurrence.classId === classId && isAttendanceLesson(occurrence))
+    .map((occurrence) => occurrence.studentIds ?? null);
+  return dayRoster(enrolledStudentIds, lists);
+}
+
+/**
  * The class's next `count` lesson days strictly after `date`, within
  * `windowDays` (a class meeting twice the same day counts once).
  */
@@ -313,6 +334,9 @@ export function nextLessonDays(
     includeBlocks: false,
   })) {
     if (occurrence.classId !== classId || !isAttendanceLesson(occurrence)) continue;
+    // A homework's due day is a day the whole class meets, not one
+    // student's own hour (lib/class-hours.ts).
+    if (occurrence.studentIds) continue;
     if (days.at(-1) !== occurrence.date) days.push(occurrence.date);
     if (days.length === count) break;
   }

@@ -76,6 +76,27 @@ describe("buildDayLessons", () => {
     expect(lessons[1]).toMatchObject({ rosterSize: 1, marked: 0, absent: 0 });
   });
 
+  it("counts only the students of a day's split hours", () => {
+    const split = projection({
+      slots: [
+        // Mon: an hour for everyone and one for s1+s2; Thu: s3's own hour.
+        { classId: CLASS_A.id, day: "Mon", time: "16:00" },
+        { classId: CLASS_A.id, day: "Mon", time: "17:00", studentIds: ["s1", "s2"] },
+        { classId: CLASS_A.id, day: "Thu", time: "16:00", studentIds: ["s3"] },
+      ],
+    });
+    const monday = buildDayLessons({ date: MONDAY, projection: split, rosterByClass: ROSTERS, attendance: [] });
+    expect(monday.find((l) => l.classId === CLASS_A.id)?.rosterSize).toBe(3);
+    const thursday = buildDayLessons({
+      date: "2026-09-10",
+      projection: split,
+      rosterByClass: ROSTERS,
+      attendance: [{ class_id: CLASS_A.id, student_id: "s1", status: "present" }],
+    });
+    // Only s3 is due; a mark for s1 that day doesn't count towards it.
+    expect(thursday[0]).toMatchObject({ classId: CLASS_A.id, rosterSize: 1, marked: 0 });
+  });
+
   it("shows a cancelled lesson as cancelled", () => {
     const lessons = buildDayLessons({
       date: MONDAY,

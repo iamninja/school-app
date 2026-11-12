@@ -61,6 +61,9 @@ export interface ProjectionSlot {
   // A teacher-set custom end time, when this slot's real window differs
   // from the grid-derived default. See lib/schedule-grid.ts's slotWindow().
   endTime?: string | null;
+  // Who this hour is for, when not the whole class (a split hour, or one
+  // student's own hour) - see lib/class-hours.ts. Null/absent: everyone.
+  studentIds?: string[] | null;
 }
 
 export interface ProjectionClass {
@@ -130,6 +133,11 @@ export interface Occurrence {
   closureId: string | null;
   /** The dates that closure was declared for, when stored (older closures have none). */
   closureRange: { from: string; to: string } | null;
+  /**
+   * A class hour's students when it isn't the whole class (lib/class-hours.ts);
+   * null or absent for everyone, and for every event.
+   */
+  studentIds?: string[] | null;
 }
 
 function eventSpansTwoHours(startTime: string | null, endTime: string | null): boolean {
@@ -247,6 +255,7 @@ export function projectOccurrences(input: ProjectionInput): Occurrence[] {
         eventId: matchedEventId,
         slotTime: slot.time,
         isTwoHour: slot.isTwoHour ?? false,
+        studentIds: slot.studentIds ?? null,
         cancellationReason: cancellation?.cancellation_reason ?? null,
         closureId: cancellation?.closure_id ?? null,
         closureRange: closureRangeOf(cancellation),

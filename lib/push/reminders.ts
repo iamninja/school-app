@@ -59,7 +59,8 @@ export async function homeworkTargetDate(
   const setOn = athensDateAndTime(homework.created_at).date;
   const from = addDaysToDate(setOn, 1);
   const lessons = await classLessons(supabase, homework.class_id, from, addDaysToDate(from, 21));
-  return lessons[0]?.date ?? null;
+  // The whole class's next lesson - not one student's own hour (lib/class-hours.ts).
+  return lessons.find((lesson) => !lesson.studentIds)?.date ?? null;
 }
 
 async function homeworkReminders(

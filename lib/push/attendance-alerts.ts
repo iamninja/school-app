@@ -39,7 +39,7 @@ type ClassRow = {
 async function lessonsOn(supabase: SupabaseClient, date: string): Promise<DayLesson[]> {
   const [classes, slots, events, students, attendance] = await Promise.all([
     supabase.from("classes").select("id, name, archived_at, start_date, finish_date"),
-    supabase.from("class_schedule_slots").select("day, time, class_id, is_two_hour, end_time"),
+    supabase.from("class_schedule_slots").select("day, time, class_id, is_two_hour, end_time, student_ids"),
     supabase
       .from("calendar_events")
       .select(
@@ -88,6 +88,7 @@ async function lessonsOn(supabase: SupabaseClient, date: string): Promise<DayLes
           class_id: string;
           is_two_hour: boolean | null;
           end_time: string | null;
+          student_ids: string[] | null;
         }[]
       ).map((slot) => ({
         classId: slot.class_id,
@@ -95,6 +96,7 @@ async function lessonsOn(supabase: SupabaseClient, date: string): Promise<DayLes
         time: slot.time,
         isTwoHour: Boolean(slot.is_two_hour),
         endTime: slot.end_time,
+        studentIds: slot.student_ids ?? null,
       })),
       events: (events.data ?? []) as ProjectionEvent[],
     },
