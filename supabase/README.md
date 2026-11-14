@@ -12,6 +12,13 @@ npm run db:migration -- <short-description>   # creates supabase/migrations/<tim
 npm run db:push                                # applies pending migrations to the linked project
 ```
 
+Supabase CLI v3 (since 2026-11-14): `db push`/`db pull` target the *local*
+stack unless given `--remote`, so the npm scripts pass it (`supabase db push
+--remote` = the linked project). The CLI then asks before changing the
+hosted project and **Enter means No** - type `y`. To push to a project
+without relinking, run `npx supabase db push --remote=<project-ref>`
+directly. The old `--linked`/`--project-ref`/`--db-url` flags only warn now.
+
 Never hand-paste SQL into the Supabase dashboard's SQL editor anymore — that
 was the old workflow (see `history/` below) and it left no record of what had
 actually been applied.
