@@ -127,6 +127,7 @@ type SwitchDefinition = {
 const SWITCHES: SwitchDefinition[] = [
   { key: "homework", group: "school", label: "New homework", description: "To the class's students the moment you set it." },
   { key: "homework_reminders", group: "school", label: "Homework reminder", description: "The evening before the next lesson (or the due date)." },
+  { key: "class_files", group: "school", label: "New file", description: "To the class's students when you post a PDF or link to the class." },
   { key: "quizzes", group: "school", label: "New quiz", description: "When a quiz is assigned to a class." },
   { key: "quiz_reminders", group: "school", label: "Quiz deadline reminder", description: "The evening before a quiz's due date, only to students who haven't done it." },
   { key: "assessments", group: "school", label: "New test / test date moved", description: "To the assigned students." },

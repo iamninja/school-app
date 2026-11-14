@@ -1,5 +1,6 @@
 "use server";
 
+import { CLASS_FILES_BUCKET } from "@/lib/class-files";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { requireTeacher } from "@/lib/auth/require-teacher";
 import { ExpectedError } from "@/lib/expected-error";
@@ -342,6 +343,16 @@ export async function deleteClassAction(classId: string): Promise<void> {
   // attendance history survives the class itself being deleted.
   // student_class_assignments and quiz_assignments cascade away freely -
   // they're current-membership rows, not history.
+  //
+  // class_files cascade too, but their stored PDFs don't (Supabase blocks
+  // deleting storage objects from SQL): note them first, remove after.
+  const { data: fileRows } = await supabase
+    .from("class_files")
+    .select("storage_path")
+    .eq("class_id", classId)
+    .eq("teacher_id", user.id)
+    .not("storage_path", "is", null);
+
   const { error } = await supabase
     .from("classes")
     .delete()
@@ -350,6 +361,13 @@ export async function deleteClassAction(classId: string): Promise<void> {
 
   if (error) {
     throw error;
+  }
+
+  const paths = (fileRows ?? [])
+    .map((row: { storage_path: string | null }) => row.storage_path)
+    .filter((path): path is string => Boolean(path));
+  if (paths.length > 0) {
+    await supabase.storage.from(CLASS_FILES_BUCKET).remove(paths);
   }
 }
 

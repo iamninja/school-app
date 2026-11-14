@@ -47,6 +47,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { CLASS_GRADE_LABELS } from "@/lib/class-grades";
 import { fromIsoDate } from "@/lib/calendar-projection";
+import { ClassFilesPanel } from "@/components/class-files-panel";
 import { NotifyCheckbox } from "@/components/notify-checkbox";
 import { lessonTimeLabel, slotWindow } from "@/lib/schedule-grid";
 import type {
@@ -759,6 +760,19 @@ export function TeacherClassDetail({
                 >
                   Add homework
                 </Button>
+              </div>
+            </div>
+
+            <div className="rounded-lg border p-4">
+              <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                Files
+              </div>
+              <div className="mt-3">
+                <ClassFilesPanel
+                  key={classItem.id}
+                  classId={classItem.id}
+                  homework={assignedHomework.map((item) => ({ id: item.id, note: item.note }))}
+                />
               </div>
             </div>
           </div>

@@ -1,5 +1,6 @@
 "use server";
 
+import { PORTAL_CLASS_FILE_COLUMNS, portalClassFiles } from "@/lib/class-files";
 import { hourIncludes } from "@/lib/class-hours";
 import { createClient } from "@/lib/supabase/server";
 import { RECEIPT_COLUMNS, attachLineItems } from "@/lib/receipts";
@@ -18,6 +19,7 @@ import type {
   Receipt,
   AssessmentSummary,
   AssessmentAssignmentWithAssessment,
+  ClassFileSummary,
   HomeworkSummary,
 } from "@/lib/types/database";
 import {
@@ -452,6 +454,7 @@ export async function getParentDashboardDataAction(): Promise<
       // Homework: class-scoped like quizzes, so it needs the same classIds
       // indirection (unlike assessments, which key directly off student_id).
       let homework: HomeworkSummary[] = [];
+      let files: ClassFileSummary[] = [];
       if (classIds.length > 0) {
         const { data: homeworkRows } = await supabase
           .from("homework")
@@ -465,6 +468,21 @@ export async function getParentDashboardDataAction(): Promise<
           note: row.note,
           dueDate: row.due_date,
         }));
+
+        // Class files: attached ones go with their homework, the rest are
+        // the class file list. A failed read (no table yet) shows none.
+        const { data: fileRows, error: filesError } = await supabase
+          .from("class_files")
+          .select(PORTAL_CLASS_FILE_COLUMNS)
+          .in("class_id", classIds);
+        if (!filesError) {
+          const split = portalClassFiles(fileRows ?? [], classNameById);
+          files = split.files;
+          homework = homework.map((item) => ({
+            ...item,
+            files: split.byHomework.get(item.id) ?? [],
+          }));
+        }
       }
 
       return {
@@ -494,6 +512,7 @@ export async function getParentDashboardDataAction(): Promise<
         calendarEvents,
         assessments,
         homework,
+        files,
       };
     }),
   );

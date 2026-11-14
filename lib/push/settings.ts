@@ -17,6 +17,7 @@ export type NotificationSettings = Record<NotificationSwitch, boolean> & {
 export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   homework: true,
   homework_reminders: true,
+  class_files: true,
   quizzes: true,
   quiz_reminders: true,
   assessments: true,

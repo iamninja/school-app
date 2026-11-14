@@ -26,6 +26,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StudentQuizPanel } from "@/components/student-quiz-panel";
+import { PortalClassFilesCard, PortalHomeworkFiles } from "@/components/portal-class-files";
 import { PortalHistoryDialog } from "@/components/portal-history-dialog";
 import { PortalUpcomingCard } from "@/components/portal-upcoming-card";
 import type {
@@ -33,6 +34,7 @@ import type {
   QuizAttemptReview,
   QuizSummary,
   AssessmentSummary,
+  ClassFileSummary,
   HomeworkSummary,
 } from "@/lib/types/database";
 import {
@@ -87,6 +89,7 @@ type StudentDashboardProps = {
   calendarEvents: PortalCalendarEvent[];
   assessments: AssessmentSummary[];
   homework: HomeworkSummary[];
+  files?: ClassFileSummary[];
   demoMode?: boolean;
   demoReviews?: Record<string, QuizAttemptReview>;
 };
@@ -226,6 +229,7 @@ function HomeworkRow({ item }: { item: HomeworkSummary }) {
       <p className="text-xs text-muted-foreground">
         {item.className} · {whenLabel}
       </p>
+      <PortalHomeworkFiles files={item.files} />
     </div>
   );
 }
@@ -532,6 +536,11 @@ export function StudentDashboard(props: StudentDashboardProps) {
                   )}
                 </CardContent>
               </Card>
+            </div>
+
+            <div className="space-y-3">
+              <SectionLabel>Αρχεία</SectionLabel>
+              <PortalClassFilesCard files={props.files} />
             </div>
           </div>
 

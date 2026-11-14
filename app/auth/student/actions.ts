@@ -1,5 +1,6 @@
 "use server";
 
+import { PORTAL_CLASS_FILE_COLUMNS, portalClassFiles } from "@/lib/class-files";
 import { hourIncludes } from "@/lib/class-hours";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
@@ -20,6 +21,7 @@ import type {
   PortalCalendarEvent,
   AssessmentSummary,
   AssessmentAssignmentWithAssessment,
+  ClassFileSummary,
   HomeworkSummary,
 } from "@/lib/types/database";
 
@@ -284,6 +286,7 @@ export async function getStudentDashboardDataAction(): Promise<
 
   // Get homework assigned to this student's classes
   let homework: HomeworkSummary[] = [];
+  let files: ClassFileSummary[] = [];
   if (classIds.length > 0) {
     const { data: homeworkRows } = await supabase
       .from("homework")
@@ -297,6 +300,21 @@ export async function getStudentDashboardDataAction(): Promise<
       note: row.note,
       dueDate: row.due_date,
     }));
+
+    // Class files: attached ones go with their homework, the rest are
+    // the class file list. A failed read (no table yet) shows none.
+    const { data: fileRows, error: filesError } = await supabase
+      .from("class_files")
+      .select(PORTAL_CLASS_FILE_COLUMNS)
+      .in("class_id", classIds);
+    if (!filesError) {
+      const split = portalClassFiles(fileRows ?? [], classNameById);
+      files = split.files;
+      homework = homework.map((item) => ({
+        ...item,
+        files: split.byHomework.get(item.id) ?? [],
+      }));
+    }
   }
 
   // Attempts whose quiz has since been deleted (quiz_id is SET NULL on
@@ -432,6 +450,7 @@ export async function getStudentDashboardDataAction(): Promise<
     calendarEvents,
     assessments,
     homework,
+    files,
   };
 }
 

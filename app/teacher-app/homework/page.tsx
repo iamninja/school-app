@@ -1,3 +1,4 @@
+import { CompanionClassFiles } from "@/components/teacher-app/class-files";
 import { HomeworkPanel } from "@/components/teacher-app/homework-panel";
 import { requireCompanionTeacher } from "@/app/teacher-app/session";
 import { loadHomeworkView } from "@/lib/teacher-app/load";
@@ -33,6 +34,13 @@ export default async function TeacherAppHomeworkPage({
         today={today}
         classPicker
       />
+      {view.selectedClassId ? (
+        <CompanionClassFiles
+          classId={view.selectedClassId}
+          files={view.files}
+          homework={view.homework.map((item) => ({ id: item.id, note: item.note }))}
+        />
+      ) : null}
     </div>
   );
 }

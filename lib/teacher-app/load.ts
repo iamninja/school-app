@@ -6,6 +6,7 @@ import type { AttendanceStatus } from "@/lib/attendance-records";
 import type {
   Assessment,
   AssessmentAssignment,
+  ClassFile,
   Homework,
   TeacherAssessmentAssignmentRow,
 } from "@/lib/types/database";
@@ -420,6 +421,8 @@ export type CompanionHomeworkView = {
   homework: CompanionHomework[];
   /** The selected class's next three lesson days after today, for the due-date chips. */
   nextLessonDates: string[];
+  /** The selected class's posted files (lib/class-files.ts). */
+  files: ClassFile[];
 };
 
 export async function loadHomeworkView(
@@ -449,6 +452,7 @@ export async function loadHomeworkView(
     null;
 
   let homework: CompanionHomework[] = [];
+  let files: ClassFile[] = [];
   if (selectedClassId) {
     const { data, error } = await supabase
       .from("homework")
@@ -459,6 +463,18 @@ export async function loadHomeworkView(
       .limit(10);
     if (error) throw error;
     homework = (data ?? []) as CompanionHomework[];
+
+    const { data: fileRows, error: filesError } = await supabase
+      .from("class_files")
+      .select(
+        "id, class_id, homework_id, kind, title, note, file_name, size_bytes, url, pinned, created_at",
+      )
+      .eq("teacher_id", teacherId)
+      .eq("class_id", selectedClassId)
+      .order("created_at", { ascending: false });
+    // Files are extra: a missing table (migration not pushed yet) mustn't
+    // break the Homework tab.
+    files = filesError ? [] : ((fileRows ?? []) as ClassFile[]);
   }
 
   return {
@@ -466,6 +482,7 @@ export async function loadHomeworkView(
     todayClassIds,
     selectedClassId,
     homework,
+    files,
     nextLessonDates: selectedClassId ? nextLessonDays(selectedClassId, today, projection) : [],
   };
 }
