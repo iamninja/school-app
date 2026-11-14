@@ -5,7 +5,7 @@ import { redactKnownSecrets } from "@/lib/secret-registry";
 // broad (e.g. "name" also catches "className", "familyName") since a
 // false-positive redaction is fine, a leaked child's name/email/phone
 // isn't. Defense-in-depth: this app doesn't currently attach PII to
-// Sentry events on purpose (sendDefaultPii: false, no Sentry.setUser
+// Sentry events on purpose (dataCollection all off, no Sentry.setUser
 // calls), this just makes sure a future `captureException(err, { extra })`
 // call can't accidentally leak one through.
 //
@@ -73,9 +73,10 @@ export function scrubPii(event: ErrorEvent): ErrorEvent {
     // ever been debugged from one.
     delete event.request.data;
     // Same reasoning: the cookie header carries the Supabase auth token
-    // (session takeover). The SDK resolves include.headers to true even
-    // under sendDefaultPii: false, since the default is a deny-list object
-    // rather than false, so clearing request.cookies alone misses it.
+    // (session takeover). v10 sent headers even under sendDefaultPii:
+    // false (a deny-list default, not false); v11's dataCollection turns
+    // them off, but clearing request.cookies alone would miss it if that
+    // ever regressed.
     delete event.request.headers;
     if (event.request.cookies) {
       event.request.cookies = {};
