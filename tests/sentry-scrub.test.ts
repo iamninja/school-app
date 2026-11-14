@@ -118,3 +118,27 @@ describe("sentryInitOptions - beforeBreadcrumb", () => {
     expect(beforeBreadcrumb(breadcrumb)).toBe(breadcrumb);
   });
 });
+
+describe("sentryInitOptions - dataCollection (Sentry v11)", () => {
+  it("turns every personal-data category off instead of relying on v11's permissive defaults", () => {
+    const options = sentryInitOptions() as Record<string, unknown>;
+    expect(options).not.toHaveProperty("sendDefaultPii");
+    expect(options.dataCollection).toEqual({
+      userInfo: false,
+      cookies: false,
+      httpHeaders: { request: false, response: false },
+      httpBodies: [],
+      urlQueryParams: { deny: expect.arrayContaining(["token", "key", "code"]) },
+      graphQL: { document: false, variables: false },
+      genAI: { inputs: false, outputs: false },
+      mcp: { inputs: false, outputs: false },
+      databaseQueryData: false,
+      queues: false,
+      stackFrameVariables: false,
+    });
+  });
+
+  it("keeps performance tracing off", () => {
+    expect(sentryInitOptions().tracesSampleRate).toBe(0);
+  });
+});
