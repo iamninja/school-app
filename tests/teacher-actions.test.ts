@@ -1189,6 +1189,33 @@ describe("teacher actions - deleteClassAction", () => {
 
     await expect(deleteClassAction("class-1")).rejects.toThrow();
   });
+
+  it("removes the class's stored PDFs after the class is gone", async () => {
+    const client = createMockSupabaseClient({
+      class_files: { data: [{ storage_path: "teacher-1/class-1/a.pdf" }], error: null },
+      classes: { data: null, error: null },
+    });
+    const remove = vi.fn(async () => ({ data: [], error: null }));
+    client.storage = { from: vi.fn(() => ({ remove })) };
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await deleteClassAction("class-1");
+
+    expect(remove).toHaveBeenCalledWith(["teacher-1/class-1/a.pdf"]);
+  });
+
+  it("keeps the PDFs when the class delete fails", async () => {
+    const client = createMockSupabaseClient({
+      class_files: { data: [{ storage_path: "teacher-1/class-1/a.pdf" }], error: null },
+      classes: { data: null, error: { code: "42501", message: "permission denied" } },
+    });
+    const remove = vi.fn(async () => ({ data: [], error: null }));
+    client.storage = { from: vi.fn(() => ({ remove })) };
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    await expect(deleteClassAction("class-1")).rejects.toThrow();
+    expect(remove).not.toHaveBeenCalled();
+  });
 });
 
 describe("teacher actions - enrollment", () => {

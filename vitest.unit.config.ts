@@ -41,6 +41,7 @@ export default defineConfig({
       "tests/push-absences-reminders.test.ts",
       "tests/push-attendance-alerts.test.ts",
       "tests/auth-confirm-route.test.ts",
+      "tests/class-files-route.test.ts",
       "tests/proxy.test.ts",
     ],
   },

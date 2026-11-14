@@ -465,6 +465,8 @@ export interface StudentDashboardData {
   calendarEvents: PortalCalendarEvent[];
   assessments: AssessmentSummary[];
   homework: HomeworkSummary[];
+  /** Class files not attached to a homework item. */
+  files?: ClassFileSummary[];
 }
 
 export interface ParentDashboardChild {
@@ -502,6 +504,8 @@ export interface ParentDashboardChild {
   calendarEvents: PortalCalendarEvent[];
   assessments: AssessmentSummary[];
   homework: HomeworkSummary[];
+  /** Class files not attached to a homework item. */
+  files?: ClassFileSummary[];
 }
 
 export interface ParentDashboardData {
@@ -972,6 +976,54 @@ export interface HomeworkSummary {
   className: string;
   note: string;
   dueDate: string | null;
+  /** Class files attached to this homework item. */
+  files?: ClassFileSummary[];
+}
+
+// A PDF or link posted to a class (supabase/migrations/*_class-files.sql).
+export interface ClassFile {
+  id: string;
+  class_id: string;
+  homework_id: string | null;
+  kind: "file" | "link";
+  title: string;
+  note: string | null;
+  file_name: string | null;
+  size_bytes: number | null;
+  url: string | null;
+  pinned: boolean;
+  created_at: string;
+}
+
+export interface ClassFileInput {
+  classId: string;
+  /** An uploaded PDF (its storage path, from uploadClassFile) ... */
+  storagePath?: string | null;
+  fileName?: string | null;
+  sizeBytes?: number | null;
+  /** ... or a link. */
+  url?: string | null;
+  title?: string | null;
+  note?: string | null;
+  homeworkId?: string | null;
+  /** Send the "new file" notice (default true). */
+  notify?: boolean;
+}
+
+// Portal-facing: what students and parents see.
+export interface ClassFileSummary {
+  id: string;
+  classId: string;
+  className: string;
+  kind: "file" | "link";
+  title: string;
+  note: string | null;
+  sizeBytes: number | null;
+  /** The download route for a file, the link itself for a link. */
+  href: string;
+  isDrive: boolean;
+  pinned: boolean;
+  createdAt: string;
 }
 
 // Monthly tuition balance ledger. amount is SIGNED: positive = family

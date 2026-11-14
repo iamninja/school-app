@@ -17,7 +17,7 @@ export const PLACEHOLDERS = {
   new_date: { label: "new date", sample: "16/10" },
   new_time: { label: "new time", sample: "18:00" },
   student: { label: "student name", sample: "Μαρία" },
-  title: { label: "quiz/test title", sample: "Παράγωγοι" },
+  title: { label: "quiz/test/file title", sample: "Παράγωγοι" },
   due_date: { label: "due date", sample: "16/10" },
   note: { label: "homework text", sample: "σελ. 42, ασκ. 1-10" },
   receipt: { label: "receipt number", sample: "Α-5" },
@@ -33,6 +33,7 @@ export type MessageValues = Partial<Record<Placeholder, string | null | undefine
 export type NotificationSwitch =
   | "homework"
   | "homework_reminders"
+  | "class_files"
   | "quizzes"
   | "quiz_reminders"
   | "assessments"
@@ -84,6 +85,15 @@ export const EVENTS = {
     title: "Υπενθύμιση εργασίας · {class}",
     body: "Για αύριο: {note}",
     placeholders: ["class", "note", "due_date"],
+    url: STUDENT_URL,
+  },
+  class_file: {
+    label: "New file",
+    group: "school",
+    switch: "class_files",
+    title: "Νέο αρχείο · {class}",
+    body: "{title}",
+    placeholders: ["class", "title"],
     url: STUDENT_URL,
   },
   quiz: {

@@ -32,6 +32,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MathText } from "@/components/math-text";
+import { PortalClassFilesCard, PortalHomeworkFiles } from "@/components/portal-class-files";
 import { PortalHistoryDialog } from "@/components/portal-history-dialog";
 import { PortalUpcomingCard } from "@/components/portal-upcoming-card";
 import { ReceiptDocument } from "@/components/receipt-document";
@@ -249,6 +250,7 @@ function HomeworkRow({ item }: { item: HomeworkSummary }) {
       <p className="text-xs text-muted-foreground">
         {item.className} · {whenLabel}
       </p>
+      <PortalHomeworkFiles files={item.files} />
     </div>
   );
 }
@@ -443,6 +445,7 @@ function ChildSection({
   calendarEvents,
   assessments,
   homework,
+  files,
 }: ParentDashboardChild) {
   const schedulesByClass = schedules.reduce(
     (acc, schedule) => {
@@ -723,6 +726,8 @@ function ChildSection({
               )}
             </CardContent>
           </Card>
+
+          <PortalClassFilesCard files={files} />
         </div>
 
         {/* Right: upcoming + recent attendance */}

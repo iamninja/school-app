@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 
 import { LessonAttendance } from "@/components/teacher-app/lesson-attendance";
+import { CompanionClassFiles } from "@/components/teacher-app/class-files";
 import { HomeworkPanel } from "@/components/teacher-app/homework-panel";
 import { LastHomework } from "@/components/teacher-app/last-homework";
 import { formatCompanionDate } from "@/components/teacher-app/format";
@@ -87,7 +88,15 @@ export default async function TeacherAppLessonPage({
           today={today}
           classPicker={false}
         />
-      ) : lesson.hasLesson ? (
+      ) : null}
+      {tab === "homework" && homeworkView?.selectedClassId ? (
+        <CompanionClassFiles
+          classId={homeworkView.selectedClassId}
+          files={homeworkView.files}
+          homework={homeworkView.homework.map((item) => ({ id: item.id, note: item.note }))}
+        />
+      ) : null}
+      {tab === "homework" && homeworkView ? null : lesson.hasLesson ? (
         <div className="space-y-4">
           {lessonTasks?.lessonRef && (
             <CompanionTasks
