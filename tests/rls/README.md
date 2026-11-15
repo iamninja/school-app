@@ -54,6 +54,16 @@ student can't write their own quiz score directly (bypassing grading).
 expenses are invisible to parents, students and guests (contacts and tasks
 also per teacher), and they can't add, change or delete them.
 
+`storage-files-rls.test.ts` — class files (private PDFs) open to a
+class's students and parents only once shared with that class, never to
+other families or guests; practice images public to view; only the teacher
+uploads, replaces or deletes either, and only in their own folder.
+
+`settings-and-logs-rls.test.ts` — site settings readable by everyone but
+changed by the teacher only; class timetables for the class's students and
+parents only; the myDATA submission log and notification job runs the
+teacher's only.
+
 `local-stack-reset.test.ts` — `supabase db reset` (migrations + seed)
 succeeds without a foreign-key violation.
 
