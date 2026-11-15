@@ -134,3 +134,125 @@ export function sectionMastery(progress: PracticeProgress, sectionId: string): n
   // Shrunk towards 0 until there are ~10 answers, so 1 of 1 isn't "mastered".
   return stats.right / Math.max(stats.total, 10);
 }
+
+/**
+ * Folds one progress into another - a guest's browser progress into the
+ * student's account the first time they play logged in, or two devices'
+ * copies. Points add up, the best and the longer streak win, mistakes and
+ * section counts are combined.
+ */
+export function mergeProgress(base: PracticeProgress, extra: PracticeProgress): PracticeProgress {
+  const sections: PracticeProgress["sections"] = { ...base.sections };
+  for (const [id, stats] of Object.entries(extra.sections)) {
+    const current = sections[id] ?? { right: 0, total: 0 };
+    sections[id] = { right: current.right + stats.right, total: current.total + stats.total };
+  }
+  const seen = new Set(base.mistakes.map((mistake) => mistake.id));
+  const mistakes = [...base.mistakes, ...extra.mistakes.filter((mistake) => !seen.has(mistake.id))].slice(0, MAX_MISTAKES);
+  const daily = mergeDaily(base.daily, extra.daily);
+  return {
+    ...base,
+    points: base.points + extra.points,
+    bestScore: Math.max(base.bestScore, extra.bestScore),
+    daily,
+    mistakes,
+    sections,
+    lastGrade: base.lastGrade ?? extra.lastGrade,
+    lastSections: base.lastSections.length ? base.lastSections : extra.lastSections,
+  };
+}
+
+/** Day number (days since 1970) of a "YYYY-MM-DD" local day. */
+function dayNumber(day: string): number {
+  const [year, month, date] = day.split("-").map(Number);
+  return Math.round(Date.UTC(year, month - 1, date) / 86_400_000);
+}
+
+/**
+ * Two streaks as one: each covers the days up to its lastDay. If they
+ * touch or overlap (no missed day between them), the joined streak runs
+ * from the earlier start to the later end; otherwise the later one counts.
+ */
+export function mergeDaily(a: PracticeProgress["daily"], b: PracticeProgress["daily"]): PracticeProgress["daily"] {
+  if (!a.lastDay || a.count <= 0) return b;
+  if (!b.lastDay || b.count <= 0) return a;
+  const [early, late] = a.lastDay <= b.lastDay ? [a, b] : [b, a];
+  const lateEnd = dayNumber(late.lastDay!);
+  const lateStart = lateEnd - late.count + 1;
+  const earlyEnd = dayNumber(early.lastDay!);
+  const earlyStart = earlyEnd - early.count + 1;
+  if (earlyEnd < lateStart - 1) return late;
+  return { count: lateEnd - Math.min(earlyStart, lateStart) + 1, lastDay: late.lastDay };
+}
+
+/** Has this progress anything worth carrying over? */
+export function hasProgress(progress: PracticeProgress): boolean {
+  return progress.points > 0 || progress.mistakes.length > 0 || Object.keys(progress.sections).length > 0;
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** What the server stores: parsed again, bounded, nothing but the known fields. */
+export function sanitizeProgress(value: unknown): PracticeProgress {
+  const parsed = parseProgress(JSON.stringify(value ?? null));
+  const sections: PracticeProgress["sections"] = {};
+  for (const [id, stats] of Object.entries(parsed.sections).slice(0, 500)) {
+    if (!UUID.test(id) || !stats) continue;
+    const right = Math.max(0, Math.floor(Number(stats.right) || 0));
+    const total = Math.max(right, Math.floor(Number(stats.total) || 0));
+    sections[id] = { right, total };
+  }
+  const clip = (text: unknown, max: number) => String(text ?? "").slice(0, max);
+  return {
+    version: 1,
+    points: Math.max(0, Math.min(10_000_000, Math.floor(Number(parsed.points) || 0))),
+    bestScore: Math.max(0, Math.min(10, Math.floor(Number(parsed.bestScore) || 0))),
+    daily: {
+      count: Math.max(0, Math.min(10_000, Math.floor(Number(parsed.daily.count) || 0))),
+      lastDay: /^\d{4}-\d{2}-\d{2}$/.test(String(parsed.daily.lastDay)) ? String(parsed.daily.lastDay) : null,
+    },
+    mistakes: parsed.mistakes
+      .filter((mistake) => UUID.test(mistake.id))
+      .slice(0, MAX_MISTAKES)
+      .map((mistake) => ({
+        id: mistake.id,
+        prompt: clip(mistake.prompt, 600),
+        sectionName: clip(mistake.sectionName, 120),
+        type: clip(mistake.type, 20),
+        right: Math.max(0, Math.min(RIGHTS_TO_CLEAR, Math.floor(Number(mistake.right) || 0))),
+      })),
+    sections,
+    lastGrade: parsed.lastGrade ? clip(parsed.lastGrade, 20) : null,
+    lastSections: parsed.lastSections.filter((id) => UUID.test(String(id))).slice(0, 100),
+  };
+}
+
+/** What the portals show about practice. */
+export interface PracticeSummary {
+  /** Is there anything to play at all? */
+  available: boolean;
+  dailyStreak: number;
+  points: number;
+  mistakes: number;
+  bestScore: number;
+}
+
+export function practiceSummary(progress: PracticeProgress | null, today: string, available: boolean): PracticeSummary {
+  const p = progress ?? emptyProgress();
+  return {
+    available,
+    dailyStreak: currentDailyStreak(p, today),
+    points: p.points,
+    mistakes: p.mistakes.length,
+    bestScore: p.bestScore,
+  };
+}
+
+/** What a parent sees about a child's practice. */
+export interface ParentPracticeSummary {
+  dailyStreak: number;
+  weekAnswers: number;
+  weekRight: number;
+  weekDays: number;
+  mistakes: number;
+}

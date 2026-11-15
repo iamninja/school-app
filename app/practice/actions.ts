@@ -2,8 +2,10 @@
 
 import { headers } from "next/headers";
 
-import { drawPracticeRound, getPracticeViewer, type RoundQuestion } from "@/lib/practice-server";
-import { allowDraw } from "@/lib/practice-rate-limit";
+import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
+import { canSeeQuestion, drawPracticeRound, getPracticeViewer, type RoundQuestion } from "@/lib/practice-server";
+import { sanitizeProgress } from "@/lib/practice-progress";
+import { allowDraw, allowReport } from "@/lib/practice-rate-limit";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -40,4 +42,90 @@ export async function drawPracticeRoundAction(input: {
     return { ok: false, error: mistakesOnly ? "Τα λάθη σου δεν είναι πια διαθέσιμα." : "Δεν βρέθηκαν ερωτήσεις σε αυτές τις ενότητες." };
   }
   return { ok: true, questions };
+}
+
+export interface PracticeAnswerUpload {
+  /** Made on the device per answer, so a retried upload is harmless. */
+  clientId: string;
+  questionId: string;
+  sectionId: string;
+  correct: boolean;
+  points: number;
+  answeredAt: string;
+}
+
+/**
+ * Saves a logged-in student's practice: their progress (as the game keeps
+ * it) and the answers since the last save. Guests have nothing to save
+ * here - their progress stays in the browser.
+ */
+export async function syncPracticeProgressAction(input: {
+  progress: unknown;
+  answers: PracticeAnswerUpload[];
+}): Promise<{ ok: true; saved: number } | { ok: false; error: string }> {
+  const viewer = await getPracticeViewer();
+  if (viewer.kind !== "student") return { ok: false, error: "Only students' progress is saved to an account." };
+
+  const progress = sanitizeProgress(input.progress);
+  const now = Date.now();
+  const answers = (input.answers ?? []).slice(0, 200).filter(
+    (answer) =>
+      answer &&
+      typeof answer.clientId === "string" &&
+      answer.clientId.length >= 8 &&
+      answer.clientId.length <= 80 &&
+      UUID.test(answer.questionId) &&
+      UUID.test(answer.sectionId) &&
+      Math.abs(now - Date.parse(answer.answeredAt)) < 7 * 24 * 60 * 60 * 1000,
+  );
+
+  // The student's own client: row-level security keeps each student to their own rows.
+  const supabase = await createClient();
+  const { error: progressError } = await supabase
+    .from("practice_progress")
+    .upsert({ student_id: viewer.studentId, data: progress, updated_at: new Date().toISOString() });
+  if (progressError) return { ok: false, error: "Η πρόοδος δεν αποθηκεύτηκε - θα ξαναδοκιμάσω." };
+
+  if (answers.length) {
+    const { error } = await supabase.from("practice_answers").upsert(
+      answers.map((answer) => ({
+        student_id: viewer.studentId,
+        client_id: answer.clientId,
+        question_id: answer.questionId,
+        section_id: answer.sectionId,
+        correct: Boolean(answer.correct),
+        points: Math.max(0, Math.min(100, Math.floor(Number(answer.points) || 0))),
+        answered_at: new Date(answer.answeredAt).toISOString(),
+      })),
+      { onConflict: "student_id,client_id", ignoreDuplicates: true },
+    );
+    if (error) return { ok: false, error: "Οι απαντήσεις δεν αποθηκεύτηκαν - θα ξαναδοκιμάσω." };
+  }
+  return { ok: true, saved: answers.length };
+}
+
+/** "Something's wrong with this question" - from anyone who could play it. */
+export async function reportPracticeQuestionAction(input: {
+  questionId: string;
+  message?: string | null;
+  playedPrompt?: string | null;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!UUID.test(input.questionId)) return { ok: false, error: "Άγνωστη ερώτηση." };
+  const requestHeaders = await headers();
+  const ip = (requestHeaders.get("x-forwarded-for") ?? "").split(",")[0].trim() || "unknown";
+  if (!allowReport(ip)) return { ok: false, error: "Έστειλες ήδη αρκετές αναφορές - ευχαριστούμε!" };
+
+  const viewer = await getPracticeViewer();
+  if (!(await canSeeQuestion(viewer, input.questionId))) return { ok: false, error: "Άγνωστη ερώτηση." };
+
+  const { error } = await createServiceRoleClient()
+    .from("practice_reports")
+    .insert({
+      question_id: input.questionId,
+      student_id: viewer.kind === "student" ? viewer.studentId : null,
+      message: (input.message ?? "").trim().slice(0, 1000) || null,
+      played_prompt: (input.playedPrompt ?? "").slice(0, 4000) || null,
+    });
+  if (error) return { ok: false, error: "Η αναφορά δεν στάλθηκε - ξαναδοκίμασε." };
+  return { ok: true };
 }

@@ -34,6 +34,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MathText } from "@/components/math-text";
 import { PortalClassFilesCard, PortalHomeworkFiles } from "@/components/portal-class-files";
 import { PortalHistoryDialog } from "@/components/portal-history-dialog";
+import { ParentPracticeCard } from "@/components/practice/parent-practice-card";
 import { PortalUpcomingCard } from "@/components/portal-upcoming-card";
 import { ReceiptDocument } from "@/components/receipt-document";
 import type {
@@ -446,6 +447,7 @@ function ChildSection({
   assessments,
   homework,
   files,
+  practice,
 }: ParentDashboardChild) {
   const schedulesByClass = schedules.reduce(
     (acc, schedule) => {
@@ -728,6 +730,8 @@ function ChildSection({
           </Card>
 
           <PortalClassFilesCard files={files} />
+
+          {practice ? <ParentPracticeCard summary={practice} name={student.firstName} /> : null}
         </div>
 
         {/* Right: upcoming + recent attendance */}

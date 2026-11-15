@@ -102,3 +102,56 @@ describe("pickRound", () => {
     expect(firstPlaces.size).toBe(3);
   });
 });
+
+describe("carrying progress over", () => {
+  const Q1 = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const Q2 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const S1 = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+
+  it("adds points and counts, keeps the best and the latest streak, joins mistakes", async () => {
+    const { mergeProgress } = await import("@/lib/practice-progress");
+    const account = { ...emptyProgress(), points: 100, bestScore: 6, daily: { count: 3, lastDay: "2026-11-14" },
+      mistakes: [{ id: Q1, prompt: "a", sectionName: "x", type: "number", right: 1 }], sections: { [S1]: { right: 5, total: 8 } } };
+    const guest = { ...emptyProgress(), points: 40, bestScore: 8, daily: { count: 1, lastDay: "2026-11-15" },
+      mistakes: [{ id: Q1, prompt: "a", sectionName: "x", type: "number", right: 0 }, { id: Q2, prompt: "b", sectionName: "x", type: "choice", right: 0 }],
+      sections: { [S1]: { right: 2, total: 3 } } };
+    const merged = mergeProgress(account, guest);
+    expect(merged.points).toBe(140);
+    expect(merged.bestScore).toBe(8);
+    // 3 days up to the 14th, then the 15th: one streak of 4.
+    expect(merged.daily).toEqual({ count: 4, lastDay: "2026-11-15" });
+    expect(merged.mistakes.map((m) => [m.id, m.right])).toEqual([[Q1, 1], [Q2, 0]]);
+    expect(merged.sections[S1]).toEqual({ right: 7, total: 11 });
+  });
+
+  it("stores only sane, bounded data from the device", async () => {
+    const { sanitizeProgress } = await import("@/lib/practice-progress");
+    const clean = sanitizeProgress({
+      version: 1, points: -5, bestScore: 99, daily: { count: 2, lastDay: "<script>" },
+      mistakes: [{ id: "not-a-uuid", prompt: "x" }, { id: Q1, prompt: "y".repeat(2000), sectionName: "s", type: "number", right: 7 }],
+      sections: { [S1]: { right: 9, total: 3 }, junk: { right: 1, total: 1 } },
+      lastSections: [S1, "nope"], extra: "dropped",
+    });
+    expect(clean.points).toBe(0);
+    expect(clean.bestScore).toBe(10);
+    expect(clean.daily.lastDay).toBeNull();
+    expect(clean.mistakes).toHaveLength(1);
+    expect(clean.mistakes[0].prompt).toHaveLength(600);
+    expect(clean.mistakes[0].right).toBe(2);
+    expect(clean.sections).toEqual({ [S1]: { right: 9, total: 9 } });
+    expect(clean.lastSections).toEqual([S1]);
+    expect(clean).not.toHaveProperty("extra");
+    expect(sanitizeProgress("garbage")).toEqual(emptyProgress());
+  });
+});
+
+describe("mergeDaily", () => {
+  it("joins streaks that touch or overlap, keeps the later one after a gap", async () => {
+    const { mergeDaily } = await import("@/lib/practice-progress");
+    expect(mergeDaily({ count: 3, lastDay: "2026-11-14" }, { count: 1, lastDay: "2026-11-15" })).toEqual({ count: 4, lastDay: "2026-11-15" });
+    expect(mergeDaily({ count: 5, lastDay: "2026-11-15" }, { count: 2, lastDay: "2026-11-15" })).toEqual({ count: 5, lastDay: "2026-11-15" });
+    expect(mergeDaily({ count: 2, lastDay: "2026-11-12" }, { count: 1, lastDay: "2026-11-15" })).toEqual({ count: 1, lastDay: "2026-11-15" });
+    expect(mergeDaily({ count: 0, lastDay: null }, { count: 2, lastDay: "2026-11-15" })).toEqual({ count: 2, lastDay: "2026-11-15" });
+    expect(mergeDaily({ count: 2, lastDay: "2026-11-30" }, { count: 1, lastDay: "2026-12-01" })).toEqual({ count: 3, lastDay: "2026-12-01" });
+  });
+});

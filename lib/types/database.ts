@@ -467,6 +467,8 @@ export interface StudentDashboardData {
   homework: HomeworkSummary[];
   /** Class files not attached to a homework item. */
   files?: ClassFileSummary[];
+  /** Practice: streak, points, mistakes (lib/practice-progress.ts). */
+  practice?: import("@/lib/practice-progress").PracticeSummary;
 }
 
 export interface ParentDashboardChild {
@@ -506,6 +508,8 @@ export interface ParentDashboardChild {
   homework: HomeworkSummary[];
   /** Class files not attached to a homework item. */
   files?: ClassFileSummary[];
+  /** The child's practice (null when they haven't practised). */
+  practice?: import("@/lib/practice-progress").ParentPracticeSummary | null;
 }
 
 export interface ParentDashboardData {

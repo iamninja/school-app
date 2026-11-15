@@ -4,7 +4,12 @@ import * as React from "react";
 import Link from "next/link";
 import { CheckIcon, FlameIcon, InfoIcon, StarIcon } from "lucide-react";
 
-import { drawPracticeRoundAction } from "@/app/practice/actions";
+import {
+  drawPracticeRoundAction,
+  reportPracticeQuestionAction,
+  syncPracticeProgressAction,
+  type PracticeAnswerUpload,
+} from "@/app/practice/actions";
 import { BrandMark } from "@/components/brand";
 import { MathText } from "@/components/math-text";
 import { PracticeGraphView } from "@/components/practice/practice-graph";
@@ -15,7 +20,9 @@ import {
   RIGHTS_TO_CLEAR,
   currentDailyStreak,
   emptyProgress,
+  hasProgress,
   localDay,
+  mergeProgress,
   parseProgress,
   pointsFor,
   recordAnswer,
@@ -56,33 +63,157 @@ interface Result {
   points: number;
 }
 
-function useProgress(): [PracticeProgress, (change: (prev: PracticeProgress) => PracticeProgress) => void] {
-  const [progress, setProgress] = React.useState<PracticeProgress>(emptyProgress);
-  React.useEffect(() => {
+const STUDENT_CACHE_KEY = "modus-practice-student-v1";
+const PENDING_KEY = "modus-practice-pending-v1";
+
+function readStorage(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+function writeStorage(key: string, value: string | null) {
+  try {
+    if (value === null) window.localStorage.removeItem(key);
+    else window.localStorage.setItem(key, value);
+  } catch {
+    // Private mode or blocked storage: play without saving locally.
+  }
+}
+
+type ProgressApi = {
+  progress: PracticeProgress;
+  update: (change: (prev: PracticeProgress) => PracticeProgress) => void;
+  /** Students: queue an answer for the account (sent in the background). */
+  queueAnswer: (answer: PracticeAnswerUpload) => void;
+  /** Students: a note that this device's guest progress was carried over. */
+  carriedOver: boolean;
+};
+
+/**
+ * Progress for guests lives in the browser. For the centre's students it
+ * lives on their account: loaded with the page, a guest's progress on this
+ * device folded in once, and every change saved in the background (with
+ * the unsent answers kept on the device until they're through).
+ */
+function useProgress(student: boolean, saved: PracticeProgress | null): ProgressApi {
+  const [progress, setProgress] = React.useState<PracticeProgress>(() => saved ?? emptyProgress());
+  const [carriedOver, setCarriedOver] = React.useState(false);
+  const latest = React.useRef(progress);
+  const timer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sending = React.useRef(false);
+
+  const flush = React.useCallback(async () => {
+    if (!student || sending.current) return;
+    sending.current = true;
+    const pending = parsePending(readStorage(PENDING_KEY));
     try {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage only exists in the browser, after hydration
-      setProgress(parseProgress(window.localStorage.getItem(PROGRESS_KEY)));
-    } catch {
-      // Private mode or blocked storage: play without saving.
-    }
-  }, []);
-  const update = React.useCallback((change: (prev: PracticeProgress) => PracticeProgress) => {
-    setProgress((prev) => {
-      const next = change(prev);
-      try {
-        window.localStorage.setItem(PROGRESS_KEY, JSON.stringify(next));
-      } catch {
-        // Not saved - the game still works.
+      const result = await syncPracticeProgressAction({ progress: latest.current, answers: pending });
+      if (result.ok) {
+        const sent = new Set(pending.map((answer) => answer.clientId));
+        const left = parsePending(readStorage(PENDING_KEY)).filter((answer) => !sent.has(answer.clientId));
+        writeStorage(PENDING_KEY, left.length ? JSON.stringify(left) : null);
       }
-      return next;
-    });
-  }, []);
-  return [progress, update];
+    } catch {
+      // Offline or the server didn't answer: kept on the device, sent next time.
+    } finally {
+      sending.current = false;
+    }
+  }, [student]);
+
+  const scheduleSync = React.useCallback(() => {
+    if (!student) return;
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => void flush(), 1500);
+  }, [student, flush]);
+
+  React.useEffect(() => {
+    if (!student) {
+      const local = parseProgress(readStorage(PROGRESS_KEY));
+      latest.current = local;
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage only exists in the browser, after hydration
+      setProgress(local);
+      return;
+    }
+    // A guest's progress on this device joins the account, once.
+    const guest = parseProgress(readStorage(PROGRESS_KEY));
+    const cached = parseProgress(readStorage(STUDENT_CACHE_KEY));
+    let start = saved ?? (hasProgress(cached) ? cached : emptyProgress());
+    if (hasProgress(guest)) {
+      start = mergeProgress(start, guest);
+      writeStorage(PROGRESS_KEY, null);
+      setCarriedOver(true);
+    }
+    latest.current = start;
+    setProgress(start);
+    writeStorage(STUDENT_CACHE_KEY, JSON.stringify(start));
+    if (hasProgress(guest) || parsePending(readStorage(PENDING_KEY)).length) void flush();
+
+    const retry = () => void flush();
+    window.addEventListener("online", retry);
+    const onHide = () => document.visibilityState === "hidden" && void flush();
+    document.addEventListener("visibilitychange", onHide);
+    return () => {
+      window.removeEventListener("online", retry);
+      document.removeEventListener("visibilitychange", onHide);
+    };
+  }, [student, saved, flush]);
+
+  const update = React.useCallback(
+    (change: (prev: PracticeProgress) => PracticeProgress) => {
+      const next = change(latest.current);
+      latest.current = next;
+      setProgress(next);
+      writeStorage(student ? STUDENT_CACHE_KEY : PROGRESS_KEY, JSON.stringify(next));
+      scheduleSync();
+    },
+    [student, scheduleSync],
+  );
+
+  const queueAnswer = React.useCallback(
+    (answer: PracticeAnswerUpload) => {
+      if (!student) return;
+      const pending = parsePending(readStorage(PENDING_KEY));
+      writeStorage(PENDING_KEY, JSON.stringify([...pending, answer].slice(-500)));
+      scheduleSync();
+    },
+    [student, scheduleSync],
+  );
+
+  return { progress, update, queueAnswer, carriedOver };
+}
+
+function parsePending(raw: string | null): PracticeAnswerUpload[] {
+  if (!raw) return [];
+  try {
+    const value = JSON.parse(raw);
+    return Array.isArray(value) ? value.filter((item) => item && typeof item.clientId === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function newClientId(): string {
+  try {
+    return crypto.randomUUID();
+  } catch {
+    return `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+  }
 }
 
 /** /practice: pick a grade and sections, play rounds of 10, review mistakes. */
-export function PracticeGame({ catalog, viewer }: { catalog: PracticeCatalogGrade[]; viewer: Viewer }) {
-  const [progress, updateProgress] = useProgress();
+export function PracticeGame({
+  catalog,
+  viewer,
+  savedProgress = null,
+}: {
+  catalog: PracticeCatalogGrade[];
+  viewer: Viewer;
+  /** A student's progress from their account. */
+  savedProgress?: PracticeProgress | null;
+}) {
+  const { progress, update: updateProgress, queueAnswer, carriedOver } = useProgress(viewer.kind === "student", savedProgress);
   const today = localDay();
   const studentGrade = viewer.kind === "student" && viewer.grade && catalog.some((grade) => grade.code === viewer.grade) ? viewer.grade : null;
 
@@ -98,6 +229,7 @@ export function PracticeGame({ catalog, viewer }: { catalog: PracticeCatalogGrad
   const [error, setError] = React.useState<string | null>(null);
   const [bestBefore, setBestBefore] = React.useState(0);
   const [restored, setRestored] = React.useState(false);
+  const [noticeClosed, setNoticeClosed] = React.useState(false);
 
   // Last time's grade and sections, once progress has loaded from storage.
   if (!restored && (progress.lastGrade || progress.lastSections.length)) {
@@ -155,6 +287,14 @@ export function PracticeGame({ catalog, viewer }: { catalog: PracticeCatalogGrad
         today,
       ),
     );
+    queueAnswer({
+      clientId: newClientId(),
+      questionId: question.id,
+      sectionId: question.sectionId,
+      correct,
+      points,
+      answeredAt: new Date().toISOString(),
+    });
     return { points, streak: nextStreak };
   };
 
@@ -192,6 +332,15 @@ export function PracticeGame({ catalog, viewer }: { catalog: PracticeCatalogGrad
       </header>
 
       <main className="mx-auto flex w-full max-w-xl flex-1 flex-col px-4 py-6">
+        {carriedOver && !noticeClosed ? (
+          <p className="mb-4 flex items-start gap-2 rounded-2xl bg-emerald-500/10 px-4 py-3 text-sm" role="status">
+            <CheckIcon className="mt-0.5 size-4 shrink-0 text-emerald-600" aria-hidden="true" />
+            <span className="flex-1">Η πρόοδός σου από αυτή τη συσκευή μεταφέρθηκε στον λογαριασμό σου.</span>
+            <button type="button" className="text-muted-foreground underline underline-offset-2" onClick={() => setNoticeClosed(true)}>
+              ΟΚ
+            </button>
+          </p>
+        ) : null}
         {catalog.length === 0 ? (
           <EmptyCatalog viewer={viewer} />
         ) : screen === "grade" ? (
@@ -698,9 +847,56 @@ function QuestionScreen({
           <button ref={nextRef} type="button" className={PRIMARY} onClick={onNext}>
             {index + 1 >= total ? "Δες το αποτέλεσμα" : "Επόμενη"}
           </button>
+          <ReportQuestion questionId={question.id} playedPrompt={question.prompt} />
         </div>
       ) : null}
     </section>
+  );
+}
+
+/** "Κάτι δεν πάει καλά;" - a note to the teacher about this question. */
+function ReportQuestion({ questionId, playedPrompt }: { questionId: string; playedPrompt: string }) {
+  const [open, setOpen] = React.useState(false);
+  const [message, setMessage] = React.useState("");
+  const [state, setState] = React.useState<"idle" | "sending" | "sent" | string>("idle");
+  if (state === "sent") return <p className="text-center text-sm text-muted-foreground">Ευχαριστούμε - ο καθηγητής θα το δει.</p>;
+  if (!open) {
+    return (
+      <button type="button" className="self-center text-sm text-muted-foreground underline underline-offset-2" onClick={() => setOpen(true)}>
+        Κάτι δεν πάει καλά με την ερώτηση;
+      </button>
+    );
+  }
+  return (
+    <form
+      className="grid gap-2"
+      onSubmit={async (event) => {
+        event.preventDefault();
+        setState("sending");
+        const result = await reportPracticeQuestionAction({ questionId, message, playedPrompt }).catch(() => ({ ok: false as const, error: "Η αναφορά δεν στάλθηκε - ξαναδοκίμασε." }));
+        setState(result.ok ? "sent" : result.error);
+      }}
+    >
+      <label htmlFor="practice-report" className="text-sm font-semibold">Τι δεν πάει καλά;</label>
+      <textarea
+        id="practice-report"
+        rows={2}
+        maxLength={1000}
+        value={message}
+        onChange={(event) => setMessage(event.target.value)}
+        placeholder="π.χ. η σωστή απάντηση είναι λάθος, ή κάτι λείπει"
+        className="rounded-xl border-2 bg-card px-3 py-2 text-sm outline-none focus:border-brand"
+      />
+      {state !== "idle" && state !== "sending" ? <p className="text-sm text-destructive">{state}</p> : null}
+      <div className="flex gap-2">
+        <button type="submit" className={cn(SECONDARY, "flex-1")} disabled={state === "sending"}>
+          {state === "sending" ? "Στέλνω…" : "Στείλε στον καθηγητή"}
+        </button>
+        <button type="button" className="px-3 text-sm text-muted-foreground underline underline-offset-2" onClick={() => setOpen(false)}>
+          Άκυρο
+        </button>
+      </div>
+    </form>
   );
 }
 

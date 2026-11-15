@@ -28,6 +28,16 @@ export default function manifest(): MetadataRoute.Manifest {
     // the status bar still follows the page's media-aware theme-color
     // (app/layout.tsx).
     background_color: APP_BACKGROUND_COLOR,
+    // Long-press the app icon (Android) or right-click it (computer).
+    shortcuts: [
+      {
+        name: "Εξάσκηση",
+        short_name: "Εξάσκηση",
+        description: "Ένας γύρος 10 ερωτήσεων",
+        url: "/practice",
+        icons: [{ src: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }],
+      },
+    ],
     icons: [
       {
         src: "/icons/icon-192.png",

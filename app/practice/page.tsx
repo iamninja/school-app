@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 import { PracticeGame } from "@/components/practice/practice-game";
-import { getPracticeCatalog, getPracticeViewer } from "@/lib/practice-server";
+import { getPracticeCatalog, getPracticeViewer, getStudentPracticeProgress } from "@/lib/practice-server";
 
 export const metadata: Metadata = {
   title: "Εξάσκηση · Modus",
@@ -17,10 +17,14 @@ export const dynamic = "force-dynamic";
  */
 export default async function PracticePage() {
   const viewer = await getPracticeViewer();
-  const catalog = await getPracticeCatalog(viewer).catch(() => []);
+  const [catalog, savedProgress] = await Promise.all([
+    getPracticeCatalog(viewer).catch(() => []),
+    viewer.kind === "student" ? getStudentPracticeProgress(viewer.studentId).catch(() => null) : Promise.resolve(null),
+  ]);
   return (
     <PracticeGame
       catalog={catalog}
+      savedProgress={savedProgress}
       viewer={viewer.kind === "student" ? { kind: "student", firstName: viewer.firstName, grade: viewer.grade } : { kind: viewer.kind }}
     />
   );

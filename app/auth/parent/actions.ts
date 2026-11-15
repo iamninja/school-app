@@ -3,6 +3,8 @@
 import { PORTAL_CLASS_FILE_COLUMNS, portalClassFiles } from "@/lib/class-files";
 import { hourIncludes } from "@/lib/class-hours";
 import { createClient } from "@/lib/supabase/server";
+import { currentDailyStreak, sanitizeProgress, type ParentPracticeSummary } from "@/lib/practice-progress";
+import { athensToday } from "@/lib/push/athens-time";
 import { RECEIPT_COLUMNS, attachLineItems } from "@/lib/receipts";
 import { toParentHistory } from "@/lib/billing/parent-history";
 import { isAssessmentAssignmentLate } from "@/lib/assessment-status";
@@ -485,6 +487,28 @@ export async function getParentDashboardDataAction(): Promise<
         }
       }
 
+      // Practice: parents may read their child's rows (row-level security).
+      const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const [{ data: practiceRow }, { data: practiceAnswers }] = await Promise.all([
+        supabase.from("practice_progress").select("data").eq("student_id", student.id).maybeSingle(),
+        supabase.from("practice_answers").select("correct, answered_at").eq("student_id", student.id).gte("answered_at", weekAgo),
+      ]);
+      let practice: ParentPracticeSummary | null = null;
+      const weekRows = (practiceAnswers ?? []) as { correct: boolean; answered_at: string }[];
+      if (practiceRow || weekRows.length) {
+        const progress = practiceRow ? sanitizeProgress((practiceRow as { data: unknown }).data) : null;
+        const days = new Set(
+          weekRows.map((row) => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Athens" }).format(new Date(row.answered_at))),
+        );
+        practice = {
+          dailyStreak: progress ? currentDailyStreak(progress, athensToday()) : 0,
+          weekAnswers: weekRows.length,
+          weekRight: weekRows.filter((row) => row.correct).length,
+          weekDays: days.size,
+          mistakes: progress?.mistakes.length ?? 0,
+        };
+      }
+
       return {
         student: {
           id: student.id,
@@ -513,6 +537,7 @@ export async function getParentDashboardDataAction(): Promise<
         assessments,
         homework,
         files,
+        practice,
       };
     }),
   );
