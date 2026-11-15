@@ -20,6 +20,8 @@ import { toast } from "sonner";
 
 import {
   copyQuizQuestionsToPracticeAction,
+  getPracticeQuestionStatsAction,
+  listPracticeReportsAction,
   createPracticeSectionAction,
   deletePracticeQuestionAction,
   deletePracticeSectionAction,
@@ -34,6 +36,8 @@ import {
 import { MathText } from "@/components/math-text";
 import { PRACTICE_TYPE_LABELS, PracticeQuestionEditor } from "@/components/practice/practice-question-editor";
 import { PracticeQuestionPreview } from "@/components/practice/practice-question-preview";
+import { PracticeProgressView } from "@/components/practice/practice-progress-view";
+import { PracticeReportsView } from "@/components/practice/practice-reports-view";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -51,7 +55,14 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { CLASS_GRADES } from "@/lib/class-grades";
 import { getErrorMessage } from "@/lib/expected-error";
-import { practiceImageUrl, type CopyableQuizQuestion, type PracticeQuestion, type PracticeSection } from "@/lib/practice-bank";
+import {
+  practiceImageUrl,
+  type CopyableQuizQuestion,
+  type PracticeQuestion,
+  type PracticeReport,
+  type PracticeSection,
+  type PracticeStudentProgress,
+} from "@/lib/practice-bank";
 import { parsePracticeMarkdown } from "@/lib/practice-markdown";
 import { PRACTICE_MARKDOWN_TEMPLATE } from "@/lib/practice-markdown-template";
 import { instantiate, seededRng, type PlayableQuestion } from "@/lib/practice-template";
@@ -68,8 +79,74 @@ function safePreview(question: PracticeQuestion | Parameters<typeof instantiate>
   }
 }
 
-/** Practice tab: the question bank by grade and section. */
-export function TeacherPractice({ initialSections }: { initialSections?: PracticeSection[] }) {
+/** Practice tab: the question bank, students' progress, and reports. */
+export function TeacherPractice({
+  initialSections,
+  initialProgress,
+  initialReports,
+}: {
+  initialSections?: PracticeSection[];
+  initialProgress?: PracticeStudentProgress[];
+  initialReports?: PracticeReport[];
+}) {
+  const [view, setView] = React.useState<"bank" | "progress" | "reports">("bank");
+  const [reports, setReports] = React.useState<PracticeReport[]>(initialReports ?? []);
+  const [openQuestion, setOpenQuestion] = React.useState<PracticeReport | null>(null);
+
+  React.useEffect(() => {
+    if (initialReports) return;
+    listPracticeReportsAction().then(setReports).catch(() => setReports([]));
+  }, [initialReports]);
+
+  return (
+    <div className="space-y-4">
+      <div className="inline-flex rounded-lg bg-muted p-1 text-sm" role="tablist" aria-label="Practice">
+        {([
+          ["bank", "Question bank"],
+          ["progress", "Progress"],
+          ["reports", reports.length ? `Reports (${reports.length})` : "Reports"],
+        ] as const).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            role="tab"
+            aria-selected={view === value}
+            onClick={() => setView(value)}
+            className={cn("rounded-md px-3 py-1.5 font-medium transition", view === value ? "bg-background shadow-xs" : "text-muted-foreground hover:text-foreground")}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {/* The bank stays mounted so its place (grade, section) survives a look at the other views. */}
+      <div hidden={view !== "bank"}>
+        <PracticeBank initialSections={initialSections} openQuestion={openQuestion} />
+      </div>
+      {view === "progress" ? <PracticeProgressView initialRows={initialProgress} /> : null}
+      {view === "reports" ? (
+        <PracticeReportsView
+          reports={reports}
+          onResolved={(id) => setReports((prev) => prev.filter((report) => report.id !== id))}
+          onOpenQuestion={(report) => {
+            // A fresh object each time, so the same report can be opened again.
+            setOpenQuestion({ ...report });
+            setView("bank");
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/** The question bank by grade and section. */
+function PracticeBank({
+  initialSections,
+  openQuestion,
+}: {
+  initialSections?: PracticeSection[];
+  /** From a report: go to this question and open it. */
+  openQuestion: PracticeReport | null;
+}) {
   const [sections, setSections] = React.useState<PracticeSection[] | null>(initialSections ?? null);
   const [grade, setGrade] = React.useState<string>("lyk_b");
   const [sectionId, setSectionId] = React.useState<string | null>(null);
@@ -108,7 +185,10 @@ export function TeacherPractice({ initialSections }: { initialSections?: Practic
   const setQuestions = (change: (prev: PracticeQuestion[] | null) => PracticeQuestion[]) =>
     setLoaded((prev) => (prev ? { ...prev, questions: change(prev.questions) } : prev));
 
+  const [stats, setStats] = React.useState<Record<string, { answers: number; right: number; reports: number }>>({});
+
   const loadQuestions = React.useCallback((id: string) => {
+    getPracticeQuestionStatsAction(id).then(setStats).catch(() => setStats({}));
     listPracticeQuestionsAction(id)
       .then((rows) => setLoaded({ sectionId: id, questions: rows }))
       .catch((error: unknown) => {
@@ -120,6 +200,21 @@ export function TeacherPractice({ initialSections }: { initialSections?: Practic
   React.useEffect(() => {
     if (sectionId) loadQuestions(sectionId);
   }, [sectionId, loadQuestions]);
+
+  // A report's "Open question": go to its section, then open the editor once
+  // it's loaded. Tracked here (not by telling the parent mid-render).
+  const [handledReport, setHandledReport] = React.useState<PracticeReport | null>(null);
+  if (openQuestion && sections && handledReport !== openQuestion) {
+    const target = sections.find((item) => item.id === openQuestion.sectionId);
+    if (!target) setHandledReport(openQuestion);
+    else if (grade !== target.grade) setGrade(target.grade);
+    else if (sectionId !== target.id) setSectionId(target.id);
+    else if (questions) {
+      const question = questions.find((item) => item.id === openQuestion.questionId);
+      if (question) setEditing({ question });
+      setHandledReport(openQuestion);
+    }
+  }
 
   const setCount = (id: string, delta: number) =>
     setSections((prev) => (prev ?? []).map((item) => (item.id === id ? { ...item, questionCount: item.questionCount + delta } : item)));
@@ -377,6 +472,23 @@ export function TeacherPractice({ initialSections }: { initialSections?: Practic
                                 </Badge>
                               ) : null}
                               {!question.isActive ? <Badge variant="outline" className="text-[11px]">Off</Badge> : null}
+                              {stats[question.id]?.answers ? (
+                                <Badge
+                                  variant="outline"
+                                  className={cn(
+                                    "text-[11px] tabular-nums",
+                                    stats[question.id].answers >= 5 && stats[question.id].right / stats[question.id].answers < 0.3 && "border-red-500/50 text-red-600 dark:text-red-400",
+                                  )}
+                                  title="Students' answers to this question"
+                                >
+                                  {stats[question.id].answers} answered · {Math.round((stats[question.id].right / stats[question.id].answers) * 100)}% right
+                                </Badge>
+                              ) : null}
+                              {stats[question.id]?.reports ? (
+                                <Badge variant="outline" className="border-amber-500/60 text-[11px] text-amber-700 dark:text-amber-400">
+                                  {stats[question.id].reports} report{stats[question.id].reports === 1 ? "" : "s"}
+                                </Badge>
+                              ) : null}
                             </span>
                           </button>
                           <div className="flex shrink-0 items-center">

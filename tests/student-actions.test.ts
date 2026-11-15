@@ -5,6 +5,10 @@ import { createMockSupabaseClient } from "./support/mock-supabase";
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(),
+  // The dashboard asks whether any practice questions exist (count only).
+  createServiceRoleClient: vi.fn(() => ({
+    from: () => ({ select: () => ({ eq: async () => ({ count: 0, error: null }) }) }),
+  })),
 }));
 
 vi.mock("next/navigation", () => ({

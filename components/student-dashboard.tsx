@@ -27,6 +27,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StudentQuizPanel } from "@/components/student-quiz-panel";
 import { PortalClassFilesCard, PortalHomeworkFiles } from "@/components/portal-class-files";
+import { PortalPracticeCard } from "@/components/practice/portal-practice-card";
+import type { PracticeSummary } from "@/lib/practice-progress";
 import { PortalHistoryDialog } from "@/components/portal-history-dialog";
 import { PortalUpcomingCard } from "@/components/portal-upcoming-card";
 import type {
@@ -90,6 +92,7 @@ type StudentDashboardProps = {
   assessments: AssessmentSummary[];
   homework: HomeworkSummary[];
   files?: ClassFileSummary[];
+  practice?: PracticeSummary;
   demoMode?: boolean;
   demoReviews?: Record<string, QuizAttemptReview>;
 };
@@ -362,6 +365,8 @@ export function StudentDashboard(props: StudentDashboardProps) {
             tone="brand"
           />
         </div>
+
+        {props.practice ? <PortalPracticeCard summary={props.practice} /> : null}
 
         <div className="grid items-start gap-6 xl:grid-cols-[1.4fr_1fr]">
           {/* Left column */}

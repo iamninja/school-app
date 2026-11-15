@@ -13,10 +13,20 @@ import {
   toPracticeQuestion,
   toPracticeQuestionColumns,
   type CopyableQuizQuestion,
+  summarizeAnswers,
   type PracticeQuestion,
   type PracticeQuestionRow,
+  type PracticeReport,
   type PracticeSection,
+  type PracticeStudentProgress,
 } from "@/lib/practice-bank";
+import { currentDailyStreak, sanitizeProgress } from "@/lib/practice-progress";
+import { athensToday } from "@/lib/push/athens-time";
+
+/** The Athens calendar day of a timestamp. */
+function athensDayOf(iso: string): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Athens" }).format(new Date(iso));
+}
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -505,4 +515,111 @@ export async function copyQuizQuestionsToPracticeAction(input: {
     copied++;
   }
   return { copied, skipped: skipped + (ids.length - questions.length) };
+}
+
+// ---------------------------------------------------------------------------
+// Progress, question stats, reports
+// ---------------------------------------------------------------------------
+
+/** Every student's practice: this week, all time, per section, streak and mistakes. */
+export async function getPracticeProgressOverviewAction(): Promise<PracticeStudentProgress[]> {
+  const { supabase } = await requireTeacherSession();
+  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const [{ data: students, error }, { data: recent }, { data: progressRows }, { data: sections }, { data: totals }] = await Promise.all([
+    supabase
+      .from("students")
+      .select("id, first_name, last_name, withdrawn_at, student_class_assignments(classes(name))")
+      .is("withdrawn_at", null)
+      .order("last_name", { ascending: true }),
+    supabase.from("practice_answers").select("student_id, section_id, correct, answered_at").gte("answered_at", since).limit(50_000),
+    supabase.from("practice_progress").select("student_id, data"),
+    supabase.from("practice_sections").select("id, name"),
+    supabase.from("practice_answers").select("student_id, correct").limit(200_000),
+  ]);
+  if (error) throw error;
+  const today = athensToday();
+  const summary = summarizeAnswers((recent ?? []) as never, new Date(), athensDayOf);
+  const progressBy = new Map(
+    ((progressRows ?? []) as { student_id: string; data: unknown }[]).map((row) => [row.student_id, sanitizeProgress(row.data)]),
+  );
+  const sectionName = new Map(((sections ?? []) as { id: string; name: string }[]).map((row) => [row.id, row.name]));
+  const allTime = new Map<string, { answers: number; right: number }>();
+  for (const row of (totals ?? []) as { student_id: string; correct: boolean }[]) {
+    const entry = allTime.get(row.student_id) ?? { answers: 0, right: 0 };
+    entry.answers++;
+    if (row.correct) entry.right++;
+    allTime.set(row.student_id, entry);
+  }
+
+  type StudentRow = { id: string; first_name: string; last_name: string; student_class_assignments: { classes: { name: string } | null }[] | null };
+  return ((students ?? []) as unknown as StudentRow[]).map((student) => {
+    const answers = summary.get(student.id);
+    const progress = progressBy.get(student.id) ?? null;
+    return {
+      studentId: student.id,
+      name: `${student.first_name} ${student.last_name}`.trim(),
+      classes: (student.student_class_assignments ?? []).map((row) => row.classes?.name).filter((name): name is string => Boolean(name)),
+      week: answers?.week ?? { answers: 0, right: 0, days: 0 },
+      allTime: allTime.get(student.id) ?? { answers: 0, right: 0 },
+      lastPracticed: answers?.last ?? null,
+      dailyStreak: progress ? currentDailyStreak(progress, today) : 0,
+      mistakes: progress?.mistakes.length ?? 0,
+      points: progress?.points ?? 0,
+      sections: [...(answers?.recent ?? new Map()).entries()]
+        .map(([sectionId, stats]) => ({ sectionId, name: sectionName.get(sectionId) ?? "", ...stats }))
+        .sort((a, b) => b.answers - a.answers),
+    };
+  });
+}
+
+/** Per question of a section: how often answered and how often right (students only - guests aren't recorded). */
+export async function getPracticeQuestionStatsAction(sectionId: string): Promise<Record<string, { answers: number; right: number; reports: number }>> {
+  const { supabase, userId } = await requireTeacherSession();
+  await ownedSection(supabase, userId, sectionId);
+  const [{ data: answers }, { data: reports }] = await Promise.all([
+    supabase.from("practice_answers").select("question_id, correct").eq("section_id", sectionId).limit(100_000),
+    supabase.from("practice_reports").select("question_id, practice_questions!inner(section_id)").is("resolved_at", null).eq("practice_questions.section_id", sectionId),
+  ]);
+  const stats: Record<string, { answers: number; right: number; reports: number }> = {};
+  for (const row of (answers ?? []) as { question_id: string | null; correct: boolean }[]) {
+    if (!row.question_id) continue;
+    const entry = (stats[row.question_id] ??= { answers: 0, right: 0, reports: 0 });
+    entry.answers++;
+    if (row.correct) entry.right++;
+  }
+  for (const row of (reports ?? []) as { question_id: string }[]) {
+    (stats[row.question_id] ??= { answers: 0, right: 0, reports: 0 }).reports++;
+  }
+  return stats;
+}
+
+export async function listPracticeReportsAction(): Promise<PracticeReport[]> {
+  const { supabase } = await requireTeacherSession();
+  const { data, error } = await supabase
+    .from("practice_reports")
+    .select("id, question_id, message, played_prompt, created_at, students(first_name, last_name), practice_questions(prompt, section_id)")
+    .is("resolved_at", null)
+    .order("created_at", { ascending: false })
+    .limit(200);
+  if (error) throw error;
+  type Row = {
+    id: string; question_id: string; message: string | null; played_prompt: string | null; created_at: string;
+    students: { first_name: string; last_name: string } | null; practice_questions: { prompt: string; section_id: string } | null;
+  };
+  return ((data ?? []) as unknown as Row[]).map((row) => ({
+    id: row.id,
+    questionId: row.question_id,
+    sectionId: row.practice_questions?.section_id ?? null,
+    questionPrompt: row.practice_questions?.prompt ?? "",
+    playedPrompt: row.played_prompt,
+    message: row.message,
+    studentName: row.students ? `${row.students.first_name} ${row.students.last_name}`.trim() : null,
+    createdAt: row.created_at,
+  }));
+}
+
+export async function resolvePracticeReportAction(reportId: string): Promise<void> {
+  const { supabase } = await requireTeacherSession();
+  const { error } = await supabase.from("practice_reports").update({ resolved_at: new Date().toISOString() }).eq("id", reportId);
+  if (error) throw error;
 }

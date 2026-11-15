@@ -2,7 +2,9 @@
 
 import { PORTAL_CLASS_FILE_COLUMNS, portalClassFiles } from "@/lib/class-files";
 import { hourIncludes } from "@/lib/class-hours";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
+import { practiceSummary, sanitizeProgress } from "@/lib/practice-progress";
+import { athensToday } from "@/lib/push/athens-time";
 import { redirect } from "next/navigation";
 import {
   createRoleAuthUser,
@@ -423,6 +425,21 @@ export async function getStudentDashboardDataAction(): Promise<
     }),
   }));
 
+  // Practice: the student's own progress (their row), and whether there's
+  // anything to play (the bank isn't readable by students - service role).
+  const [{ data: practiceRow }, { count: practiceCount }] = await Promise.all([
+    supabase.from("practice_progress").select("data").eq("student_id", student.id).maybeSingle(),
+    createServiceRoleClient()
+      .from("practice_questions")
+      .select("id", { count: "exact", head: true })
+      .eq("is_active", true),
+  ]);
+  const practice = practiceSummary(
+    practiceRow ? sanitizeProgress((practiceRow as { data: unknown }).data) : null,
+    athensToday(),
+    (practiceCount ?? 0) > 0,
+  );
+
   return {
     student: {
       id: student.id,
@@ -451,6 +468,7 @@ export async function getStudentDashboardDataAction(): Promise<
     assessments,
     homework,
     files,
+    practice,
   };
 }
 

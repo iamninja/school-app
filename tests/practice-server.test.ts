@@ -22,7 +22,7 @@ describe("who sees what", () => {
   it("lets only the centre's students and the teacher see private sections", () => {
     expect(seesPrivateSections({ kind: "guest" })).toBe(false);
     expect(seesPrivateSections({ kind: "parent" })).toBe(false);
-    expect(seesPrivateSections({ kind: "student", firstName: "Μ", grade: "lyk_b" })).toBe(true);
+    expect(seesPrivateSections({ kind: "student", studentId: "s1", firstName: "Μ", grade: "lyk_b" })).toBe(true);
     expect(seesPrivateSections({ kind: "teacher" })).toBe(true);
   });
 });

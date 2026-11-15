@@ -149,3 +149,62 @@ export function quizQuestionToPractice(question: {
   }
   return null;
 }
+
+/** One student's practice, for the console's Progress view. */
+export interface PracticeStudentProgress {
+  studentId: string;
+  name: string;
+  classes: string[];
+  /** Answers in the last 7 days, and how many right. */
+  week: { answers: number; right: number; days: number };
+  allTime: { answers: number; right: number };
+  lastPracticed: string | null;
+  dailyStreak: number;
+  mistakes: number;
+  points: number;
+  /** Per section: name and answers/right (last 30 days). */
+  sections: { sectionId: string; name: string; answers: number; right: number }[];
+}
+
+export interface PracticeReport {
+  id: string;
+  questionId: string;
+  sectionId: string | null;
+  questionPrompt: string;
+  playedPrompt: string | null;
+  message: string | null;
+  studentName: string | null;
+  createdAt: string;
+}
+
+type AnswerRow = { student_id: string; section_id: string | null; correct: boolean; answered_at: string };
+
+/**
+ * Folds answer rows into per-student numbers. `now` and the Athens day
+ * function are passed in so this stays pure (tests/practice-bank.test.ts).
+ */
+export function summarizeAnswers(
+  answers: AnswerRow[],
+  now: Date,
+  dayOf: (iso: string) => string,
+): Map<string, { week: PracticeStudentProgress["week"]; recent: Map<string, { answers: number; right: number }>; last: string | null }> {
+  const weekAgo = now.getTime() - 7 * 24 * 60 * 60 * 1000;
+  const out = new Map<string, { week: PracticeStudentProgress["week"]; recent: Map<string, { answers: number; right: number }>; last: string | null; weekDays: Set<string> }>();
+  for (const row of answers) {
+    const entry = out.get(row.student_id) ?? { week: { answers: 0, right: 0, days: 0 }, recent: new Map(), last: null, weekDays: new Set<string>() };
+    if (Date.parse(row.answered_at) >= weekAgo) {
+      entry.week.answers++;
+      if (row.correct) entry.week.right++;
+      entry.weekDays.add(dayOf(row.answered_at));
+    }
+    if (row.section_id) {
+      const section = entry.recent.get(row.section_id) ?? { answers: 0, right: 0 };
+      section.answers++;
+      if (row.correct) section.right++;
+      entry.recent.set(row.section_id, section);
+    }
+    if (!entry.last || row.answered_at > entry.last) entry.last = row.answered_at;
+    out.set(row.student_id, entry);
+  }
+  return new Map([...out].map(([id, entry]) => [id, { week: { ...entry.week, days: entry.weekDays.size }, recent: entry.recent, last: entry.last }]));
+}

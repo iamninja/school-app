@@ -7,9 +7,9 @@ const WINDOW_MS = 5 * 60 * 1000;
 const MAX_DRAWS = 30;
 const hits = new Map<string, number[]>();
 
-export function allowDraw(key: string, now = Date.now()): boolean {
+function allow(key: string, max: number, now: number): boolean {
   const recent = (hits.get(key) ?? []).filter((time) => now - time < WINDOW_MS);
-  if (recent.length >= MAX_DRAWS) {
+  if (recent.length >= max) {
     hits.set(key, recent);
     return false;
   }
@@ -19,4 +19,13 @@ export function allowDraw(key: string, now = Date.now()): boolean {
     for (const [other, times] of hits) if (times.every((time) => now - time >= WINDOW_MS)) hits.delete(other);
   }
   return true;
+}
+
+export function allowDraw(key: string, now = Date.now()): boolean {
+  return allow(`draw:${key}`, MAX_DRAWS, now);
+}
+
+/** Reports: 10 per 5 minutes per address. */
+export function allowReport(key: string, now = Date.now()): boolean {
+  return allow(`report:${key}`, 10, now);
 }

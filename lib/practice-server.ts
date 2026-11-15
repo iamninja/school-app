@@ -10,6 +10,7 @@ import {
 } from "@/lib/practice-bank";
 import { pickRound, shuffleOptions } from "@/lib/practice-round";
 import { instantiate, type PlayableQuestion } from "@/lib/practice-template";
+import { sanitizeProgress, type PracticeProgress } from "@/lib/practice-progress";
 
 // The practice tables have no read policies for students or guests
 // (supabase/migrations/*_practice-pool.sql): everything they see comes
@@ -18,7 +19,7 @@ import { instantiate, type PlayableQuestion } from "@/lib/practice-template";
 export type PracticeViewer =
   | { kind: "guest" }
   | { kind: "parent" }
-  | { kind: "student"; firstName: string; grade: string | null }
+  | { kind: "student"; studentId: string; firstName: string; grade: string | null }
   | { kind: "teacher" };
 
 /** Guests and parents play public sections; the centre's students and the teacher, all of them. */
@@ -48,7 +49,12 @@ export async function getPracticeViewer(): Promise<PracticeViewer> {
       .map((row) => row.classes)
       .filter((item) => item && !item.archived_at && item.grade)
       .map((item) => item!.grade as string);
-    return { kind: "student", firstName: (student as { first_name: string }).first_name, grade: grades[0] ?? null };
+    return {
+      kind: "student",
+      studentId: (student as { id: string }).id,
+      firstName: (student as { first_name: string }).first_name,
+      grade: grades[0] ?? null,
+    };
   }
   return { kind: "parent" };
 }
@@ -164,4 +170,26 @@ export async function drawPracticeRound(
     }
   }
   return round;
+}
+
+/** A student's saved progress (null when they haven't played logged in yet). */
+export async function getStudentPracticeProgress(studentId: string): Promise<PracticeProgress | null> {
+  const { data } = await createServiceRoleClient()
+    .from("practice_progress")
+    .select("data")
+    .eq("student_id", studentId)
+    .maybeSingle();
+  return data ? sanitizeProgress((data as { data: unknown }).data) : null;
+}
+
+/** Can this viewer see this question (its section public, or they see private ones)? */
+export async function canSeeQuestion(viewer: PracticeViewer, questionId: string): Promise<boolean> {
+  const { data } = await createServiceRoleClient()
+    .from("practice_questions")
+    .select("id, practice_sections(is_public)")
+    .eq("id", questionId)
+    .maybeSingle();
+  if (!data) return false;
+  const section = (data as unknown as { practice_sections: { is_public: boolean } | null }).practice_sections;
+  return Boolean(section?.is_public) || seesPrivateSections(viewer);
 }
