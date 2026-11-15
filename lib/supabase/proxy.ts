@@ -52,11 +52,13 @@ export async function updateSession(request: NextRequest) {
     !user &&
     !request.nextUrl.pathname.startsWith("/auth") &&
     !request.nextUrl.pathname.startsWith("/demo") &&
+    !request.nextUrl.pathname.startsWith("/practice") &&
     !request.nextUrl.pathname.startsWith("/api/cron")
   ) {
     // no user - each role has its own login page, so send unauthenticated
     // visitors to the home page to pick one rather than guessing which
-    // role's login page applies to this route. /demo is exempt too - it's
+    // role's login page applies to this route. /practice is open to guests
+    // (public sections only - decided in lib/practice-server.ts). /demo is exempt too - it's
     // the public, no-login preview and is never expected to have a session.
     // /api/cron is exempt for a different reason (audit finding I1,
     // 2026-09-05): Vercel Cron carries an Authorization bearer header, not

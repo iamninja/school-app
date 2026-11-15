@@ -14,6 +14,7 @@ import { BrandDots, BrandMark, MathDoodles, ModusLogo } from "@/components/brand
 import { ChristmasMessage, ChristmasSnow, SantaHat } from "@/components/christmas";
 import { RememberChristmas } from "@/components/remember-christmas";
 import { createPublicClient } from "@/lib/supabase/server";
+import { getPracticeCatalog } from "@/lib/practice-server";
 import { athensToday } from "@/lib/push/athens-time";
 import {
   DEFAULT_SITE_SETTINGS,
@@ -104,7 +105,13 @@ async function loadSiteSettings(): Promise<SiteSettings> {
 }
 
 export default async function Home() {
-  const christmas = christmasLook(await loadSiteSettings(), athensToday());
+  const [settings, practiceGrades] = await Promise.all([
+    loadSiteSettings(),
+    // Public practice only - the band below appears once there is some.
+    getPracticeCatalog({ kind: "guest" }).catch(() => []),
+  ]);
+  const christmas = christmasLook(settings, athensToday());
+  const practiceQuestions = practiceGrades.reduce((sum, grade) => sum + grade.count, 0);
   return (
     <main className="flex min-h-screen flex-col bg-background">
       {/* Top bar */}
@@ -204,6 +211,27 @@ export default async function Home() {
           ))}
         </div>
       </section>
+
+      {practiceQuestions > 0 ? (
+        <section className="border-y border-border/70 bg-card/60">
+          <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-5 py-12 sm:flex-row sm:items-center sm:justify-between">
+            <div className="max-w-xl">
+              <BrandDots className="mb-4" />
+              <h2 className="text-3xl font-bold tracking-tight">Εξάσκηση</h2>
+              <p className="mt-2 text-muted-foreground">
+                Γύροι 10 ερωτήσεων μαθηματικών για {practiceGrades.length === 1 ? practiceGrades[0].label : "κάθε τάξη"}: διάλεξε
+                ενότητες, απάντησε, δες αμέσως τη λύση. Όσες φορές θέλεις, χωρίς λογαριασμό.
+              </p>
+            </div>
+            <Button asChild size="lg">
+              <Link href="/practice">
+                Ξεκίνα να παίζεις
+                <ArrowRight className="size-4" aria-hidden="true" />
+              </Link>
+            </Button>
+          </div>
+        </section>
+      ) : null}
 
       {/* The companion portal */}
       <section
