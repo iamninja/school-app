@@ -64,6 +64,7 @@ describe("RLS: quiz question images", () => {
 
   afterAll(async () => {
     const admin = serviceClient();
+    await admin.from("quiz_attempt_starts").delete().eq("quiz_id", fixtures.quizA.id);
     await admin
       .from("students")
       .update({ user_id: null })
@@ -116,7 +117,7 @@ describe("RLS: quiz question images", () => {
     expect(download.error).not.toBeNull();
   });
 
-  it("lets an assigned student read an image once a question references it, but not an unassigned student", async () => {
+  it("lets an assigned student read an image once they start the quiz, but not an unassigned student", async () => {
     const path = `${fixtures.teacherA.id}/question-image-test.png`;
     uploadedPaths.push(path);
     await serviceClient()
@@ -129,6 +130,15 @@ describe("RLS: quiz question images", () => {
       .update({ image_path: path })
       .eq("id", fixtures.questionA.id);
 
+    // Closed until the student opens the quiz (the server records the
+    // start - 20261115213340_quiz-timer-server-side.sql)...
+    const beforeStart = await studentA.storage.from(BUCKET).download(path);
+    expect(beforeStart.error).not.toBeNull();
+    await serviceClient()
+      .from("quiz_attempt_starts")
+      .insert({ quiz_id: fixtures.quizA.id, student_id: fixtures.studentA.id });
+
+    // ...then readable to them.
     const assignedDownload = await studentA.storage.from(BUCKET).download(path);
     expect(assignedDownload.error).toBeNull();
 

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { signInAs } from "./helpers";
+import { signInAs, serviceClient } from "./helpers";
 import { cleanupFixtures, createFixtures, type Fixtures } from "./fixtures";
 
 describe("RLS: parent/family isolation", () => {
@@ -43,7 +43,20 @@ describe("RLS: parent/family isolation", () => {
     expect(data).toHaveLength(2);
   });
 
-  it("lets a parent see quiz questions for their child's assigned quiz, but not an unrelated family's", async () => {
+  it("lets a parent see quiz questions once their child has handed the quiz in, but not an unrelated family's", async () => {
+    const admin = serviceClient();
+    const before = await parentA1
+      .from("quiz_questions")
+      .select("id")
+      .eq("id", fixtures.questionA.id);
+    // Closed until the child has handed it in (20261115213340_quiz-timer-server-side.sql).
+    expect(before.data).toHaveLength(0);
+    const { data: attempt } = await admin
+      .from("quiz_attempts")
+      .insert({ quiz_id: fixtures.quizA.id, student_id: fixtures.studentA.id, score: 0, quiz_title: "RLS Test Quiz A", max_score: 1 })
+      .select("id")
+      .single();
+
     const ownFamily = await parentA1
       .from("quiz_questions")
       .select("id")
@@ -55,6 +68,7 @@ describe("RLS: parent/family isolation", () => {
       .select("id")
       .eq("id", fixtures.questionA.id);
     expect(otherFamily.data).toHaveLength(0);
+    await admin.from("quiz_attempts").delete().eq("id", attempt!.id);
   });
 
   it("does not let a teacher see another teacher's student", async () => {
