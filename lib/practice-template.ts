@@ -1,0 +1,455 @@
+// Practice questions as templates: random numbers per draw, and the one
+// shape (PlayableQuestion) every question becomes before it is played -
+// with or without variables. Pure; tests in tests/practice-template.test.ts.
+//
+// Variables (comma-separated, in order; later ones may use earlier ones):
+//   a=2..9            whole numbers 2 to 9
+//   p=0.5..3 step 0.5 0.5, 1, 1.5, ... 3
+//   b=-9..9 !0        exclude values (several: !0 !1)
+//   s=-1|1            pick one of a list
+//   c=a*x+b           computed
+// Condition: any expression every draw must satisfy ("a != b and c > 0").
+//
+// Placeholders in the question, options, answer and explanation:
+//   {{a}}     the value          {{a*x+b}}  any expression
+//   {{+b}}    with its sign, for "x {{+b}}" -> "x + 3" / "x − 3"
+// Inside $...$ a decimal is written 7{,}5 (LaTeX), outside 7,5.
+
+import { evalExpr, exprVariables, PracticeExprError } from "@/lib/practice-expr";
+
+export type PracticeQuestionType = "choice" | "true_false" | "number" | "slider" | "point";
+
+export interface PracticeGraph {
+  xMin: number;
+  xMax: number;
+  yMin: number;
+  yMax: number;
+  /** Expressions in x (may use template variables), drawn as curves. */
+  plots: string[];
+}
+
+/** A question as stored (and as the editor and the importer produce it). */
+export interface PracticeQuestionSpec {
+  type: PracticeQuestionType;
+  prompt: string;
+  options?: { text: string; correct: boolean }[] | null;
+  answer?: string | null;
+  tolerance?: number | null;
+  sliderMin?: number | null;
+  sliderMax?: number | null;
+  sliderStep?: number | null;
+  graph?: PracticeGraph | null;
+  variables?: string | null;
+  condition?: string | null;
+  explanation?: string | null;
+}
+
+/** One concrete question, numbers filled in - what a round plays. */
+export interface PlayableQuestion {
+  type: PracticeQuestionType;
+  prompt: string;
+  options: { text: string; correct: boolean }[];
+  /** true_false: 1/0; number/slider: the value; point: x (and answerY). */
+  answer: number;
+  answerY: number;
+  tolerance: number;
+  slider: { min: number; max: number; step: number } | null;
+  graph: PracticeGraph | null;
+  explanation: string | null;
+}
+
+export type VariableDef =
+  | { name: string; kind: "range"; min: number; max: number; step: number; exclude: number[] }
+  | { name: string; kind: "list"; values: number[] }
+  | { name: string; kind: "expr"; expr: string };
+
+export class PracticeTemplateError extends Error {}
+
+const NAME = /^[A-Za-z][A-Za-z0-9_]*$/;
+const RESERVED = new Set(["pi", "e", "and", "or", "not", "sqrt", "abs", "round", "min", "max", "sin", "cos", "tan", "ln", "log", "exp"]);
+
+/** Parses "a=2..9, b=-9..9 !0, c=a*x+b". Throws PracticeTemplateError. */
+export function parseVariables(source: string | null | undefined): VariableDef[] {
+  const text = (source ?? "").trim();
+  if (!text) return [];
+  const defs: VariableDef[] = [];
+  // Split on commas that aren't inside parentheses (max(a, b) is one value).
+  const parts: string[] = [];
+  let depth = 0;
+  let current = "";
+  for (const ch of text) {
+    if (ch === "(") depth++;
+    if (ch === ")") depth--;
+    if ((ch === "," || ch === ";" || ch === "\n") && depth === 0) {
+      parts.push(current);
+      current = "";
+    } else current += ch;
+  }
+  parts.push(current);
+
+  for (const rawPart of parts) {
+    const part = rawPart.trim();
+    if (!part) continue;
+    const eq = part.indexOf("=");
+    if (eq <= 0) throw new PracticeTemplateError(`"${part}": write it as name=values, e.g. a=2..9`);
+    const name = part.slice(0, eq).trim();
+    let rest = part.slice(eq + 1).trim();
+    if (!NAME.test(name) || RESERVED.has(name.toLowerCase())) {
+      throw new PracticeTemplateError(`"${name}" can't be a variable name - use letters like a, b, k`);
+    }
+    if (defs.some((def) => def.name === name)) throw new PracticeTemplateError(`"${name}" is defined twice`);
+
+    const exclude: number[] = [];
+    rest = rest.replace(/!\s*(-?\d+(?:\.\d+)?)/g, (_, value: string) => {
+      exclude.push(Number(value));
+      return "";
+    }).trim();
+
+    const range = /^(-?\d+(?:\.\d+)?)\s*\.\.\s*(-?\d+(?:\.\d+)?)(?:\s+step\s+(\d+(?:\.\d+)?))?$/i.exec(rest);
+    if (range) {
+      const min = Number(range[1]);
+      const max = Number(range[2]);
+      const step = range[3] ? Number(range[3]) : 1;
+      if (max < min) throw new PracticeTemplateError(`${name}: the range ${min}..${max} runs backwards`);
+      if (step <= 0) throw new PracticeTemplateError(`${name}: step must be above 0`);
+      defs.push({ name, kind: "range", min, max, step, exclude });
+      continue;
+    }
+    if (rest.includes("|")) {
+      const values = rest.split("|").map((value) => Number(value.trim()));
+      if (values.some((value) => !Number.isFinite(value))) {
+        throw new PracticeTemplateError(`${name}: a list takes numbers, like -1|1|2`);
+      }
+      defs.push({ name, kind: "list", values });
+      continue;
+    }
+    try {
+      const used = exprVariables(rest);
+      const unknown = used.filter((other) => !defs.some((def) => def.name === other));
+      if (unknown.length) {
+        throw new PracticeTemplateError(`${name}: "${unknown[0]}" isn't defined before it`);
+      }
+    } catch (error) {
+      if (error instanceof PracticeTemplateError) throw error;
+      throw new PracticeTemplateError(`${name}: ${(error as Error).message}`);
+    }
+    defs.push({ name, kind: "expr", expr: rest });
+  }
+  return defs;
+}
+
+/** A source of randomness in [0, 1) - Math.random, or seeded in tests. */
+export type Rng = () => number;
+
+/** A small seeded generator (mulberry32), for tests and stable previews. */
+export function seededRng(seed: number): Rng {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function pick<T>(items: T[], rng: Rng): T {
+  return items[Math.min(items.length - 1, Math.floor(rng() * items.length))];
+}
+
+/**
+ * One set of values meeting the condition. Tries up to `attempts` draws,
+ * then throws - a condition nothing satisfies is a mistake in the template.
+ */
+export function drawValues(
+  defs: VariableDef[],
+  condition: string | null | undefined,
+  rng: Rng = Math.random,
+  attempts = 500,
+): Record<string, number> {
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const scope: Record<string, number> = {};
+    let ok = true;
+    for (const def of defs) {
+      if (def.kind === "range") {
+        const count = Math.floor((def.max - def.min) / def.step + 1e-9) + 1;
+        const values: number[] = [];
+        for (let i = 0; i < count; i++) {
+          const value = Math.round((def.min + i * def.step) * 1e9) / 1e9;
+          if (!def.exclude.some((excluded) => Math.abs(excluded - value) < 1e-9)) values.push(value);
+        }
+        if (values.length === 0) throw new PracticeTemplateError(`${def.name}: every value is excluded`);
+        scope[def.name] = pick(values, rng);
+      } else if (def.kind === "list") {
+        scope[def.name] = pick(def.values, rng);
+      } else {
+        const value = evalExpr(def.expr, scope);
+        if (!Number.isFinite(value)) {
+          ok = false;
+          break;
+        }
+        scope[def.name] = Math.round(value * 1e9) / 1e9;
+      }
+    }
+    if (!ok) continue;
+    if (condition && condition.trim() && !evalExpr(condition, scope)) continue;
+    return scope;
+  }
+  throw new PracticeTemplateError(
+    condition ? "No numbers met the condition - check it and the ranges" : "The variables never give a usable value",
+  );
+}
+
+/** "7.5" -> "7,5" (or "7{,}5" in LaTeX); at most 4 decimals; real minus sign outside math. */
+export function formatNumber(value: number, inMath: boolean): string {
+  const rounded = Math.round(value * 1e4) / 1e4;
+  const clean = Object.is(rounded, -0) ? 0 : rounded;
+  const text = String(clean);
+  const [whole, decimals] = text.split(".");
+  const body = decimals ? `${whole}${inMath ? "{,}" : ","}${decimals}` : whole;
+  return !inMath && body.startsWith("-") ? `−${body.slice(1)}` : body;
+}
+
+/**
+ * Replaces {{expr}} and {{+expr}} using the values. Knows whether each
+ * placeholder sits inside $...$ (math) to write decimals the LaTeX way.
+ */
+export function fillPlaceholders(text: string, scope: Record<string, number>): string {
+  let out = "";
+  let inMath = false;
+  let i = 0;
+  while (i < text.length) {
+    if (text[i] === "\\" && text[i + 1] === "$") {
+      out += "\\$";
+      i += 2;
+      continue;
+    }
+    if (text[i] === "$") {
+      inMath = !inMath;
+      out += "$";
+      i++;
+      continue;
+    }
+    if (text.startsWith("{{", i)) {
+      const end = text.indexOf("}}", i + 2);
+      if (end === -1) throw new PracticeTemplateError('A "{{" has no closing "}}"');
+      let expr = text.slice(i + 2, end).trim();
+      const signed = expr.startsWith("+");
+      if (signed) expr = expr.slice(1).trim();
+      const value = evalExpr(expr, scope);
+      if (!Number.isFinite(value)) throw new PracticeTemplateError(`{{${expr}}} has no value for these numbers`);
+      if (signed) {
+        const sign = value < 0 ? (inMath ? "-" : "−") : "+";
+        out += `${sign} ${formatNumber(Math.abs(value), inMath)}`;
+      } else {
+        out += formatNumber(value, inMath);
+      }
+      i = end + 2;
+      continue;
+    }
+    out += text[i];
+    i++;
+  }
+  return out;
+}
+
+/** "(2, 1)" / "2, 1" -> two expressions. */
+export function splitPoint(answer: string): [string, string] | null {
+  const inner = answer.trim().replace(/^\(/, "").replace(/\)$/, "");
+  let depth = 0;
+  for (let i = 0; i < inner.length; i++) {
+    const ch = inner[i];
+    if (ch === "(") depth++;
+    else if (ch === ")") depth--;
+    else if ((ch === "," || ch === ";") && depth === 0) {
+      return [inner.slice(0, i).trim(), inner.slice(i + 1).trim()];
+    }
+  }
+  return null;
+}
+
+function numberAnswer(answer: string | null | undefined, scope: Record<string, number>, label: string): number {
+  if (!answer || !answer.trim()) throw new PracticeTemplateError(`${label} needs an answer`);
+  let source = answer.trim().replace(/^\{\{(.*)\}\}$/, "$1").trim();
+  // A plain Greek decimal ("7,07") - but never inside max(1, 2).
+  if (/^-?\d+,\d+$/.test(source)) source = source.replace(",", ".");
+  let value: number;
+  try {
+    value = evalExpr(source, scope);
+  } catch (error) {
+    throw new PracticeTemplateError(`Answer "${answer}": ${(error as Error).message}`);
+  }
+  if (!Number.isFinite(value)) throw new PracticeTemplateError(`Answer "${answer}" has no value for these numbers`);
+  return Math.round(value * 1e9) / 1e9;
+}
+
+/**
+ * Turns a stored question into a concrete one: draws the numbers, fills
+ * every placeholder, works out the answer. Throws PracticeTemplateError
+ * (or PracticeExprError) when the question can't be played as written.
+ */
+export function instantiate(spec: PracticeQuestionSpec, rng: Rng = Math.random): PlayableQuestion {
+  const defs = parseVariables(spec.variables);
+  const scope = defs.length || spec.condition ? drawValues(defs, spec.condition, rng) : {};
+  const fill = (text: string) => fillPlaceholders(text, scope);
+
+  const base = {
+    type: spec.type,
+    prompt: fill(spec.prompt),
+    explanation: spec.explanation ? fill(spec.explanation) : null,
+    options: [] as { text: string; correct: boolean }[],
+    answer: 0,
+    answerY: 0,
+    tolerance: Math.max(0, spec.tolerance ?? 0),
+    slider: null as PlayableQuestion["slider"],
+    graph: null as PracticeGraph | null,
+  };
+
+  switch (spec.type) {
+    case "choice": {
+      const options = (spec.options ?? []).map((option) => ({ text: fill(option.text), correct: option.correct }));
+      if (options.length < 2) throw new PracticeTemplateError("A multiple-choice question needs at least 2 options");
+      if (options.filter((option) => option.correct).length !== 1) {
+        throw new PracticeTemplateError("Mark exactly one option as correct");
+      }
+      const texts = options.map((option) => option.text.replace(/\s+/g, ""));
+      if (new Set(texts).size !== texts.length) {
+        throw new PracticeTemplateError("Two options came out the same for these numbers");
+      }
+      return { ...base, options };
+    }
+    case "true_false": {
+      const raw = (spec.answer ?? "").trim().toLowerCase();
+      let value: boolean;
+      if (["true", "σωστό", "σωστο", "σ"].includes(raw)) value = true;
+      else if (["false", "λάθος", "λαθος", "λ"].includes(raw)) value = false;
+      else value = numberAnswer(spec.answer, scope, "A true/false question") !== 0;
+      return { ...base, answer: value ? 1 : 0 };
+    }
+    case "number":
+      return { ...base, answer: numberAnswer(spec.answer, scope, "A number question") };
+    case "slider": {
+      const min = Number(spec.sliderMin);
+      const max = Number(spec.sliderMax);
+      if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
+        throw new PracticeTemplateError("A slider needs a range, like 0..10");
+      }
+      const step = spec.sliderStep && spec.sliderStep > 0 ? spec.sliderStep : niceStep(max - min);
+      const answer = numberAnswer(spec.answer, scope, "A slider question");
+      if (answer < min || answer > max) throw new PracticeTemplateError(`The answer ${round4(answer)} is outside the slider's ${min}..${max}`);
+      const tolerance = spec.tolerance != null ? spec.tolerance : (max - min) / 40;
+      return { ...base, answer, tolerance, slider: { min, max, step } };
+    }
+    case "point": {
+      const parts = splitPoint(spec.answer ?? "");
+      if (!parts) throw new PracticeTemplateError('A graph question needs an answer like "(2, 1)"');
+      const x = numberAnswer(parts[0], scope, "A graph question");
+      const y = numberAnswer(parts[1], scope, "A graph question");
+      const graph = spec.graph ?? { xMin: -5, xMax: 5, yMin: -5, yMax: 5, plots: [] };
+      if (x < graph.xMin || x > graph.xMax || y < graph.yMin || y > graph.yMax) {
+        throw new PracticeTemplateError(`The point (${round4(x)}, ${round4(y)}) is outside the graph's window`);
+      }
+      // Plots keep x free; template variables are filled in now.
+      const plots = graph.plots.map((plot) => substituteVariables(plot, scope));
+      const tolerance = spec.tolerance != null ? spec.tolerance : 0.25;
+      return { ...base, answer: x, answerY: y, tolerance, graph: { ...graph, plots } };
+    }
+  }
+}
+
+/** Replaces template variables in a plot expression with their values, keeping x. */
+function substituteVariables(expr: string, scope: Record<string, number>): string {
+  return expr.replace(/[A-Za-z_][A-Za-z0-9_]*/g, (name) =>
+    name !== "x" && Object.hasOwn(scope, name) ? `(${scope[name]})` : name,
+  );
+}
+
+const round4 = (value: number) => Math.round(value * 1e4) / 1e4;
+
+function niceStep(span: number): number {
+  const raw = span / 100;
+  const power = 10 ** Math.floor(Math.log10(raw));
+  const scaled = raw / power;
+  return (scaled <= 1 ? 1 : scaled <= 2 ? 2 : scaled <= 5 ? 5 : 10) * power;
+}
+
+/**
+ * Checks a question can be played: instantiates it (many times for a
+ * template) and returns every distinct problem found, or [] if it's fine.
+ */
+export function validatePracticeQuestion(spec: PracticeQuestionSpec, samples = 40): string[] {
+  const problems = new Set<string>();
+  if (!spec.prompt || !spec.prompt.trim()) problems.add("Write the question");
+  if (spec.type === "point" && spec.graph) {
+    const g = spec.graph;
+    try {
+      if (g.plots.length && parseVariables(spec.variables).some((def) => def.name === "x")) {
+        problems.add('Plots use x for the axis - give the variable another name');
+      }
+    } catch {
+      // reported below
+    }
+    if (!(g.xMax > g.xMin) || !(g.yMax > g.yMin)) problems.add("The graph window runs backwards");
+    for (const plot of g.plots) {
+      try {
+        const vars = exprVariables(plot).filter((name) => name !== "x");
+        const defined = parseVariables(spec.variables).map((def) => def.name);
+        const unknown = vars.find((name) => !defined.includes(name));
+        if (unknown) problems.add(`Plot "${plot}": "${unknown}" isn't defined`);
+      } catch (error) {
+        problems.add(`Plot "${plot}": ${(error as Error).message}`);
+      }
+    }
+  }
+  let defs: VariableDef[] = [];
+  try {
+    defs = parseVariables(spec.variables);
+  } catch (error) {
+    problems.add((error as Error).message);
+    return [...problems];
+  }
+  const runs = defs.length ? samples : 1;
+  const rng = seededRng(12345);
+  for (let i = 0; i < runs; i++) {
+    try {
+      const played = instantiate(spec, rng);
+      if (spec.type === "number" && (spec.tolerance ?? 0) === 0 && Math.abs(played.answer * 100 - Math.round(played.answer * 100)) > 1e-6) {
+        problems.add(`The answer can come out as ${round4(played.answer)} - round it (round(…, 2)) or set a tolerance`);
+      }
+    } catch (error) {
+      if (error instanceof PracticeTemplateError || error instanceof PracticeExprError) problems.add(error.message);
+      else throw error;
+    }
+  }
+  return [...problems];
+}
+
+/** Does the student's answer count? Tolerance applies to number, slider and point. */
+export function isCorrect(question: PlayableQuestion, given: number | { x: number; y: number }): boolean {
+  const eps = 1e-9;
+  if (question.type === "point") {
+    if (typeof given !== "object") return false;
+    return (
+      Math.abs(given.x - question.answer) <= question.tolerance + eps &&
+      Math.abs(given.y - question.answerY) <= question.tolerance + eps
+    );
+  }
+  if (typeof given !== "number") return false;
+  if (question.type === "choice") return Boolean(question.options[given]?.correct);
+  if (question.type === "true_false") return given === question.answer;
+  return Math.abs(given - question.answer) <= question.tolerance + eps;
+}
+
+/** Reads a typed number the Greek way or the English way: "7,5", "7.5", "−3", "1/2". */
+export function parseTypedNumber(raw: string): number | null {
+  const text = raw.trim().replace(/[−–]/g, "-").replace(/\s+/g, "");
+  if (!text) return null;
+  const fraction = /^(-?\d+(?:[.,]\d+)?)\/(-?\d+(?:[.,]\d+)?)$/.exec(text);
+  if (fraction) {
+    const value = Number(fraction[1].replace(",", ".")) / Number(fraction[2].replace(",", "."));
+    return Number.isFinite(value) ? value : null;
+  }
+  if (!/^-?\d*(?:[.,]\d+)?$/.test(text) || text === "-" || text === "") return null;
+  const value = Number(text.replace(",", "."));
+  return Number.isFinite(value) ? value : null;
+}

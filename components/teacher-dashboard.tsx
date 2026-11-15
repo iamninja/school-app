@@ -17,6 +17,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { format } from "date-fns";
 import {
   ArchiveIcon,
+  Gamepad2Icon,
   Building2Icon,
   CalendarDaysIcon,
   CalendarRangeIcon,
@@ -98,6 +99,7 @@ import { examSittings } from "@/lib/calendar-exams";
 import { dayRoster, dragSource, hoursToPlace, type HoursToPlace } from "@/lib/class-hours";
 import { TeacherSiteSettings } from "@/components/teacher-site-settings";
 import { TagOpenerProvider, type TagOpener } from "@/components/task-tags-ui";
+import { TeacherPractice } from "@/components/teacher-practice";
 import { TeacherAssessments } from "@/components/teacher-assessments";
 import { AssessmentStatusBadge } from "@/components/assessment-status-badge";
 import {
@@ -186,6 +188,12 @@ const SECTIONS: readonly Section[] = [
     label: "Quizzes",
     description: "Build and assign quizzes",
     icon: FileTextIcon,
+  },
+  {
+    value: "practice",
+    label: "Practice",
+    description: "Question bank for practice rounds",
+    icon: Gamepad2Icon,
   },
   {
     value: "assessments",
@@ -4558,6 +4566,10 @@ export function TeacherDashboard({
             classes={activeClasses.map(({ id, name }) => ({ id, name }))}
             initialQuizzes={initialQuizzes}
           />
+        </TabsContent>
+
+        <TabsContent value="practice" className="mt-0">
+          <TeacherPractice />
         </TabsContent>
 
         <TabsContent value="assessments" className="mt-0">
