@@ -161,6 +161,11 @@ Suggested build order from the Opus review of 4 proposed dashboard changes (2026
 - [ ] Practice: drag a curve, not just a point — flagged 2026-11-15. A "graph" question where the student moves/tilts a parabola or line until it matches (vertex at (2, 1), slope 3). `components/practice/practice-graph.tsx` draws curves already; needs handles that change a curve's parameters, and a way to write such questions in the format.
 - [ ] Practice: reminders ("your daily streak is about to break") — flagged 2026-11-15, needs more thought on tone and frequency first.
 
+- [ ] Show the AI (Claude API) spend in the console - options weighed 2026-11-15, not started. Only quiz auto-grading of written answers (`lib/ai-grading.ts`) and wrong-answer explanations (`lib/ai-explanation.ts`) use the API; nothing else does. Anthropic has no endpoint for the remaining prepaid credit balance (Console -> Settings -> Billing only), so either option shows spend, not what's left:
+  1. **Spend from Anthropic** - the Admin API's Usage and Cost Analytics (`GET /v1/organizations/analytics/cost`, beta header `analytics-usage-cost-2026-08-24`; `client.beta.organization.analytics.cost.list()` in the SDK): USD by day/model/API key, a few hours behind, amounts before credits (subtract top-ups for a rough "left"). Needs a separate Admin API key (`sk-ant-admin...`) in Vercel - it can manage the whole Anthropic organization, so server-side only and shown to the teacher only.
+  2. **The app's own counter** - record each AI call (feature, `response.usage` input/output tokens, time) and show e.g. "this month: 14 gradings, 52 explanations, ~EUR 0.30" estimated from the model's per-token price. No new key; covers this app only and is an estimate.
+  Either way, a low-balance alert or auto-reload in the Console is the actual safety net.
+
 Business/financial items (legal business form, launch costs, operational budgeting) are tracked in Todoist only, not here — this file is code-focused and pushed to a public repo.
 
 ---
