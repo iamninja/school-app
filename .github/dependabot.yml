@@ -1,0 +1,29 @@
+# Routine version updates, once a month, in as few PRs as possible.
+# Security updates are separate and still arrive as soon as an advisory
+# is published (Settings -> Code security -> Dependabot security updates).
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    labels: [dependencies]
+    groups:
+      # Every minor and patch update together, in one PR.
+      minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      # Major versions are done on purpose (they break things - see the
+      # Supabase CLI 3 and Sentry 11 upgrades), not as a monthly PR.
+      - dependency-name: "*"
+        update-types: [version-update:semver-major]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    labels: [dependencies]
+    groups:
+      actions:
+        patterns: ["*"]
