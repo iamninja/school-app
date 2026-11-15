@@ -717,7 +717,7 @@ export async function getQuizResultsAction(
 
   const { data: attempts, error: attemptsError } = await supabase
     .from("quiz_attempts")
-    .select("id, student_id, score, submitted_at")
+    .select("id, student_id, score, submitted_at, late_by_seconds")
     .eq("quiz_id", quizId);
 
   if (attemptsError) {
@@ -762,9 +762,9 @@ export async function getQuizResultsAction(
     attemptIds.length > 0
       ? await supabase
           .from("quiz_attempt_bests")
-          .select("attempt_id, score, attempts_used")
+          .select("attempt_id, score, attempts_used, late_by_seconds")
           .in("attempt_id", attemptIds)
-      : { data: [] as { attempt_id: string; score: number; attempts_used: number }[] };
+      : { data: [] as { attempt_id: string; score: number; attempts_used: number; late_by_seconds: number | null }[] };
   const bestByAttempt = new Map(
     (bestRows ?? []).map((row) => [row.attempt_id, row]),
   );
@@ -804,6 +804,8 @@ export async function getQuizResultsAction(
         : 0,
       bestScore: best?.score ?? attempt?.score ?? null,
       attemptsUsed: best?.attempts_used ?? (attempt ? 1 : 0),
+      lateBySeconds: attempt?.late_by_seconds ?? null,
+      bestLateBySeconds: best?.late_by_seconds ?? null,
     };
   });
 

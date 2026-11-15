@@ -5,6 +5,7 @@ import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { signQuizImageUrls } from "@/lib/quiz-images";
 import { gradeShortAnswerWithAI } from "@/lib/ai-grading";
 import { explainWrongAnswer } from "@/lib/ai-explanation";
+import { quizLateBySeconds } from "@/lib/quiz-timing";
 import { applyShortAnswerGrade } from "@/lib/quiz-grading";
 import { notify } from "@/lib/push/notify";
 import type {
@@ -324,13 +325,18 @@ export async function getQuizForTakingAction(
 
   // Anchor a quiz_attempt_starts row regardless of time_limit_minutes (not
   // just for timed quizzes) so a shuffled question order stays stable
-  // across a resume/refresh.
-  await supabase.from("quiz_attempt_starts").upsert(
+  // across a resume/refresh. Written with the service role - students
+  // can't write it themselves (the timer's start time is the server's;
+  // 20261115213340_quiz-timer-server-side.sql) - after the quiz select
+  // above confirmed the assignment through RLS. Its existence is also what
+  // opens the quiz's questions to this student (is_quiz_open_to_student).
+  const serviceRole = createServiceRoleClient();
+  await serviceRole.from("quiz_attempt_starts").upsert(
     { quiz_id: quizId, student_id: studentId },
     { onConflict: "quiz_id,student_id", ignoreDuplicates: true },
   );
 
-  const { data: startRow } = await supabase
+  const { data: startRow } = await serviceRole
     .from("quiz_attempt_starts")
     .select("started_at, question_order")
     .eq("quiz_id", quizId)
@@ -366,7 +372,7 @@ export async function getQuizForTakingAction(
       orderedQuestions = reordered;
     } else {
       orderedQuestions = shuffleQuestionOrder(orderedQuestions);
-      await supabase
+      await serviceRole
         .from("quiz_attempt_starts")
         .update({
           question_order: orderedQuestions.map((question) => question.id),
@@ -457,7 +463,7 @@ export async function submitQuizAttemptAction(
 
   const { data: quiz, error: quizError } = await supabase
     .from("quizzes")
-    .select("id, title, notifications_disabled")
+    .select("id, title, notifications_disabled, time_limit_minutes")
     .eq("id", quizId)
     .single();
 
@@ -473,6 +479,21 @@ export async function submitQuizAttemptAction(
   // real key, not a client-submitted correctness claim - see this
   // function's own doc comment above).
   const serviceRole = createServiceRoleClient();
+
+  // The time limit, by the server's clock: how late a timed quiz is
+  // handed in (null when on time). Late ones are still accepted and the
+  // teacher sees by how much (lib/quiz-timing.ts).
+  const { data: startForTiming } = await serviceRole
+    .from("quiz_attempt_starts")
+    .select("started_at")
+    .eq("quiz_id", quizId)
+    .eq("student_id", studentId)
+    .maybeSingle();
+  const lateBySeconds = quizLateBySeconds(
+    startForTiming?.started_at ?? null,
+    quiz.time_limit_minutes,
+    new Date(),
+  );
 
   const { data: questions, error: questionsError } = await serviceRole
     .from("quiz_questions")
@@ -694,6 +715,7 @@ export async function submitQuizAttemptAction(
         score: totalScore,
         quiz_title: quiz.title,
         max_score: maxScore,
+        late_by_seconds: lateBySeconds,
       })
       .select("id, submitted_at")
       .single();
@@ -731,6 +753,7 @@ export async function submitQuizAttemptAction(
         score: totalScore,
         submitted_at: attempt.submitted_at,
         attempts_used: 1,
+        late_by_seconds: lateBySeconds,
       })
       .select("score, submitted_at, attempts_used")
       .single();
@@ -819,7 +842,7 @@ export async function submitQuizAttemptAction(
       .update({
         attempts_used: currentBest.attempts_used + 1,
         ...(improves
-          ? { score: resolvedScore, submitted_at: new Date().toISOString() }
+          ? { score: resolvedScore, submitted_at: new Date().toISOString(), late_by_seconds: lateBySeconds }
           : {}),
       })
       .eq("attempt_id", attemptId)
@@ -935,7 +958,7 @@ export async function submitQuizAttemptAction(
 
   // Tidy cleanup, not load-bearing - the next getQuizForTakingAction call
   // re-upserts a fresh row (fresh timer, fresh shuffle order) regardless.
-  await supabase
+  await serviceRole
     .from("quiz_attempt_starts")
     .delete()
     .eq("quiz_id", quizId)

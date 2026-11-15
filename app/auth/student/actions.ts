@@ -230,21 +230,17 @@ export async function getStudentDashboardDataAction(): Promise<
             .select("id, quiz_id, score, submitted_at")
             .eq("student_id", student.id)
             .in("quiz_id", quizIds),
-          supabase.from("quiz_questions").select("quiz_id, points").in(
-            "quiz_id",
-            quizIds,
-          ),
+          // Totals only: the questions themselves stay closed until the quiz
+          // is started (20261115213340_quiz-timer-server-side.sql).
+          supabase.rpc("quiz_max_scores", { quiz_ids: quizIds }),
         ]);
 
       const attemptByQuiz = new Map(
         (attempts ?? []).map((attempt) => [attempt.quiz_id, attempt]),
       );
       const maxScoreByQuiz = new Map<string, number>();
-      for (const question of questions ?? []) {
-        maxScoreByQuiz.set(
-          question.quiz_id,
-          (maxScoreByQuiz.get(question.quiz_id) ?? 0) + question.points,
-        );
+      for (const row of (questions ?? []) as { quiz_id: string; max_score: number | string }[]) {
+        maxScoreByQuiz.set(row.quiz_id, Number(row.max_score));
       }
 
       const attemptIds = (attempts ?? []).map((attempt) => attempt.id);

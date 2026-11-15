@@ -81,6 +81,7 @@ import type {
   QuizResults,
   TeacherQuizListItem,
 } from "@/lib/types/database";
+import { formatLateBy } from "@/lib/quiz-timing";
 
 type ClassOption = { id: string; name: string };
 
@@ -955,10 +956,21 @@ export function TeacherQuizBuilder({
                           {new Date(row.submittedAt).toLocaleDateString()}
                           {row.attemptsUsed > 1 &&
                             ` · ${row.attemptsUsed} attempts, best ${row.bestScore} / ${row.maxScore}`}
+                          {row.attemptsUsed > 1 && row.bestLateBySeconds && row.bestLateBySeconds !== row.lateBySeconds
+                            ? ` (best handed in ${formatLateBy(row.bestLateBySeconds)} late)`
+                            : null}
                         </p>
                       )}
                     </div>
                     <div className="flex items-center gap-2">
+                      {row.lateBySeconds ? (
+                        <Badge
+                          variant="destructive"
+                          title="Handed in after the time limit ran out, by the server's clock"
+                        >
+                          {formatLateBy(row.lateBySeconds)} late
+                        </Badge>
+                      ) : null}
                       {row.pendingShortAnswerCount > 0 && (
                         <Badge variant="secondary">
                           {row.pendingShortAnswerCount} pending review

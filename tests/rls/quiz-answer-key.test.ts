@@ -39,6 +39,12 @@ describe("RLS: quiz answer-key column exposure", () => {
       "rls-answer-key-student-a@example.test",
       fixtures.password,
     );
+    // The student has opened the quiz (the server records the start), so
+    // its questions and options are open to them - what's tested here is
+    // that the answer-key columns stay hidden even then.
+    await admin
+      .from("quiz_attempt_starts")
+      .insert({ quiz_id: fixtures.quizA.id, student_id: fixtures.studentA.id });
 
     await admin
       .from("quiz_questions")
@@ -59,6 +65,7 @@ describe("RLS: quiz answer-key column exposure", () => {
 
   afterAll(async () => {
     const admin = serviceClient();
+    await admin.from("quiz_attempt_starts").delete().eq("quiz_id", fixtures.quizA.id);
     await admin
       .from("students")
       .update({ user_id: null })
@@ -81,7 +88,7 @@ describe("RLS: quiz answer-key column exposure", () => {
     expect(error).not.toBeNull();
   });
 
-  it("still lets an assigned student read the option's other columns directly", async () => {
+  it("still lets a student who started the quiz read the option's other columns directly", async () => {
     const { data, error } = await studentA
       .from("quiz_question_options")
       .select("id, option_text")
@@ -100,7 +107,7 @@ describe("RLS: quiz answer-key column exposure", () => {
     expect(error).not.toBeNull();
   });
 
-  it("still lets an assigned student read the question's other columns directly", async () => {
+  it("still lets a student who started the quiz read the question's other columns directly", async () => {
     const { data, error } = await studentA
       .from("quiz_questions")
       .select("id, question_text")

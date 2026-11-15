@@ -364,6 +364,10 @@ export interface QuizResultRow {
   // retry has beaten the student's official (first) attempt.
   bestScore: number | null;
   attemptsUsed: number;
+  /** Timed quizzes handed in past the limit (plus grace): by how many seconds. */
+  lateBySeconds?: number | null;
+  /** The same for the attempt holding the best score, when that's a retry. */
+  bestLateBySeconds?: number | null;
 }
 
 export interface QuizResults {
