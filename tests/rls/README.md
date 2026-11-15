@@ -50,6 +50,10 @@ policies, not exhaustive coverage of every policy in the schema:
 attendance alerts reach only the right family (and the teacher), and a
 student can't write their own quiz score directly (bypassing grading).
 
+`teacher-private-rls.test.ts` — the teacher's contacts, tasks and
+expenses are invisible to parents, students and guests (contacts and tasks
+also per teacher), and they can't add, change or delete them.
+
 `local-stack-reset.test.ts` — `supabase db reset` (migrations + seed)
 succeeds without a foreign-key violation.
 

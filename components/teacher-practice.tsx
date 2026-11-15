@@ -597,7 +597,8 @@ function PracticeBank({
   );
 }
 
-function ImportDialog({
+/** Exported for tests/teacher-practice-dialogs.test.tsx. */
+export function ImportDialog({
   open,
   grade,
   sections,
@@ -740,7 +741,8 @@ function ImportDialog({
   );
 }
 
-function CopyFromQuizzesDialog({
+/** Exported for tests/teacher-practice-dialogs.test.tsx. */
+export function CopyFromQuizzesDialog({
   open,
   sectionId,
   sectionName,
