@@ -19,6 +19,14 @@ hosted project and **Enter means No** - type `y`. To push to a project
 without relinking, run `npx supabase db push --remote=<project-ref>`
 directly. The old `--linked`/`--project-ref`/`--db-url` flags only warn now.
 
+### From GitHub (e.g. away from the PC)
+
+The **Push database migrations** workflow (`.github/workflows/db-push.yml`)
+runs the same `db push` on GitHub: Actions → Push database migrations → Run
+workflow → pick `dev` or `prod`, the branch holding the migration files
+(`main` or a feature branch), and optionally *dry run* to only list what
+would be applied. Setup (secrets, environments) is at the top of the file.
+
 Never hand-paste SQL into the Supabase dashboard's SQL editor anymore — that
 was the old workflow (see `history/` below) and it left no record of what had
 actually been applied.
