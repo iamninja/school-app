@@ -11,6 +11,7 @@ export const TEACHER_SECTION_IDS = [
   "students",
   "attendance",
   "quizzes",
+  "practice",
   "assessments",
   "billing",
   "receipts",
