@@ -96,8 +96,9 @@ type ProgressApi = {
  * lives on their account: loaded with the page, a guest's progress on this
  * device folded in once, and every change saved in the background (with
  * the unsent answers kept on the device until they're through).
+ * Exported for tests/practice-game-sync.test.tsx.
  */
-function useProgress(student: boolean, saved: PracticeProgress | null): ProgressApi {
+export function useProgress(student: boolean, saved: PracticeProgress | null): ProgressApi {
   const [progress, setProgress] = React.useState<PracticeProgress>(() => saved ?? emptyProgress());
   const [carriedOver, setCarriedOver] = React.useState(false);
   const latest = React.useRef(progress);
