@@ -46,6 +46,10 @@ policies, not exhaustive coverage of every policy in the schema:
 - Parents see only their own children's progress and answers, read-only.
 - Reports are written by the server only and read by the teacher.
 
+`student-data-rls.test.ts` — quiz results, homework, class files and
+attendance alerts reach only the right family (and the teacher), and a
+student can't write their own quiz score directly (bypassing grading).
+
 `local-stack-reset.test.ts` — `supabase db reset` (migrations + seed)
 succeeds without a foreign-key violation.
 

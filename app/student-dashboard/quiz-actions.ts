@@ -686,7 +686,7 @@ export async function submitQuizAttemptAction(
     // live join - if the quiz is later deleted, this attempt (and the
     // student's history of it) survives via ON DELETE SET NULL, even
     // though the questions/answer detail don't.
-    const { data: attempt, error: attemptError } = await supabase
+    const { data: attempt, error: attemptError } = await serviceRole
       .from("quiz_attempts")
       .insert({
         quiz_id: quizId,
@@ -706,7 +706,7 @@ export async function submitQuizAttemptAction(
     officialScore = totalScore;
     officialSubmittedAt = attempt.submitted_at;
 
-    const { data: insertedAnswers, error: answersError } = await supabase
+    const { data: insertedAnswers, error: answersError } = await serviceRole
       .from("quiz_attempt_answers")
       .insert(answerRows.map((row) => ({ attempt_id: attemptId, ...row })))
       .select("id, question_id");
@@ -724,7 +724,7 @@ export async function submitQuizAttemptAction(
         insertedAnswerIdByQuestion.get(review.questionId) ?? "";
     }
 
-    const { data: bestRow, error: bestError } = await supabase
+    const { data: bestRow, error: bestError } = await serviceRole
       .from("quiz_attempt_bests")
       .insert({
         attempt_id: attemptId,
@@ -740,7 +740,7 @@ export async function submitQuizAttemptAction(
     }
 
     const { data: insertedBestAnswers, error: bestAnswersError } =
-      await supabase
+      await serviceRole
         .from("quiz_attempt_best_answers")
         .insert(answerRows.map((row) => ({ attempt_id: attemptId, ...row })))
         .select("id, question_id");
@@ -814,7 +814,7 @@ export async function submitQuizAttemptAction(
 
     const improves = resolvedScore > currentBest.score;
 
-    const { data: updatedBest, error: updateBestError } = await supabase
+    const { data: updatedBest, error: updateBestError } = await serviceRole
       .from("quiz_attempt_bests")
       .update({
         attempts_used: currentBest.attempts_used + 1,
@@ -831,7 +831,7 @@ export async function submitQuizAttemptAction(
     }
 
     if (improves) {
-      const { error: deleteBestAnswersError } = await supabase
+      const { error: deleteBestAnswersError } = await serviceRole
         .from("quiz_attempt_best_answers")
         .delete()
         .eq("attempt_id", attemptId);
@@ -856,7 +856,7 @@ export async function submitQuizAttemptAction(
       });
 
       const { data: insertedBestAnswers, error: insertBestAnswersError } =
-        await supabase
+        await serviceRole
           .from("quiz_attempt_best_answers")
           .insert(
             bestAnswerRowsToInsert.map((row) => ({
