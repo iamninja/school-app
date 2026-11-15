@@ -25,6 +25,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StudentQuizPanel } from "@/components/student-quiz-panel";
 import { PortalHistoryDialog } from "@/components/portal-history-dialog";
+import { PortalPracticeCard } from "@/components/practice/portal-practice-card";
+import type { PracticeSummary } from "@/lib/practice-progress";
 import { PortalUpcomingCard } from "@/components/portal-upcoming-card";
 import type {
   PortalCalendarEvent,
@@ -92,6 +94,7 @@ type StudentDashboardEnProps = {
   calendarEvents: PortalCalendarEvent[];
   assessments: AssessmentSummary[];
   homework: HomeworkSummary[];
+  practice?: PracticeSummary;
   demoMode?: boolean;
   demoReviews?: Record<string, QuizAttemptReview>;
 };
@@ -133,7 +136,7 @@ function AssessmentRow({ assessment }: { assessment: AssessmentSummary }) {
           {whenLabel ? ` · ${whenLabel}` : ""}
         </p>
       </div>
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="flex items-center gap-2 whitespace-nowrap">
         {assessment.status === "marked" ? (
           <div className="flex flex-wrap items-center justify-end gap-2">
             <Badge variant="outline">
@@ -350,7 +353,9 @@ export function StudentDashboardEn(props: StudentDashboardEnProps) {
           />
         </div>
 
-        <div className="grid items-start gap-6 xl:grid-cols-[1.4fr_1fr]">
+        {props.practice ? <PortalPracticeCard summary={props.practice} locale="en" /> : null}
+
+        <div className="grid items-start gap-6 xl:grid-cols-[1.4fr_1fr] [&>*]:min-w-0">
           {/* Left column */}
           <div className="flex flex-col gap-6">
             <div className="space-y-3">
@@ -592,7 +597,7 @@ export function StudentDashboardEn(props: StudentDashboardEnProps) {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <dl className="grid gap-3 text-sm">
+                  <dl className="grid gap-3 text-sm [&>*]:min-w-0">
                     <div className="flex items-center justify-between gap-3">
                       <dt className="text-muted-foreground">Full name</dt>
                       <dd className="font-medium">
@@ -622,7 +627,7 @@ export function StudentDashboardEn(props: StudentDashboardEnProps) {
                       <p className="mb-2 text-sm font-medium">
                         Parent/guardian details
                       </p>
-                      <div className="grid gap-2">
+                      <div className="grid gap-2 [&>*]:min-w-0">
                         {props.parents.map((parent, idx) => (
                           <div
                             key={idx}

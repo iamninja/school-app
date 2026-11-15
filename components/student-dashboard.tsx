@@ -141,7 +141,7 @@ function AssessmentRow({ assessment }: { assessment: AssessmentSummary }) {
           {whenLabel ? ` · ${whenLabel}` : ""}
         </p>
       </div>
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="flex items-center gap-2 whitespace-nowrap">
         {assessment.status === "marked" ? (
           <div className="flex flex-wrap items-center justify-end gap-2">
             <Badge variant="outline">
@@ -368,7 +368,7 @@ export function StudentDashboard(props: StudentDashboardProps) {
 
         {props.practice ? <PortalPracticeCard summary={props.practice} /> : null}
 
-        <div className="grid items-start gap-6 xl:grid-cols-[1.4fr_1fr]">
+        <div className="grid items-start gap-6 xl:grid-cols-[1.4fr_1fr] [&>*]:min-w-0">
           {/* Left column */}
           <div className="flex flex-col gap-6">
             <div className="space-y-3">
@@ -618,7 +618,7 @@ export function StudentDashboard(props: StudentDashboardProps) {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <dl className="grid gap-3 text-sm">
+                  <dl className="grid gap-3 text-sm [&>*]:min-w-0">
                     <div className="flex items-center justify-between gap-3">
                       <dt className="text-muted-foreground">Ονοματεπώνυμο</dt>
                       <dd className="font-medium">
@@ -648,7 +648,7 @@ export function StudentDashboard(props: StudentDashboardProps) {
                       <p className="mb-2 text-sm font-medium">
                         Στοιχεία γονέα/κηδεμόνα
                       </p>
-                      <div className="grid gap-2">
+                      <div className="grid gap-2 [&>*]:min-w-0">
                         {props.parents.map((parent, idx) => (
                           <div
                             key={idx}

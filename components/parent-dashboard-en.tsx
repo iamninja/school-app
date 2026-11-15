@@ -31,6 +31,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MathText } from "@/components/math-text";
 import { PortalHistoryDialog } from "@/components/portal-history-dialog";
+import { ParentPracticeCard } from "@/components/practice/parent-practice-card";
 import { PortalUpcomingCard } from "@/components/portal-upcoming-card";
 import { ReceiptDocument } from "@/components/receipt-document";
 import type {
@@ -158,7 +159,7 @@ function AssessmentRow({ assessment }: { assessment: AssessmentSummary }) {
           {whenLabel ? ` · ${whenLabel}` : ""}
         </p>
       </div>
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="flex items-center gap-2 whitespace-nowrap">
         {assessment.status === "marked" ? (
           <div className="flex flex-wrap items-center justify-end gap-2">
             <Badge variant="outline">
@@ -445,6 +446,7 @@ function ChildSection({
   calendarEvents,
   assessments,
   homework,
+  practice,
 }: ParentDashboardChild) {
   const schedulesByClass = schedules.reduce(
     (acc, schedule) => {
@@ -546,7 +548,7 @@ function ChildSection({
         />
       </div>
 
-      <div className="grid items-start gap-6 xl:grid-cols-[1.4fr_1fr]">
+      <div className="grid items-start gap-6 xl:grid-cols-[1.4fr_1fr] [&>*]:min-w-0">
         {/* Left: classes + quizzes */}
         <div className="flex flex-col gap-6">
           <Card>
@@ -719,6 +721,8 @@ function ChildSection({
               )}
             </CardContent>
           </Card>
+
+          {practice ? <ParentPracticeCard summary={practice} name={student.firstName} locale="en" /> : null}
         </div>
 
         {/* Right: upcoming + recent attendance */}
@@ -936,7 +940,7 @@ export function ParentDashboardEn(props: ParentDashboardEnProps) {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid gap-3 md:grid-cols-2">
+                <div className="grid gap-3 md:grid-cols-2 [&>*]:min-w-0">
                   {otherParents.map((otherParent, idx) => (
                     <div
                       key={idx}

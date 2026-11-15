@@ -157,7 +157,7 @@ function AssessmentRow({ assessment }: { assessment: AssessmentSummary }) {
           {whenLabel ? ` · ${whenLabel}` : ""}
         </p>
       </div>
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="flex items-center gap-2 whitespace-nowrap">
         {assessment.status === "marked" ? (
           <div className="flex flex-wrap items-center justify-end gap-2">
             <Badge variant="outline">
@@ -549,7 +549,7 @@ function ChildSection({
         />
       </div>
 
-      <div className="grid items-start gap-6 xl:grid-cols-[1.4fr_1fr]">
+      <div className="grid items-start gap-6 xl:grid-cols-[1.4fr_1fr] [&>*]:min-w-0">
         {/* Left: classes + quizzes */}
         <div className="flex flex-col gap-6">
           <Card>
@@ -951,7 +951,7 @@ export function ParentDashboard(props: ParentDashboardProps) {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid gap-3 md:grid-cols-2">
+                <div className="grid gap-3 md:grid-cols-2 [&>*]:min-w-0">
                   {otherParents.map((otherParent, idx) => (
                     <div
                       key={idx}

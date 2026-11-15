@@ -42,7 +42,7 @@ export default function DemoEnPage() {
             type="button"
             onClick={() => setView("student")}
             className={cn(
-              "flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-medium transition-colors",
+              "flex items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-sm font-medium transition-colors",
               view === "student"
                 ? "bg-brand text-brand-foreground"
                 : "text-muted-foreground hover:text-foreground",
@@ -55,7 +55,7 @@ export default function DemoEnPage() {
             type="button"
             onClick={() => setView("parent")}
             className={cn(
-              "flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-medium transition-colors",
+              "flex items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-sm font-medium transition-colors",
               view === "parent"
                 ? "bg-brand text-brand-foreground"
                 : "text-muted-foreground hover:text-foreground",
