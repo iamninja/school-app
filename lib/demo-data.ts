@@ -789,9 +789,15 @@ const NIKOS_AS_CHILD: ParentDashboardData["kids"][number] = {
   calendarEvents: NIKOS.calendarEvents,
   assessments: NIKOS.assessments,
   homework: NIKOS.homework,
+  // Practice this week, as his parents see it (components/practice/parent-practice-card.tsx).
+  practice: { dailyStreak: 5, weekAnswers: 48, weekRight: 39, weekDays: 4, mistakes: 4 },
 };
 
-export const DEMO_STUDENT_DASHBOARD: StudentDashboardData = NIKOS;
+export const DEMO_STUDENT_DASHBOARD: StudentDashboardData = {
+  ...NIKOS,
+  // The home screen's way into practice (components/practice/portal-practice-card.tsx).
+  practice: { available: true, dailyStreak: 5, points: 1860, mistakes: 4, bestScore: 9 },
+};
 
 export const DEMO_PARENT_DASHBOARD: ParentDashboardData = {
   parent: {
