@@ -29,6 +29,7 @@ const PORTAL_SHELL_LABELS = {
       "Δοκιμαστική προβολή με δείγμα δεδομένων — δεν αντιστοιχεί σε πραγματικό μαθητή ή γονέα.",
     signOut: "Αποσύνδεση",
     exitDemo: "Έξοδος από τη δοκιμαστική προβολή",
+    exitDemoShort: "Έξοδος",
     footer:
       "Φροντιστήριο Μαθηματικών Modus · Βάγιος Βλάχος · Ηρώων Πολυτεχνείου 3, 1ος όροφος, Καρδίτσα",
   },
@@ -38,6 +39,7 @@ const PORTAL_SHELL_LABELS = {
       "Sample-data preview — this doesn't correspond to a real student or parent.",
     signOut: "Sign out",
     exitDemo: "Exit preview",
+    exitDemoShort: "Exit",
     footer: "Modus Math Tutoring · Karditsa, Greece",
   },
 };
@@ -134,7 +136,14 @@ export function PortalShell({
             <ThemeSwitcher />
             <Button variant="outline" size="sm" onClick={handleSignOut}>
               <LogOut className="size-3.5" aria-hidden="true" />
-              {demoMode ? labels.exitDemo : labels.signOut}
+              {demoMode ? (
+                <>
+                  <span className="sm:hidden">{labels.exitDemoShort}</span>
+                  <span className="hidden sm:inline">{labels.exitDemo}</span>
+                </>
+              ) : (
+                labels.signOut
+              )}
             </Button>
           </div>
         </div>

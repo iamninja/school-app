@@ -785,9 +785,14 @@ const ALEX_AS_CHILD: ParentDashboardData["kids"][number] = {
   calendarEvents: ALEX.calendarEvents,
   assessments: ALEX.assessments,
   homework: ALEX.homework,
+  // Practice this week, as his parents see it (components/practice/parent-practice-card.tsx).
+  practice: { dailyStreak: 5, weekAnswers: 48, weekRight: 39, weekDays: 4, mistakes: 4 },
 };
 
-export const DEMO_EN_STUDENT_DASHBOARD: StudentDashboardData = ALEX;
+export const DEMO_EN_STUDENT_DASHBOARD: StudentDashboardData = {
+  ...ALEX,
+  practice: { available: true, dailyStreak: 5, points: 1860, mistakes: 4, bestScore: 9 },
+};
 
 export const DEMO_EN_PARENT_DASHBOARD: ParentDashboardData = {
   parent: {
