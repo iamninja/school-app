@@ -38,6 +38,14 @@ policies, not exhaustive coverage of every policy in the schema:
   unrelated family's.
 - A teacher can't see another teacher's student.
 
+`practice-rls.test.ts` — practice (bank, progress, answers, reports):
+- The question bank is read only by its teacher; students, parents, guests
+  and another teacher get nothing directly (rounds are drawn by the server).
+- A student reads and writes only their own progress and answers, can't
+  write as another student, and can't change or delete recorded answers.
+- Parents see only their own children's progress and answers, read-only.
+- Reports are written by the server only and read by the teacher.
+
 `local-stack-reset.test.ts` — `supabase db reset` (migrations + seed)
 succeeds without a foreign-key violation.
 
