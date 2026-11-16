@@ -19,6 +19,56 @@ import { evalExpr, exprVariables, PracticeExprError } from "@/lib/practice-expr"
 
 export type PracticeQuestionType = "choice" | "true_false" | "number" | "slider" | "point";
 
+/** Where a question comes from, shown to students as a small label. */
+export type PracticeOrigin = "panhellenic" | "textbook" | "custom";
+
+export const PRACTICE_ORIGIN_LABELS: Record<Exclude<PracticeOrigin, "custom">, string> = {
+  panhellenic: "Πανελλαδικές",
+  textbook: "Σχολικό βιβλίο",
+};
+
+export const MAX_ORIGIN_DETAIL = 120;
+
+const PLAIN: Record<string, string> = { ά: "α", έ: "ε", ή: "η", ί: "ι", ό: "ο", ύ: "υ", ώ: "ω", ϊ: "ι", ϋ: "υ", ΐ: "ι", ΰ: "υ" };
+/** Lowercase without Greek accents, one character for one (so indexes still line up). */
+const plain = (text: string) => [...text.toLowerCase()].map((ch) => PLAIN[ch] ?? ch).join("");
+
+const ORIGIN_WORDS: [PracticeOrigin, RegExp][] = [
+  ["panhellenic", /^(πανελλαδικες(\s+εξετασεις)?|πανελληνιες(\s+εξετασεις)?|panhellenic(\s+exams?)?)(?![\p{L}])/u],
+  ["textbook", /^(σχολικο\s+βιβλιο|βιβλιο|textbook|school\s*book)(?![\p{L}])/u],
+];
+
+/**
+ * A written source ("Πανελλαδικές 2019 · Θέμα Β", "Σχολικό βιβλίο σελ. 45",
+ * "Μαθηματική Εταιρεία") as origin + detail: the two known kinds by their
+ * name at the start (accents and case don't matter), anything else custom.
+ */
+export function parseOriginText(raw: string | null | undefined): { origin: PracticeOrigin | null; originDetail: string | null } {
+  const text = (raw ?? "").trim();
+  if (!text) return { origin: null, originDetail: null };
+  for (const [origin, words] of ORIGIN_WORDS) {
+    const match = words.exec(plain(text));
+    if (match) {
+      const rest = text.slice(match[0].length).replace(/^[\s·:,\-–—]+/, "").trim();
+      return { origin, originDetail: rest || null };
+    }
+  }
+  return { origin: "custom", originDetail: text };
+}
+
+/**
+ * "Πανελλαδικές · 2019 · Θέμα Β", "Σχολικό βιβλίο", or a custom source's
+ * name (its detail). null when the question has no source to show.
+ */
+export function practiceOriginLabel(origin: PracticeOrigin | null | undefined, detail: string | null | undefined): string | null {
+  const extra = (detail ?? "").trim();
+  if (origin === "custom") return extra || null;
+  if (origin === "panhellenic" || origin === "textbook") {
+    return extra ? `${PRACTICE_ORIGIN_LABELS[origin]} · ${extra}` : PRACTICE_ORIGIN_LABELS[origin];
+  }
+  return null;
+}
+
 export interface PracticeGraph {
   xMin: number;
   xMax: number;
@@ -42,6 +92,9 @@ export interface PracticeQuestionSpec {
   variables?: string | null;
   condition?: string | null;
   explanation?: string | null;
+  /** Where it comes from (optional), and a short detail ("2019 · Θέμα Β"). */
+  origin?: PracticeOrigin | null;
+  originDetail?: string | null;
 }
 
 /** One concrete question, numbers filled in - what a round plays. */
@@ -56,6 +109,8 @@ export interface PlayableQuestion {
   slider: { min: number; max: number; step: number } | null;
   graph: PracticeGraph | null;
   explanation: string | null;
+  /** "Πανελλαδικές · 2019" etc., or null (practiceOriginLabel). */
+  originLabel: string | null;
 }
 
 export type VariableDef =
@@ -297,6 +352,7 @@ export function instantiate(spec: PracticeQuestionSpec, rng: Rng = Math.random):
     type: spec.type,
     prompt: fill(spec.prompt),
     explanation: spec.explanation ? fill(spec.explanation) : null,
+    originLabel: practiceOriginLabel(spec.origin, spec.originDetail),
     options: [] as { text: string; correct: boolean }[],
     answer: 0,
     answerY: 0,
@@ -380,6 +436,11 @@ function niceStep(span: number): number {
 export function validatePracticeQuestion(spec: PracticeQuestionSpec, samples = 40): string[] {
   const problems = new Set<string>();
   if (!spec.prompt || !spec.prompt.trim()) problems.add("Write the question");
+  if (spec.origin != null && !["panhellenic", "textbook", "custom"].includes(spec.origin)) problems.add("Unknown source");
+  if (spec.origin === "custom" && !(spec.originDetail ?? "").trim()) problems.add("Name the source");
+  if ((spec.originDetail ?? "").trim().length > MAX_ORIGIN_DETAIL) {
+    problems.add(`The source detail is too long (${MAX_ORIGIN_DETAIL} characters at most)`);
+  }
   if (spec.type === "point" && spec.graph) {
     const g = spec.graph;
     try {

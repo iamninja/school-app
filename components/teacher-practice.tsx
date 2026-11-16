@@ -12,6 +12,7 @@ import {
   FileUpIcon,
   GlobeIcon,
   LockIcon,
+  BookMarkedIcon,
   PencilIcon,
   PlusIcon,
   Trash2Icon,
@@ -65,7 +66,7 @@ import {
 } from "@/lib/practice-bank";
 import { parsePracticeMarkdown } from "@/lib/practice-markdown";
 import { PRACTICE_MARKDOWN_TEMPLATE } from "@/lib/practice-markdown-template";
-import { instantiate, seededRng, type PlayableQuestion } from "@/lib/practice-template";
+import { instantiate, practiceOriginLabel, seededRng, type PlayableQuestion } from "@/lib/practice-template";
 import { cn } from "@/lib/utils";
 
 const SELECT_CLASS =
@@ -463,6 +464,12 @@ function PracticeBank({
                               {question.variables ? (
                                 <Badge variant="secondary" className="gap-1 text-[11px]">
                                   <DicesIcon className="size-3" aria-hidden="true" /> Random numbers
+                                </Badge>
+                              ) : null}
+                              {question.origin ? (
+                                <Badge variant="outline" className="max-w-[16rem] gap-1 border-brand/40 text-[11px]">
+                                  <BookMarkedIcon className="size-3 shrink-0" aria-hidden="true" />
+                                  <span className="truncate">{practiceOriginLabel(question.origin, question.originDetail)}</span>
                                 </Badge>
                               ) : null}
                               {question.imagePath ? <Badge variant="outline" className="text-[11px]">Image</Badge> : null}

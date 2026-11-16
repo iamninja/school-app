@@ -22,9 +22,12 @@ import { getErrorMessage } from "@/lib/expected-error";
 import { PRACTICE_IMAGES_BUCKET, practiceImageUrl, type PracticeQuestion } from "@/lib/practice-bank";
 import {
   instantiate,
+  MAX_ORIGIN_DETAIL,
+  PRACTICE_ORIGIN_LABELS,
   seededRng,
   validatePracticeQuestion,
   type PlayableQuestion,
+  type PracticeOrigin,
   type PracticeQuestionSpec,
   type PracticeQuestionType,
 } from "@/lib/practice-template";
@@ -57,6 +60,8 @@ type Draft = {
   variables: string;
   condition: string;
   explanation: string;
+  origin: PracticeOrigin | "";
+  originDetail: string;
   imagePath: string | null;
 };
 
@@ -88,6 +93,8 @@ export function draftFrom(question: Partial<PracticeQuestion> | null): Draft {
     variables: question?.variables ?? "",
     condition: question?.condition ?? "",
     explanation: question?.explanation ?? "",
+    origin: question?.origin ?? "",
+    originDetail: question?.originDetail ?? "",
     imagePath: question?.imagePath ?? null,
   };
 }
@@ -106,6 +113,8 @@ export function specFrom(draft: Draft): PracticeQuestionSpec {
     variables: draft.variables.trim() || null,
     condition: draft.condition.trim() || null,
     explanation: draft.explanation.trim() || null,
+    origin: draft.origin || null,
+    originDetail: draft.origin ? draft.originDetail.trim() || null : null,
   };
   if (draft.type === "choice") spec.options = draft.options.filter((option) => option.text.trim());
   else if (draft.type === "true_false") spec.answer = draft.tfAnswer;
@@ -467,6 +476,41 @@ export function PracticeQuestionEditor({
                 onChange={(event) => update({ explanation: event.target.value })}
                 placeholder="$2x = 12$, άρα $x = 6$."
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="pq-origin">
+                Source <span className="text-muted-foreground">(optional, shown to students)</span>
+              </Label>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <select
+                  id="pq-origin"
+                  className="h-9 rounded-md border border-input bg-transparent px-3 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:w-48"
+                  value={draft.origin}
+                  onChange={(event) => update({ origin: event.target.value as Draft["origin"] })}
+                >
+                  <option value="">None</option>
+                  <option value="panhellenic">{PRACTICE_ORIGIN_LABELS.panhellenic}</option>
+                  <option value="textbook">{PRACTICE_ORIGIN_LABELS.textbook}</option>
+                  <option value="custom">Other source…</option>
+                </select>
+                {draft.origin ? (
+                  <Input
+                    id="pq-origin-detail"
+                    aria-label={draft.origin === "custom" ? "Source name" : "Source detail"}
+                    maxLength={MAX_ORIGIN_DETAIL}
+                    value={draft.originDetail}
+                    onChange={(event) => update({ originDetail: event.target.value })}
+                    placeholder={
+                      draft.origin === "panhellenic"
+                        ? "Optional: 2019 · Θέμα Β"
+                        : draft.origin === "textbook"
+                          ? "Optional: σελ. 45, άσκ. 3"
+                          : "Name of the source"
+                    }
+                  />
+                ) : null}
+              </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">

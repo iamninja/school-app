@@ -4,6 +4,7 @@ import { CheckIcon } from "lucide-react";
 
 import { MathText } from "@/components/math-text";
 import { PracticeGraphView } from "@/components/practice/practice-graph";
+import { PracticeOriginBadge } from "@/components/practice/practice-origin-badge";
 import { formatNumber, type PlayableQuestion } from "@/lib/practice-template";
 import { cn } from "@/lib/utils";
 
@@ -21,6 +22,7 @@ export function PracticeQuestionPreview({
 }) {
   return (
     <div className="space-y-3">
+      {question.originLabel ? <PracticeOriginBadge label={question.originLabel} /> : null}
       <p className={cn("whitespace-pre-line font-medium", compact ? "text-sm" : "text-base")}>
         <MathText text={question.prompt} />
       </p>
