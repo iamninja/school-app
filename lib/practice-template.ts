@@ -343,6 +343,18 @@ function numberAnswer(answer: string | null | undefined, scope: Record<string, n
  * every placeholder, works out the answer. Throws PracticeTemplateError
  * (or PracticeExprError) when the question can't be played as written.
  */
+/**
+ * A true/false answer as written - "Σωστό"/"Λάθος", "true"/"false", "Σ"/"Λ",
+ * any case, with or without accents - or null when it's neither. Stored
+ * as "true"/"false" (lib/practice-bank.ts).
+ */
+export function trueFalseValue(raw: string | null | undefined): boolean | null {
+  const text = plain((raw ?? "").trim());
+  if (["true", "σωστο", "σ"].includes(text)) return true;
+  if (["false", "λαθος", "λ"].includes(text)) return false;
+  return null;
+}
+
 export function instantiate(spec: PracticeQuestionSpec, rng: Rng = Math.random): PlayableQuestion {
   const defs = parseVariables(spec.variables);
   const scope = defs.length || spec.condition ? drawValues(defs, spec.condition, rng) : {};
@@ -375,11 +387,8 @@ export function instantiate(spec: PracticeQuestionSpec, rng: Rng = Math.random):
       return { ...base, options };
     }
     case "true_false": {
-      const raw = (spec.answer ?? "").trim().toLowerCase();
-      let value: boolean;
-      if (["true", "σωστό", "σωστο", "σ"].includes(raw)) value = true;
-      else if (["false", "λάθος", "λαθος", "λ"].includes(raw)) value = false;
-      else value = numberAnswer(spec.answer, scope, "A true/false question") !== 0;
+      const value = trueFalseValue(spec.answer);
+      if (value === null) throw new PracticeTemplateError("A true/false answer is Σωστό or Λάθος (true or false)");
       return { ...base, answer: value ? 1 : 0 };
     }
     case "number":

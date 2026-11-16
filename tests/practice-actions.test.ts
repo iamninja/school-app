@@ -140,7 +140,27 @@ Answer: Σωστό
     expect(result).toEqual({ ok: true, sectionId: "sec-new", imported: 2, createdSection: true });
     const rows = insertsInto(client, "practice_questions")[0] as unknown[];
     expect(rows).toHaveLength(2);
-    expect(rows[1]).toMatchObject({ type: "true_false", answer: "Σωστό", source: "import", section_id: "sec-new", position: 1 });
+    expect(rows[1]).toMatchObject({ type: "true_false", answer: "true", source: "import", section_id: "sec-new", position: 1 });
+  });
+
+  it("removes the section it created when the questions can't be saved", async () => {
+    const client = createMockSupabaseClient({
+      practice_sections: [
+        { data: null, error: null },
+        { data: null, error: null },
+        { data: { id: "sec-new", grade: "lyk_b", name: "Πολυώνυμα", position: 0, is_public: false }, error: null },
+        { data: null, error: null },
+      ],
+      practice_questions: [{ data: null, error: null }, { data: null, error: { message: "violates check constraint" } }],
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+    await expect(importPracticeMarkdownAction({ grade: "lyk_b", markdown: FILE })).rejects.toBeTruthy();
+    const sectionChains = client.from.mock.calls
+      .map((call, index) => [call[0], client.from.mock.results[index].value] as const)
+      .filter(([table]) => table === "practice_sections");
+    const deleted = sectionChains.find(([, chain]) => chain.delete.mock.calls.length > 0);
+    expect(deleted).toBeTruthy();
+    expect(deleted![1].eq).toHaveBeenCalledWith("id", "sec-new");
   });
 
   it("needs a section when the file names none", async () => {

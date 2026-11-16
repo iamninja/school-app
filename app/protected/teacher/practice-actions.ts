@@ -370,7 +370,12 @@ export async function importPracticeMarkdownAction(input: {
     position: position++,
   }));
   const { error } = await supabase.from("practice_questions").insert(rows);
-  if (error) throw error;
+  if (error) {
+    // All or nothing: the insert is one statement (none of the rows went
+    // in), and a section this import created goes too.
+    if (createdSection) await supabase.from("practice_sections").delete().eq("id", sectionId).eq("teacher_id", userId);
+    throw error;
+  }
   return { ok: true, sectionId, imported: rows.length, createdSection };
 }
 

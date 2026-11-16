@@ -83,3 +83,30 @@ Answer: 8
     expect(parsed.questions.filter((q) => q.origin).map((q) => q.origin)).toEqual(["textbook"]);
   });
 });
+
+describe("true/false answers as written in a file", () => {
+  it("are stored as true/false, however they're written (the table only takes those)", async () => {
+    const { toPracticeQuestionColumns } = await import("@/lib/practice-bank");
+    const { trueFalseValue } = await import("@/lib/practice-template");
+    expect(["Σωστό", "σωστο", "ΣΩΣΤΟ", "Σ", "true", "True"].map(trueFalseValue)).toEqual([true, true, true, true, true, true]);
+    expect(["Λάθος", "λαθος", "Λ", "false"].map(trueFalseValue)).toEqual([false, false, false, false]);
+    expect(trueFalseValue("ίσως")).toBeNull();
+
+    const parsed = parsePracticeMarkdown("## Το $2$ είναι άρτιος.\nAnswer: Σωστό\n\n## Το $3$ είναι άρτιος.\nAnswer: Λάθος\n");
+    expect(parsed.errors).toEqual([]);
+    expect(parsed.questions.map((q) => toPracticeQuestionColumns(q).answer)).toEqual(["true", "false"]);
+  });
+
+  it("refuses anything else instead of failing in the database", () => {
+    const parsed = parsePracticeMarkdown("## Το $2$ είναι άρτιος.\nType: true_false\nAnswer: ίσως\n");
+    expect(parsed.errors[0]).toMatch(/Σωστό or Λάθος/);
+  });
+
+  it("lets every question in the template be stored", async () => {
+    const { toPracticeQuestionColumns } = await import("@/lib/practice-bank");
+    for (const spec of parsePracticeMarkdown(PRACTICE_MARKDOWN_TEMPLATE).questions) {
+      const columns = toPracticeQuestionColumns(spec);
+      if (spec.type === "true_false") expect(["true", "false"]).toContain(columns.answer);
+    }
+  });
+});
