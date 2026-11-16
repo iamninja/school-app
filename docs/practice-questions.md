@@ -30,7 +30,9 @@ students. Follow these rules exactly:
    exercises, so practice never repeats the same numbers. Use fixed
    questions for concepts and definitions.
 8. Stay within the chapter or section you were given. Start the file with
-   "# <section name>".
+   "# <section name>". For several sections, put them in one file, each
+   under its own "# <section name>" heading: every question goes into the
+   section above it.
 9. Mix the types, and order questions from easier to harder.
 10. Add "Source:" only when a question really comes from somewhere, and
    never invent one. See SOURCE below.

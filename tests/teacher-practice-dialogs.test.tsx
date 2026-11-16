@@ -24,6 +24,7 @@ vi.mock("@/app/protected/teacher/practice-actions", () => ({
   listPracticeQuestionsAction: vi.fn(),
   listPracticeReportsAction: vi.fn(),
   listPracticeSectionsAction: vi.fn(),
+  movePracticeQuestionsAction: vi.fn(),
   reorderPracticeSectionsAction: vi.fn(),
   resolvePracticeReportAction: vi.fn(),
   savePracticeQuestionAction: vi.fn(),
@@ -51,7 +52,7 @@ describe("importing a Markdown file", () => {
     fireEvent.change(screen.getByPlaceholderText(/Η ευθεία/), { target: { value: markdown } });
 
   it("previews a correct file and imports it into the section it names", async () => {
-    vi.mocked(importPracticeMarkdownAction).mockResolvedValue({ ok: true, sectionId: "s-line", imported: 7, createdSection: false });
+    vi.mocked(importPracticeMarkdownAction).mockResolvedValue({ ok: true, sectionId: "s-line", imported: 7, createdSection: false, sections: [{ id: "s-line", name: "Η ευθεία", imported: 7, created: false }] });
     const onImported = renderImport();
     paste(PRACTICE_MARKDOWN_TEMPLATE);
 
@@ -63,7 +64,7 @@ describe("importing a Markdown file", () => {
   });
 
   it("imports into a section picked instead of the file's", async () => {
-    vi.mocked(importPracticeMarkdownAction).mockResolvedValue({ ok: true, sectionId: "s-poly", imported: 7, createdSection: false });
+    vi.mocked(importPracticeMarkdownAction).mockResolvedValue({ ok: true, sectionId: "s-poly", imported: 7, createdSection: false, sections: [{ id: "s-poly", name: null, imported: 7, created: false }] });
     renderImport();
     paste(PRACTICE_MARKDOWN_TEMPLATE);
     await userEvent.selectOptions(screen.getByLabelText("Into"), "s-poly");
@@ -198,5 +199,88 @@ describe("the question editor", () => {
     fireEvent.change(screen.getByLabelText(/Counts as right within/), { target: { value: "about one" } });
     expect(screen.getByText("Tolerance, range and step take plain numbers")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  });
+});
+
+describe("moving questions to another section", () => {
+  const QUESTION = {
+    sectionId: "s-line", type: "number" as const, prompt: "$2 + 2$", options: null, answer: "4", tolerance: null, sliderMin: null, sliderMax: null,
+    sliderStep: null, graph: null, variables: null, condition: null, explanation: null, origin: null, originDetail: null, imagePath: null,
+    source: "manual" as const, sourceQuizQuestionId: null, isActive: true, createdAt: "2026-11-16T10:00:00Z",
+  };
+
+  it("moves the ticked questions and updates both sections' counts", async () => {
+    const { TeacherPractice } = await import("@/components/teacher-practice");
+    const { listPracticeQuestionsAction, getPracticeQuestionStatsAction, movePracticeQuestionsAction } = await import("@/app/protected/teacher/practice-actions");
+    vi.mocked(getPracticeQuestionStatsAction).mockResolvedValue({});
+    vi.mocked(listPracticeQuestionsAction).mockResolvedValue([
+      { ...QUESTION, id: "q1", position: 0, prompt: "Πρώτη" },
+      { ...QUESTION, id: "q2", position: 1, prompt: "Δεύτερη" },
+      { ...QUESTION, id: "q3", position: 2, prompt: "Τρίτη" },
+    ]);
+    vi.mocked(movePracticeQuestionsAction).mockResolvedValue(undefined);
+    render(<TeacherPractice initialSections={[{ ...SECTIONS[0], questionCount: 3 }, SECTIONS[1]]} initialProgress={[]} initialReports={[]} />);
+
+    expect(await screen.findByText("Πρώτη")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("checkbox", { name: "Select question 1" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "Select question 3" }));
+    expect(screen.getByText("2 selected")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Move to/ }));
+
+    const dialog = await screen.findByRole("dialog");
+    // The other section of the same grade is offered; the current one isn't.
+    expect(within(dialog).getByRole("combobox", { name: "Section" })).toHaveValue("s-poly");
+    expect(within(dialog).queryByRole("option", { name: "Η ευθεία" })).not.toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Move" }));
+
+    expect(movePracticeQuestionsAction).toHaveBeenCalledWith(["q1", "q3"], "s-poly");
+    await waitFor(() => expect(screen.queryByText("Πρώτη")).not.toBeInTheDocument());
+    expect(screen.getByText("Δεύτερη")).toBeInTheDocument();
+    expect(screen.queryByText("Τρίτη")).not.toBeInTheDocument();
+    // 3 -> 1 active questions here.
+    expect(screen.getByText(/1 active question$/)).toBeInTheDocument();
+  });
+
+  it("offers sections of another grade, and says when there are none", async () => {
+    const { MoveQuestionsDialog } = await import("@/components/teacher-practice");
+    const onMove = vi.fn().mockResolvedValue(undefined);
+    const other = { id: "s-gym", grade: "gym_c", name: "Εξισώσεις", position: 0, isPublic: false, questionCount: 2 };
+    render(<MoveQuestionsDialog open count={1} sections={[...SECTIONS, other]} from={SECTIONS[0]} onClose={vi.fn()} onMove={onMove} />);
+
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Grade" }), "lyk_a");
+    expect(screen.getByText(/No other section in this grade yet/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Move" })).toBeDisabled();
+
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Grade" }), "gym_c");
+    await userEvent.click(screen.getByRole("button", { name: "Move" }));
+    expect(onMove).toHaveBeenCalledWith("s-gym");
+  });
+});
+
+describe("importing a file with several sections", () => {
+  it("previews where each section's questions go and imports them all", async () => {
+    vi.mocked(importPracticeMarkdownAction).mockResolvedValue({
+      ok: true, sectionId: "s-line", imported: 3, createdSection: true,
+      sections: [{ id: "s-line", name: "Η ευθεία", imported: 1, created: false }, { id: "s-new", name: "Κύκλος", imported: 2, created: true }],
+    });
+    const onImported = vi.fn();
+    render(<ImportDialog open grade="lyk_b" sections={SECTIONS} currentSectionId="s-line" onClose={vi.fn()} onImported={onImported} />);
+    fireEvent.change(screen.getByPlaceholderText(/Η ευθεία/), {
+      target: { value: "# Η ευθεία\n## $1+1$;\nAnswer: 2\n# Κύκλος\n## $2+2$;\nAnswer: 4\n## $3+3$;\nAnswer: 6\n" },
+    });
+
+    expect(screen.getByText("3 questions ready for 2 sections")).toBeInTheDocument();
+    expect(screen.getByText("1 question · adds to it")).toBeInTheDocument();
+    expect(screen.getByText("2 questions · new section")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Import 3" }));
+    expect(vi.mocked(importPracticeMarkdownAction).mock.calls[0][0].sectionId).toBeNull();
+    await waitFor(() => expect(onImported).toHaveBeenCalledWith("s-line"));
+  });
+
+  it("won't import while some questions sit above every heading", () => {
+    render(<ImportDialog open grade="lyk_b" sections={SECTIONS} currentSectionId="s-line" onClose={vi.fn()} onImported={vi.fn()} />);
+    fireEvent.change(screen.getByPlaceholderText(/Η ευθεία/), { target: { value: "## $1+1$;\nAnswer: 2\n# Κύκλος\n## $2+2$;\nAnswer: 4\n" } });
+    expect(screen.getByText(/Question 1 comes before any/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Import 2" })).toBeDisabled();
   });
 });

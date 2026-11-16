@@ -4,6 +4,7 @@
 // Pure; tests in tests/practice-markdown.test.ts.
 //
 //   # Η ευθεία                    optional: the section to import into
+//                                 (each "# " heading starts another one)
 //
 //   ## Ποια είναι η κλίση της $y = 3x - 2$;
 //   - [x] $3$
@@ -32,9 +33,14 @@ import {
 } from "@/lib/practice-template";
 
 export interface ParsedPracticeMarkdown {
-  /** From a "# " line, if the file names its section. */
+  /** The first "# " heading above the questions, if the file names a section. */
   sectionName: string | null;
   questions: PracticeQuestionSpec[];
+  /**
+   * For each question, the "# " heading it sits under (a file can hold
+   * several sections), or null for questions before any heading.
+   */
+  sectionNames: (string | null)[];
   /** Every problem, prefixed "Question N:" - empty when the file is good. */
   errors: string[];
 }
@@ -81,21 +87,26 @@ export function parsePracticeMarkdown(source: string): ParsedPracticeMarkdown {
   const errors: string[] = [];
   const questions: PracticeQuestionSpec[] = [];
 
-  let sectionName: string | null = null;
+  const sectionNames: (string | null)[] = [];
   const starts: number[] = [];
+  const headings: { index: number; name: string }[] = [];
   lines.forEach((line, index) => {
     if (/^##\s+\S/.test(line)) starts.push(index);
-    else if (sectionName === null && starts.length === 0 && /^#\s+\S/.test(line)) {
-      sectionName = line.replace(/^#\s+/, "").replace(/^section\s*:\s*/i, "").trim();
+    else if (/^#\s+\S/.test(line)) {
+      headings.push({ index, name: line.replace(/^#\s+/, "").replace(/^section\s*:\s*/i, "").trim() });
     }
   });
+  const sectionName = headings.find((heading) => starts.length === 0 || heading.index < starts[0])?.name ?? null;
   if (starts.length === 0) {
-    return { sectionName, questions, errors: ['No questions found - start each one with a "## " heading.'] };
+    return { sectionName, questions, sectionNames, errors: ['No questions found - start each one with a "## " heading.'] };
   }
 
   starts.forEach((start, index) => {
     const number = index + 1;
-    const end = index + 1 < starts.length ? starts[index + 1] : lines.length;
+    // A question runs to the next question or the next section heading.
+    const nextHeading = headings.find((heading) => heading.index > start)?.index ?? lines.length;
+    const end = Math.min(index + 1 < starts.length ? starts[index + 1] : lines.length, nextHeading);
+    sectionNames.push([...headings].reverse().find((heading) => heading.index < start)?.name ?? null);
     const problems: string[] = [];
     let heading = lines[start].replace(/^##\s+/, "");
 
@@ -230,5 +241,5 @@ export function parsePracticeMarkdown(source: string): ParsedPracticeMarkdown {
     questions.push(spec);
   });
 
-  return { sectionName, questions, errors };
+  return { sectionName, questions, sectionNames, errors };
 }
