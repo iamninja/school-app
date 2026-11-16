@@ -17,11 +17,14 @@
 // A question is a "## " heading; lines under it up to the first option or
 // "Key: value" line continue the question text. Keys (any case): Type,
 // Answer, Tolerance, Range, Step, Window, Plot (repeatable), Variables,
-// Condition, Explanation (may run over several lines). The type is worked
+// Condition, Explanation (may run over several lines), Source (or Πηγή:
+// "Πανελλαδικές 2019 · Θέμα Β", "Σχολικό βιβλίο σελ. 45" or any other
+// name - lib/practice-template.ts parseOriginText). The type is worked
 // out from what's there when Type is left out. The quiz-style heading
 // attributes "{type=..., answer=...}" are accepted too.
 
 import {
+  parseOriginText,
   validatePracticeQuestion,
   type PracticeGraph,
   type PracticeQuestionSpec,
@@ -50,10 +53,13 @@ const TYPE_ALIASES: Record<string, PracticeQuestionType> = {
   graph: "point",
 };
 
-const KEYS = ["type", "answer", "tolerance", "range", "step", "window", "plot", "variables", "condition", "explanation"] as const;
+const KEYS = ["type", "answer", "tolerance", "range", "step", "window", "plot", "variables", "condition", "explanation", "source"] as const;
 type Key = (typeof KEYS)[number];
+/** Other spellings of a key ("Πηγή: ..." for "Source: ..."). */
+const KEY_ALIASES: Record<string, Key> = { "πηγή": "source", "πηγη": "source", "origin": "source" };
+const keyName = (raw: string): Key => (KEY_ALIASES[raw.toLowerCase()] ?? raw.toLowerCase()) as Key;
 
-const KEY_LINE = new RegExp(`^\\s*(${KEYS.join("|")})\\s*:\\s*(.*)$`, "i");
+const KEY_LINE = new RegExp(`^\\s*(${[...KEYS, ...Object.keys(KEY_ALIASES)].join("|")})\\s*:\\s*(.*)$`, "iu");
 const OPTION_LINE = /^\s*[-*]\s*\[([ xX])\]\s*(.+?)\s*$/;
 const ATTRIBUTE_TAIL = /^(.*?)\s*\{((?:\s*[a-z_]+\s*=[^,}]*,?)+)\}\s*$/i;
 
@@ -101,7 +107,7 @@ export function parsePracticeMarkdown(source: string): ParsedPracticeMarkdown {
       for (const pair of attributeMatch[2].split(",")) {
         const eq = pair.indexOf("=");
         if (eq < 0) continue;
-        const key = pair.slice(0, eq).trim().toLowerCase() as Key;
+        const key = keyName(pair.slice(0, eq).trim());
         const value = pair.slice(eq + 1).trim();
         if (KEYS.includes(key) && value) {
           if (key === "plot") plots.push(value);
@@ -124,7 +130,7 @@ export function parsePracticeMarkdown(source: string): ParsedPracticeMarkdown {
         options.push({ text: option[2], correct: option[1].toLowerCase() === "x" });
       } else if (key) {
         bodyStarted = true;
-        const name = key[1].toLowerCase() as Key;
+        const name = keyName(key[1]);
         const value = key[2].trim();
         if (name === "explanation") {
           explanationLines = [value];
@@ -167,6 +173,7 @@ export function parsePracticeMarkdown(source: string): ParsedPracticeMarkdown {
       variables: values.get("variables") || null,
       condition: values.get("condition") || null,
       explanation: values.get("explanation") || null,
+      ...parseOriginText(values.get("source")),
     };
 
     const toleranceRaw = values.get("tolerance");

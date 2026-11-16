@@ -13,6 +13,7 @@ import {
 import { BrandMark } from "@/components/brand";
 import { MathText } from "@/components/math-text";
 import { PracticeGraphView } from "@/components/practice/practice-graph";
+import { PracticeOriginBadge } from "@/components/practice/practice-origin-badge";
 import { ThemeSwitcher } from "@/components/theme-switcher";
 import type { PracticeCatalogGrade, RoundQuestion } from "@/lib/practice-server";
 import {
@@ -658,6 +659,7 @@ function QuestionScreen({
         <span className="truncate">{TYPE_LABEL[question.type]} · {question.sectionName}</span>
         <span className="tabular-nums">{index + 1} / {total}</span>
       </div>
+      {question.originLabel ? <PracticeOriginBadge label={question.originLabel} className="-mb-2 self-start" /> : null}
       <p className="whitespace-pre-line text-[1.35rem] font-bold leading-snug text-balance">
         <MathText text={question.prompt} />
       </p>

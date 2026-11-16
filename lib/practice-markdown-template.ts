@@ -20,7 +20,7 @@ students. Follow these rules exactly:
 
 1. Write the questions, options and explanations in Greek. Keep the
    keywords (Answer, Type, Tolerance, Range, Step, Window, Plot,
-   Variables, Condition, Explanation) in English, as below.
+   Variables, Condition, Explanation, Source) in English, as below.
 2. Put ALL mathematics in LaTeX between single dollar signs: $x^2 - 4$,
    $\frac{1}{2}$, $\sqrt{50}$. Never use $$...$$ display maths. Use a
    decimal comma inside maths as {,} : $7{,}5$.
@@ -39,6 +39,8 @@ students. Follow these rules exactly:
 8. Stay within the chapter or section you were given. Start the file with
    "# <section name>".
 9. Mix the types, and order questions from easier to harder.
+10. Add "Source:" only when a question really comes from somewhere, and
+   never invent one. See SOURCE below.
 
 THE FIVE TYPES
 --------------
@@ -77,6 +79,16 @@ Don't name a variable x in a question that has a Plot (x is the axis).
 Expressions know + - * / ^, sqrt abs round(v, digits) floor ceil min max
 mod gcd lcm, sin cos tan (radians), sind cosd tand (degrees), ln log log2
 exp, pi and e.
+
+SOURCE (optional)
+-----------------
+Students see where a question comes from as a small label. One per question:
+Source: Πανελλαδικές 2019 · Θέμα Β
+Source: Σχολικό βιβλίο σελ. 45, άσκ. 3
+Source: Μαθηματική Εταιρεία
+  Πανελλαδικές (or Πανελλήνιες) and Σχολικό βιβλίο are recognised, with
+  whatever follows as the detail. Anything else is taken as the source's
+  name. "Πηγή:" works as well as "Source:".
 -->
 
 # Η ευθεία
@@ -91,6 +103,7 @@ Explanation: Στη μορφή $y = λx + β$ η κλίση είναι το $λ$
 ## Η ευθεία $x = 4$ είναι παράλληλη στον άξονα $y'y$.
 Answer: Σωστό
 Explanation: Όλα τα σημεία της έχουν $x = 4$, άρα είναι κατακόρυφη.
+Source: Σχολικό βιβλίο
 
 ## Λύσε την εξίσωση ${"$"}{{a}}x {{+b}} = {{c}}$. Πόσο είναι το $x$;
 Answer: x

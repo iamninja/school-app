@@ -168,6 +168,26 @@ describe("the question editor", () => {
     expect(sent).toMatchObject({ sectionId: "s-line", questionId: null });
   });
 
+  it("saves where a question comes from, and needs a name for another source", async () => {
+    vi.mocked(savePracticeQuestionAction).mockResolvedValue({ id: "new" } as never);
+    renderEditor();
+    await userEvent.click(screen.getByRole("radio", { name: "Number" }));
+    await userEvent.type(screen.getByLabelText("Question"), "Πόσο κάνει $2 + 2$;");
+    fireEvent.change(screen.getByLabelText("Answer"), { target: { value: "4" } });
+
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: /^Source/ }), "custom");
+    expect(screen.getByText("Name the source")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: /^Source/ }), "panhellenic");
+    fireEvent.change(screen.getByLabelText("Source detail"), { target: { value: "2019 · Θέμα Β" } });
+    // The preview shows the label students will see.
+    expect(screen.getByText("Πανελλαδικές · 2019 · Θέμα Β")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(vi.mocked(savePracticeQuestionAction).mock.calls[0][0].spec).toMatchObject({ origin: "panhellenic", originDetail: "2019 · Θέμα Β" });
+  });
+
   it("refuses a tolerance that isn't a number", async () => {
     renderEditor();
     await userEvent.click(screen.getByRole("radio", { name: "Number" }));
