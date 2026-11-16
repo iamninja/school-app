@@ -10,6 +10,7 @@ import {
   EyeIcon,
   EyeOffIcon,
   FileUpIcon,
+  FolderInputIcon,
   GlobeIcon,
   LockIcon,
   BookMarkedIcon,
@@ -30,6 +31,7 @@ import {
   listCopyableQuizzesAction,
   listPracticeQuestionsAction,
   listPracticeSectionsAction,
+  movePracticeQuestionsAction,
   reorderPracticeSectionsAction,
   setPracticeQuestionActiveAction,
   updatePracticeSectionAction,
@@ -159,6 +161,9 @@ function PracticeBank({
   const [newSectionName, setNewSectionName] = React.useState("");
   const [renaming, setRenaming] = React.useState<string | null>(null);
   const [expanded, setExpanded] = React.useState<string | null>(null);
+  // Ticked questions (of the open section) and the "Move to..." dialog.
+  const [selection, setSelection] = React.useState<{ sectionId: string | null; ids: Set<string> }>({ sectionId: null, ids: new Set() });
+  const [moveOpen, setMoveOpen] = React.useState(false);
 
   React.useEffect(() => {
     if (initialSections) return;
@@ -219,6 +224,34 @@ function PracticeBank({
 
   const setCount = (id: string, delta: number) =>
     setSections((prev) => (prev ?? []).map((item) => (item.id === id ? { ...item, questionCount: item.questionCount + delta } : item)));
+
+  const selectedIds = selection.sectionId === sectionId ? selection.ids : new Set<string>();
+  const toggleSelected = (id: string) =>
+    setSelection(() => {
+      const ids = new Set(selectedIds);
+      if (ids.has(id)) ids.delete(id);
+      else ids.add(id);
+      return { sectionId, ids };
+    });
+  const clearSelection = () => setSelection({ sectionId, ids: new Set() });
+
+  const moveSelected = async (toSectionId: string) => {
+    if (!section) return;
+    const ids = [...selectedIds];
+    const movedActive = (questions ?? []).filter((question) => selectedIds.has(question.id) && question.isActive).length;
+    try {
+      await movePracticeQuestionsAction(ids, toSectionId);
+      setQuestions((prev) => (prev ?? []).filter((question) => !selectedIds.has(question.id)));
+      setCount(section.id, -movedActive);
+      setCount(toSectionId, movedActive);
+      const target = (sections ?? []).find((item) => item.id === toSectionId);
+      toast.success(`Moved ${ids.length} question${ids.length === 1 ? "" : "s"} to "${target?.name ?? "the section"}"`);
+      clearSelection();
+      setMoveOpen(false);
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, "Couldn't move the questions"));
+    }
+  };
 
   const addSection = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -442,12 +475,49 @@ function PracticeBank({
                   No questions yet. Add one, copy some from your quizzes, or import a file.
                 </div>
               ) : (
+                <>
+                <div className="mb-2 flex min-h-9 flex-wrap items-center gap-3 text-sm">
+                  <label className="flex cursor-pointer items-center gap-2" htmlFor="practice-select-all">
+                    <input
+                      id="practice-select-all"
+                      type="checkbox"
+                      className="size-4 accent-emerald-600"
+                      checked={selectedIds.size > 0 && selectedIds.size === questions.length}
+                      onChange={() =>
+                        setSelection({
+                          sectionId,
+                          ids: selectedIds.size === questions.length ? new Set() : new Set(questions.map((question) => question.id)),
+                        })
+                      }
+                    />
+                    {selectedIds.size ? `${selectedIds.size} selected` : "Select all"}
+                  </label>
+                  {selectedIds.size ? (
+                    <>
+                      <Button type="button" variant="outline" size="sm" onClick={() => setMoveOpen(true)}>
+                        <FolderInputIcon className="size-4" /> Move to…
+                      </Button>
+                      <Button type="button" variant="ghost" size="sm" onClick={clearSelection}>
+                        Clear
+                      </Button>
+                    </>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">Tick questions to move them to another section.</span>
+                  )}
+                </div>
                 <ol className="divide-y rounded-lg border">
                   {questions.map((question, index) => {
                     const played = expanded === question.id ? safePreview(question) : null;
                     return (
                       <li key={question.id} className={cn("px-3 py-3", !question.isActive && "bg-muted/40")}>
                         <div className="flex items-start gap-3">
+                          <input
+                            type="checkbox"
+                            className="mt-0.5 size-4 shrink-0 accent-emerald-600"
+                            checked={selectedIds.has(question.id)}
+                            onChange={() => toggleSelected(question.id)}
+                            aria-label={`Select question ${index + 1}`}
+                          />
                           <span className="w-6 pt-0.5 text-right text-xs tabular-nums text-muted-foreground">{index + 1}</span>
                           <button
                             type="button"
@@ -545,6 +615,7 @@ function PracticeBank({
                     );
                   })}
                 </ol>
+                </>
               )}
             </CardContent>
           </Card>
@@ -556,6 +627,18 @@ function PracticeBank({
           </Card>
         )}
       </div>
+
+      {section ? (
+        <MoveQuestionsDialog
+          key={section.id}
+          open={moveOpen}
+          count={selectedIds.size}
+          sections={sections ?? []}
+          from={section}
+          onClose={() => setMoveOpen(false)}
+          onMove={moveSelected}
+        />
+      ) : null}
 
       {section && editing ? (
         <PracticeQuestionEditor
@@ -627,9 +710,20 @@ export function ImportDialog({
 
   const parsed = React.useMemo(() => (markdown.trim() ? parsePracticeMarkdown(markdown) : null), [markdown]);
   const errors = serverErrors.length ? serverErrors : (parsed?.errors ?? []);
-  const targetName =
-    target === "file" ? parsed?.sectionName ?? null : sections.find((item) => item.id === target)?.name ?? null;
-  const ready = parsed && parsed.errors.length === 0 && parsed.questions.length > 0 && Boolean(targetName);
+  // Where the questions go: each "# " section of the file, or all into the section picked.
+  const groups = React.useMemo(() => {
+    if (!parsed) return [];
+    if (target !== "file") {
+      const picked = sections.find((item) => item.id === target);
+      return picked ? [{ name: picked.name, count: parsed.questions.length, exists: true }] : [];
+    }
+    const counts = new Map<string, number>();
+    for (const name of parsed.sectionNames) if (name) counts.set(name, (counts.get(name) ?? 0) + 1);
+    return [...counts].map(([name, count]) => ({ name, count, exists: sections.some((item) => item.name === name) }));
+  }, [parsed, target, sections]);
+  const unplaced = target === "file" && parsed ? parsed.sectionNames.flatMap((name, index) => (name ? [] : [index + 1])) : [];
+  const targetName = groups.length === 1 ? groups[0].name : null;
+  const ready = parsed && parsed.errors.length === 0 && parsed.questions.length > 0 && groups.length > 0 && unplaced.length === 0;
 
   const readFile = async (file: File) => {
     setServerErrors([]);
@@ -645,7 +739,12 @@ export function ImportDialog({
         setServerErrors(result.errors);
         return;
       }
-      toast.success(`Imported ${result.imported} question${result.imported === 1 ? "" : "s"}${result.createdSection ? " into a new section" : ""}`);
+      const added = result.sections.filter((item) => item.created).length;
+      toast.success(
+        result.sections.length > 1
+          ? `Imported ${result.imported} questions into ${result.sections.length} sections${added ? ` (${added} new)` : ""}`
+          : `Imported ${result.imported} question${result.imported === 1 ? "" : "s"}${result.createdSection ? " into a new section" : ""}`,
+      );
       setMarkdown("");
       onImported(result.sectionId);
     } catch (error: unknown) {
@@ -697,7 +796,9 @@ export function ImportDialog({
             <Label htmlFor="practice-import-target">Into</Label>
             <select id="practice-import-target" className={SELECT_CLASS} value={target} onChange={(event) => setTarget(event.target.value)}>
               <option value="file">
-                The section named in the file{parsed?.sectionName ? ` (${parsed.sectionName})` : " (# …)"}, created if new
+                {target === "file" && groups.length > 1
+                  ? `The sections named in the file (${groups.length}), created if new`
+                  : `The section named in the file${parsed?.sectionName ? ` (${parsed.sectionName})` : " (# …)"}, created if new`}
               </option>
               {sections.map((item) => (
                 <option key={item.id} value={item.id}>
@@ -717,10 +818,34 @@ export function ImportDialog({
           ) : null}
           {parsed && !errors.length ? (
             <div className="space-y-2">
-              <p className="text-sm font-medium">
-                {parsed.questions.length} question{parsed.questions.length === 1 ? "" : "s"} ready
-                {targetName ? ` for "${targetName}"` : " - pick a section above"}
-              </p>
+              {groups.length > 1 ? (
+                <div className="space-y-1.5">
+                  <p className="text-sm font-medium">
+                    {parsed.questions.length} questions ready for {groups.length} sections
+                  </p>
+                  <ul className="divide-y rounded-lg border text-sm">
+                    {groups.map((group) => (
+                      <li key={group.name} className="flex items-center justify-between gap-3 px-3 py-1.5">
+                        <span className="min-w-0 truncate">{group.name}</span>
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          {group.count} question{group.count === 1 ? "" : "s"} · {group.exists ? "adds to it" : "new section"}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <p className="text-sm font-medium">
+                  {parsed.questions.length} question{parsed.questions.length === 1 ? "" : "s"} ready
+                  {targetName && !unplaced.length ? ` for "${targetName}"` : " - pick a section above"}
+                </p>
+              )}
+              {unplaced.length && groups.length ? (
+                <p className="text-sm text-destructive">
+                  Question{unplaced.length === 1 ? "" : "s"} {unplaced.join(", ")} come{unplaced.length === 1 ? "s" : ""} before any
+                  &quot;# Section name&quot; heading - add one above, or pick a section.
+                </p>
+              ) : null}
               <div className="grid max-h-80 gap-2 overflow-y-auto sm:grid-cols-2">
                 {parsed.questions.slice(0, 8).map((question, index) => {
                   const played = safePreview(question, index + 1);
@@ -883,6 +1008,91 @@ export function CopyFromQuizzesDialog({
           <Button type="button" variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
           <Button type="button" onClick={() => void submit()} disabled={picked.size === 0 || saving}>
             {saving ? "Copying…" : `Copy ${picked.size || ""}`.trim()}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** "Move to...": pick a section, of any grade, for the ticked questions. Exported for tests. */
+export function MoveQuestionsDialog({
+  open,
+  count,
+  sections,
+  from,
+  onClose,
+  onMove,
+}: {
+  open: boolean;
+  count: number;
+  sections: PracticeSection[];
+  /** The section the questions are in now. */
+  from: PracticeSection;
+  onClose: () => void;
+  onMove: (toSectionId: string) => Promise<void>;
+}) {
+  const [grade, setGrade] = React.useState(from.grade);
+  const [target, setTarget] = React.useState<string>("");
+  const [moving, setMoving] = React.useState(false);
+
+  const choices = sections
+    .filter((item) => item.grade === grade && item.id !== from.id)
+    .sort((a, b) => a.position - b.position);
+  // The pick follows the grade: the first section there unless one of its own is picked.
+  const picked = choices.some((item) => item.id === target) ? target : (choices[0]?.id ?? "");
+
+  const move = async () => {
+    if (!picked) return;
+    setMoving(true);
+    try {
+      await onMove(picked);
+    } finally {
+      setMoving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => !next && !moving && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>
+            Move {count} question{count === 1 ? "" : "s"}
+          </DialogTitle>
+          <DialogDescription>From &quot;{from.name}&quot; to another section. Their answers and statistics go with them.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <Label htmlFor="practice-move-grade">Grade</Label>
+            <select id="practice-move-grade" className={SELECT_CLASS} value={grade} onChange={(event) => setGrade(event.target.value)}>
+              {CLASS_GRADES.map((item) => (
+                <option key={item.code} value={item.code}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="practice-move-section">Section</Label>
+            {choices.length ? (
+              <select id="practice-move-section" className={SELECT_CLASS} value={picked} onChange={(event) => setTarget(event.target.value)}>
+                {choices.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <p className="text-sm text-muted-foreground">No other section in this grade yet - add one first.</p>
+            )}
+          </div>
+        </div>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose} disabled={moving}>
+            Cancel
+          </Button>
+          <Button type="button" onClick={() => void move()} disabled={!picked || moving}>
+            {moving ? "Moving…" : "Move"}
           </Button>
         </DialogFooter>
       </DialogContent>

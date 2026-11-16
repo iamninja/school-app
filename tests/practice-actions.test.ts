@@ -137,10 +137,49 @@ Answer: Σωστό
     });
     vi.mocked(createClient).mockResolvedValue(client as never);
     const result = await importPracticeMarkdownAction({ grade: "lyk_b", markdown: FILE });
-    expect(result).toEqual({ ok: true, sectionId: "sec-new", imported: 2, createdSection: true });
+    expect(result).toEqual({
+      ok: true, sectionId: "sec-new", imported: 2, createdSection: true,
+      sections: [{ id: "sec-new", name: "Πολυώνυμα", imported: 2, created: true }],
+    });
     const rows = insertsInto(client, "practice_questions")[0] as unknown[];
     expect(rows).toHaveLength(2);
     expect(rows[1]).toMatchObject({ type: "true_false", answer: "true", source: "import", section_id: "sec-new", position: 1 });
+  });
+
+  it("imports a file with several sections, filling existing ones and creating the rest", async () => {
+    const client = createMockSupabaseClient({
+      practice_sections: [
+        { data: { id: "sec-a" }, error: null }, // "Α" exists
+        { data: null, error: null }, // "Β" doesn't...
+        { data: null, error: null }, // (its position)
+        { data: { id: "sec-b", grade: "lyk_b", name: "Β", position: 1, is_public: false }, error: null }, // ...so it's created
+      ],
+      practice_questions: [
+        { data: { position: 4 }, error: null }, // next position in Α: 5
+        { data: null, error: null }, // Β is empty: 0
+        { data: null, error: null }, // the insert
+      ],
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+    const result = await importPracticeMarkdownAction({
+      grade: "lyk_b",
+      markdown: "# Α\n## $1+1$;\nAnswer: 2\n# Β\n## $2+2$;\nAnswer: 4\n## $3+3$;\nAnswer: 6\n",
+    });
+    expect(result).toEqual({
+      ok: true, sectionId: "sec-a", imported: 3, createdSection: true,
+      sections: [
+        { id: "sec-a", name: "Α", imported: 1, created: false },
+        { id: "sec-b", name: "Β", imported: 2, created: true },
+      ],
+    });
+    const rows = insertsInto(client, "practice_questions")[0] as { section_id: string; position: number }[];
+    expect(rows.map((row) => [row.section_id, row.position])).toEqual([["sec-a", 5], ["sec-b", 0], ["sec-b", 1]]);
+  });
+
+  it("won't import questions that sit above every section heading", async () => {
+    vi.mocked(createClient).mockResolvedValue(createMockSupabaseClient({}) as never);
+    const result = await importPracticeMarkdownAction({ grade: "lyk_b", markdown: "## $1+1$;\nAnswer: 2\n# Β\n## $2+2$;\nAnswer: 4\n" });
+    expect(result).toEqual({ ok: false, errors: [expect.stringMatching(/Question 1 comes before any "# Section name" heading/)] });
   });
 
   it("removes the section it created when the questions can't be saved", async () => {
@@ -160,7 +199,7 @@ Answer: Σωστό
       .filter(([table]) => table === "practice_sections");
     const deleted = sectionChains.find(([, chain]) => chain.delete.mock.calls.length > 0);
     expect(deleted).toBeTruthy();
-    expect(deleted![1].eq).toHaveBeenCalledWith("id", "sec-new");
+    expect(deleted![1].in).toHaveBeenCalledWith("id", ["sec-new"]);
   });
 
   it("needs a section when the file names none", async () => {

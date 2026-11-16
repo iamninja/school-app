@@ -315,13 +315,22 @@ export async function movePracticeQuestionsAction(questionIds: string[], toSecti
 // ---------------------------------------------------------------------------
 
 export type PracticeImportResult =
-  | { ok: true; sectionId: string; imported: number; createdSection: boolean }
+  | {
+      ok: true;
+      /** The first section imported into (the console opens it). */
+      sectionId: string;
+      imported: number;
+      createdSection: boolean;
+      /** Per section: how many questions went in, and whether it's new. */
+      sections: { id: string; name: string | null; imported: number; created: boolean }[];
+    }
   | { ok: false; errors: string[] };
 
 /**
- * Imports a Markdown file into a section: the one given, or the "# " name
- * in the file (created under the grade if missing). All or nothing - any
- * problem and nothing is saved.
+ * Imports a Markdown file: everything into the section given, or each
+ * question into the "# " section it sits under in the file (a file can hold
+ * several; missing ones are created under the grade). All or nothing - any
+ * problem and nothing is saved, sections it created included.
  */
 export async function importPracticeMarkdownAction(input: {
   grade: string;
@@ -338,45 +347,83 @@ export async function importPracticeMarkdownAction(input: {
     return { ok: false, errors: [`Import at most ${MAX_IMPORT_QUESTIONS} questions at a time (this file has ${parsed.questions.length})`] };
   }
 
-  let sectionId = input.sectionId ?? null;
-  let createdSection = false;
-  if (sectionId) {
-    await ownedSection(supabase, userId, sectionId);
+  // Where each question goes: all into the section picked, or each into
+  // the "# " section it sits under in the file.
+  let targetNames: string[] = [];
+  const sectionIdByName = new Map<string, string>();
+  const created: { id: string; name: string }[] = [];
+  if (input.sectionId) {
+    await ownedSection(supabase, userId, input.sectionId);
   } else {
-    if (!parsed.sectionName) {
-      return { ok: false, errors: ['Pick a section, or start the file with "# Section name"'] };
+    const unplaced = parsed.sectionNames.flatMap((name, index) => (name ? [] : [index + 1]));
+    if (unplaced.length) {
+      return {
+        ok: false,
+        errors: [
+          unplaced.length === parsed.questions.length
+            ? 'Pick a section, or start the file with "# Section name"'
+            : `Question${unplaced.length === 1 ? "" : "s"} ${unplaced.join(", ")} come${unplaced.length === 1 ? "s" : ""} before any "# Section name" heading - add one above, or pick a section`,
+        ],
+      };
     }
-    const name = checkName(parsed.sectionName);
-    const { data: existing } = await supabase
-      .from("practice_sections")
-      .select("id")
-      .eq("teacher_id", userId)
-      .eq("grade", grade)
-      .eq("name", name)
-      .maybeSingle();
-    if (existing) sectionId = (existing as { id: string }).id;
-    else {
-      sectionId = (await createPracticeSectionAction({ grade, name })).id;
-      createdSection = true;
+    targetNames = [...new Set(parsed.sectionNames.map((name) => checkName(name!)))];
+    for (const name of targetNames) {
+      const { data: existing } = await supabase
+        .from("practice_sections")
+        .select("id")
+        .eq("teacher_id", userId)
+        .eq("grade", grade)
+        .eq("name", name)
+        .maybeSingle();
+      if (existing) sectionIdByName.set(name, (existing as { id: string }).id);
+      else {
+        try {
+          const section = await createPracticeSectionAction({ grade, name });
+          sectionIdByName.set(name, section.id);
+          created.push({ id: section.id, name });
+        } catch (error) {
+          await removeSections(supabase, userId, created);
+          throw error;
+        }
+      }
     }
   }
 
-  let position = await nextQuestionPosition(supabase, sectionId);
-  const rows = parsed.questions.map((spec) => ({
-    ...toPracticeQuestionColumns(spec),
-    teacher_id: userId,
-    section_id: sectionId,
-    source: "import" as const,
-    position: position++,
-  }));
+  const sectionFor = (index: number) => input.sectionId ?? sectionIdByName.get(checkName(parsed.sectionNames[index]!))!;
+  const nextPosition = new Map<string, number>();
+  const rows: (ReturnType<typeof toPracticeQuestionColumns> & {
+    teacher_id: string;
+    section_id: string;
+    source: "import";
+    position: number;
+  })[] = [];
+  for (const [index, spec] of parsed.questions.entries()) {
+    const sectionId = sectionFor(index);
+    if (!nextPosition.has(sectionId)) nextPosition.set(sectionId, await nextQuestionPosition(supabase, sectionId));
+    const position = nextPosition.get(sectionId)!;
+    nextPosition.set(sectionId, position + 1);
+    rows.push({ ...toPracticeQuestionColumns(spec), teacher_id: userId, section_id: sectionId, source: "import" as const, position });
+  }
   const { error } = await supabase.from("practice_questions").insert(rows);
   if (error) {
     // All or nothing: the insert is one statement (none of the rows went
-    // in), and a section this import created goes too.
-    if (createdSection) await supabase.from("practice_sections").delete().eq("id", sectionId).eq("teacher_id", userId);
+    // in), and sections this import created go too.
+    await removeSections(supabase, userId, created);
     throw error;
   }
-  return { ok: true, sectionId, imported: rows.length, createdSection };
+
+  const sections = input.sectionId
+    ? [{ id: input.sectionId, name: null, imported: rows.length, created: false }]
+    : targetNames.map((name) => {
+        const id = sectionIdByName.get(name)!;
+        return { id, name, imported: rows.filter((row) => row.section_id === id).length, created: created.some((item) => item.id === id) };
+      });
+  return { ok: true, sectionId: sections[0].id, imported: rows.length, createdSection: created.length > 0, sections };
+}
+
+async function removeSections(supabase: SupabaseServerClient, userId: string, sections: { id: string }[]) {
+  if (sections.length === 0) return;
+  await supabase.from("practice_sections").delete().in("id", sections.map((section) => section.id)).eq("teacher_id", userId);
 }
 
 // ---------------------------------------------------------------------------

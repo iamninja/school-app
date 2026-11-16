@@ -145,3 +145,39 @@ Condition: a > 10
     expect(parsePracticeMarkdown("# Μόνο τίτλος").errors[0]).toMatch(/No questions found/);
   });
 });
+
+describe("several sections in one file", () => {
+  it("puts each question under the # heading above it", () => {
+    const parsed = parsePracticeMarkdown(`# 1.1 Συνάρτηση
+
+## $2 + 2$ = ;
+Answer: 4
+
+## $3 + 3$ = ;
+Answer: 6
+
+# 1.2 Γραφική παράσταση
+
+## $4 + 4$ = ;
+Answer: 8
+Explanation: Απλή πρόσθεση.
+
+# 1.1 Συνάρτηση
+
+## $5 + 5$ = ;
+Answer: 10
+`);
+    expect(parsed.errors).toEqual([]);
+    expect(parsed.sectionName).toBe("1.1 Συνάρτηση");
+    expect(parsed.sectionNames).toEqual(["1.1 Συνάρτηση", "1.1 Συνάρτηση", "1.2 Γραφική παράσταση", "1.1 Συνάρτηση"]);
+    // A heading ends the question above it - it isn't read as part of its explanation.
+    expect(parsed.questions[2].explanation).toBe("Απλή πρόσθεση.");
+    expect(parsed.questions[1].prompt).toBe("$3 + 3$ = ;");
+  });
+
+  it("leaves questions before any heading without a section", () => {
+    const parsed = parsePracticeMarkdown("## $1 + 1$ = ;\nAnswer: 2\n\n# Β\n\n## $2 + 2$ = ;\nAnswer: 4\n");
+    expect(parsed.sectionNames).toEqual([null, "Β"]);
+    expect(parsed.sectionName).toBeNull();
+  });
+});
