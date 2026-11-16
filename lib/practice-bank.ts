@@ -3,7 +3,7 @@
 // Pure - shared by app/protected/teacher/practice-actions.ts and the
 // Practice tab.
 
-import type { PracticeGraph, PracticeOrigin, PracticeQuestionSpec, PracticeQuestionType } from "@/lib/practice-template";
+import { trueFalseValue, type PracticeGraph, type PracticeOrigin, type PracticeQuestionSpec, type PracticeQuestionType } from "@/lib/practice-template";
 
 export interface PracticeSection {
   id: string;
@@ -96,7 +96,16 @@ export function toPracticeQuestionColumns(spec: PracticeQuestionSpec) {
     options: spec.type === "choice"
       ? (spec.options ?? []).map((option) => ({ text: option.text.trim(), correct: Boolean(option.correct) }))
       : null,
-    answer: spec.type === "choice" ? null : clean(spec.answer),
+    // True/false is stored as "true"/"false" (a check on the table), however
+    // it was written ("Σωστό", "Λάθος"...).
+    answer:
+      spec.type === "choice"
+        ? null
+        : spec.type === "true_false"
+          ? trueFalseValue(spec.answer) === false
+            ? "false"
+            : "true"
+          : clean(spec.answer),
     tolerance: spec.type === "number" || spec.type === "slider" || spec.type === "point" ? spec.tolerance ?? null : null,
     slider_min: spec.type === "slider" ? spec.sliderMin ?? null : null,
     slider_max: spec.type === "slider" ? spec.sliderMax ?? null : null,
