@@ -41,6 +41,22 @@ students. Follow these rules exactly:
 9. Mix the types, and order questions from easier to harder.
 10. Add "Source:" only when a question really comes from somewhere, and
    never invent one. See SOURCE below.
+11. When you are given the school book, follow it: its terminology, its
+   notation and its order of topics. A question taken or adapted from one
+   of its exercises gets "Source: Σχολικό βιβλίο σελ. N, άσκ. M" - only
+   with the real page and exercise; if you aren't sure of them, write just
+   "Source: Σχολικό βιβλίο". "Source: Πανελλαδικές <year> · Θέμα <letter>"
+   only for a question from an actual past paper you were given.
+12. Every question must stand on its own: no "in the figure", "στο
+   σχήμα" or "as in exercise 3". There is no picture unless the teacher
+   adds one later.
+13. Check each question before writing it down: solve it yourself, make
+   sure the answer and the explanation agree, and that every wrong option
+   really is wrong. For a template, try a few draws and check the numbers
+   stay friendly and the Condition can be met.
+14. Reply with the file only - one Markdown code block, starting with
+   "# <section name>", nothing before or after it. Unless you are asked
+   for a number, write 15 to 25 questions per section.
 
 THE FIVE TYPES
 --------------
@@ -60,6 +76,25 @@ point       The student drags a point on a coordinate grid (snaps to 0.5).
 If "Type:" is left out it is worked out: options -> choice, Range ->
 slider, a point answer or Window/Plot -> point, Σωστό/Λάθος -> true_false,
 otherwise number.
+
+WHAT TO ASK WITH EACH TYPE
+--------------------------
+choice      Concepts, choosing the right formula or method, recognising a
+            property or a graph; also answers that are intervals, sets,
+            expressions or signs (they can't be typed, so offer them as
+            options).
+true_false  Definitions, theorems and their conditions, properties students
+            mix up (e.g. "if f'(x0) = 0 then f has an extremum at x0").
+number      Calculations with one numeric result: solutions of equations,
+            values of f, f', limits, slopes, areas, probabilities.
+slider      Estimating where a value lies: roots, square roots, a
+            probability between 0 and 1, a percentage.
+point       Coordinates: a vertex, an intersection, a point on a line, a
+            symmetric point, an extremum of a plotted function.
+The format can't check proofs, sketches, tables of variation, answers with
+several parts, or expressions typed by the student. Turn such exercises
+into one of the above: ask for one value (f'(2), the coefficient of x),
+or offer the expression or interval as multiple choice.
 
 VARIABLES (random numbers)
 --------------------------
