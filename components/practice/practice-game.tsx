@@ -591,11 +591,12 @@ function SectionsScreen({
         <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Βήμα 2 από 2 · {grade.label}</p>
         <h1 className="text-3xl font-extrabold tracking-tight">Από ποιες ενότητες;</h1>
       </div>
-      <div className="grid gap-2">
+      {/* minmax(0, 1fr): the column never grows to fit a long section name - the name wraps instead. */}
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-2">
         <button type="button" aria-pressed={all} className={row(all)} onClick={() => onAll(!all)}>
           <span className={box(all)}>{all ? <CheckIcon className="size-4" aria-hidden="true" /> : null}</span>
-          <span className="flex-1">Όλες οι ενότητες</span>
-          <span className="text-sm font-normal tabular-nums text-muted-foreground">{grade.count}</span>
+          <span className="min-w-0 flex-1">Όλες οι ενότητες</span>
+          <span className="shrink-0 text-sm font-normal tabular-nums text-muted-foreground">{grade.count}</span>
         </button>
         {grade.sections.map((section) => {
           const on = picked.has(section.id);
@@ -604,14 +605,14 @@ function SectionsScreen({
             <button key={section.id} type="button" aria-pressed={on} className={row(on)} onClick={() => onToggle(section.id)}>
               <span className={box(on)}>{on ? <CheckIcon className="size-4" aria-hidden="true" /> : null}</span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate">{section.name}</span>
+                <span className="line-clamp-2 leading-snug [overflow-wrap:anywhere]">{section.name}</span>
                 {mastery !== null ? (
                   <span className="mt-1.5 block h-1.5 overflow-hidden rounded-full bg-muted" title="Πόσο την κατέχεις">
                     <span className="block h-full rounded-full bg-emerald-500" style={{ width: `${Math.round(mastery * 100)}%` }} />
                   </span>
                 ) : null}
               </span>
-              <span className="text-sm font-normal tabular-nums text-muted-foreground">{section.count}</span>
+              <span className="shrink-0 text-sm font-normal tabular-nums text-muted-foreground">{section.count}</span>
             </button>
           );
         })}
