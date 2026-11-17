@@ -12,6 +12,8 @@ import {
   quizQuestionToPractice,
   toPracticeQuestion,
   toPracticeQuestionColumns,
+  duplicateQuestions,
+  practiceQuestionKey,
   type CopyableQuizQuestion,
   summarizeAnswers,
   type PracticeQuestion,
@@ -293,6 +295,54 @@ export async function deletePracticeQuestionAction(questionId: string): Promise<
   }
 }
 
+/** Deletes several questions at once (and images no other question uses). */
+export async function deletePracticeQuestionsAction(questionIds: string[]): Promise<{ deleted: number }> {
+  const { supabase, userId } = await requireTeacherSession();
+  return deleteQuestions(supabase, userId, questionIds);
+}
+
+/**
+ * Removes repeated copies of the same question (practiceQuestionKey) within
+ * a section, keeping the first one in the section's order.
+ */
+export async function removePracticeDuplicatesAction(sectionId: string): Promise<{ removed: number }> {
+  const { supabase, userId } = await requireTeacherSession();
+  await ownedSection(supabase, userId, sectionId);
+  const { data, error } = await supabase
+    .from("practice_questions")
+    .select(PRACTICE_QUESTION_COLUMNS)
+    .eq("section_id", sectionId)
+    .eq("teacher_id", userId)
+    .order("position", { ascending: true })
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  const extra = duplicateQuestions(((data ?? []) as PracticeQuestionRow[]).map(toPracticeQuestion));
+  const { deleted } = await deleteQuestions(supabase, userId, extra.map((question) => question.id));
+  return { removed: deleted };
+}
+
+async function deleteQuestions(supabase: SupabaseServerClient, userId: string, questionIds: string[]): Promise<{ deleted: number }> {
+  const ids = [...new Set(questionIds)];
+  if (ids.length === 0) return { deleted: 0 };
+  if (ids.length > 500) throw new ExpectedError("Delete at most 500 questions at a time");
+  const { data: own, error } = await supabase.from("practice_questions").select("id, image_path").in("id", ids).eq("teacher_id", userId);
+  if (error) throw error;
+  const rows = (own ?? []) as { id: string; image_path: string | null }[];
+  if (rows.length === 0) return { deleted: 0 };
+  const { error: deleteError } = await supabase
+    .from("practice_questions")
+    .delete()
+    .in("id", rows.map((row) => row.id))
+    .eq("teacher_id", userId);
+  if (deleteError) throw deleteError;
+  // An image goes only when no remaining question (a duplicate) shares it.
+  for (const imagePath of new Set(rows.map((row) => row.image_path).filter((path): path is string => Boolean(path)))) {
+    const { data: others } = await supabase.from("practice_questions").select("id").eq("image_path", imagePath).limit(1);
+    if (!others?.length) await supabase.storage.from(PRACTICE_IMAGES_BUCKET).remove([imagePath]);
+  }
+  return { deleted: rows.length };
+}
+
 /** Moves questions to another section (of any grade). */
 export async function movePracticeQuestionsAction(questionIds: string[], toSectionId: string): Promise<void> {
   const { supabase, userId } = await requireTeacherSession();
@@ -317,43 +367,59 @@ export async function movePracticeQuestionsAction(questionIds: string[], toSecti
 export type PracticeImportResult =
   | {
       ok: true;
-      /** The first section imported into (the console opens it). */
-      sectionId: string;
+      /** The first section imported into (the console opens it); null when nothing new went in. */
+      sectionId: string | null;
       imported: number;
+      /** Questions left out because the grade already has them (or the file repeats them). */
+      skipped: number;
       createdSection: boolean;
-      /** Per section: how many questions went in, and whether it's new. */
-      sections: { id: string; name: string | null; imported: number; created: boolean }[];
+      /** Per section: how many questions went in, how many were duplicates, whether it's new. */
+      sections: { id: string | null; name: string | null; imported: number; skipped: number; created: boolean }[];
     }
   | { ok: false; errors: string[] };
 
-/**
- * Imports a Markdown file: everything into the section given, or each
- * question into the "# " section it sits under in the file (a file can hold
- * several; missing ones are created under the grade). All or nothing - any
- * problem and nothing is saved, sections it created included.
- */
-export async function importPracticeMarkdownAction(input: {
-  grade: string;
-  markdown: string;
-  sectionId?: string | null;
-}): Promise<PracticeImportResult> {
-  const { supabase, userId } = await requireTeacherSession();
-  const grade = checkGrade(input.grade);
-  if (input.markdown.length > 500_000) return { ok: false, errors: ["The file is too big (over 500 KB)"] };
+/** What an import would do, for the preview: per section, new and duplicate questions. */
+export type PracticeImportCheck =
+  | { ok: true; sections: { name: string | null; exists: boolean; fresh: number; skipped: number }[] }
+  | { ok: false; errors: string[] };
 
-  const parsed = parsePracticeMarkdown(input.markdown);
+type ImportPlan = {
+  groups: {
+    /** The section's name in the file; null when everything goes into the section picked. */
+    name: string | null;
+    /** The section, if it exists already. */
+    sectionId: string | null;
+    specs: PracticeQuestionSpec[];
+    skipped: number;
+  }[];
+};
+
+/**
+ * Where each question of a file goes - all into the section picked, or each
+ * into the "# " section it sits under - leaving out questions the grade
+ * already has, in any of its sections, or that the file repeats
+ * (practiceQuestionKey). Reads only.
+ */
+async function planImport(
+  supabase: SupabaseServerClient,
+  userId: string,
+  grade: string,
+  markdown: string,
+  pickedSectionId: string | null | undefined,
+): Promise<{ ok: true; plan: ImportPlan } | { ok: false; errors: string[] }> {
+  if (markdown.length > 500_000) return { ok: false, errors: ["The file is too big (over 500 KB)"] };
+  const parsed = parsePracticeMarkdown(markdown);
   if (parsed.errors.length) return { ok: false, errors: parsed.errors };
   if (parsed.questions.length > MAX_IMPORT_QUESTIONS) {
     return { ok: false, errors: [`Import at most ${MAX_IMPORT_QUESTIONS} questions at a time (this file has ${parsed.questions.length})`] };
   }
 
-  // Where each question goes: all into the section picked, or each into
-  // the "# " section it sits under in the file.
-  let targetNames: string[] = [];
-  const sectionIdByName = new Map<string, string>();
-  const created: { id: string; name: string }[] = [];
-  if (input.sectionId) {
-    await ownedSection(supabase, userId, input.sectionId);
+  const groups: ImportPlan["groups"] = [];
+  const groupFor: number[] = [];
+  if (pickedSectionId) {
+    await ownedSection(supabase, userId, pickedSectionId);
+    groups.push({ name: null, sectionId: pickedSectionId, specs: [], skipped: 0 });
+    parsed.questions.forEach(() => groupFor.push(0));
   } else {
     const unplaced = parsed.sectionNames.flatMap((name, index) => (name ? [] : [index + 1]));
     if (unplaced.length) {
@@ -366,8 +432,8 @@ export async function importPracticeMarkdownAction(input: {
         ],
       };
     }
-    targetNames = [...new Set(parsed.sectionNames.map((name) => checkName(name!)))];
-    for (const name of targetNames) {
+    const names = parsed.sectionNames.map((name) => checkName(name!));
+    for (const name of [...new Set(names)]) {
       const { data: existing } = await supabase
         .from("practice_sections")
         .select("id")
@@ -375,50 +441,123 @@ export async function importPracticeMarkdownAction(input: {
         .eq("grade", grade)
         .eq("name", name)
         .maybeSingle();
-      if (existing) sectionIdByName.set(name, (existing as { id: string }).id);
-      else {
-        try {
-          const section = await createPracticeSectionAction({ grade, name });
-          sectionIdByName.set(name, section.id);
-          created.push({ id: section.id, name });
-        } catch (error) {
-          await removeSections(supabase, userId, created);
-          throw error;
-        }
-      }
+      groups.push({ name, sectionId: existing ? (existing as { id: string }).id : null, specs: [], skipped: 0 });
+    }
+    names.forEach((name) => groupFor.push(groups.findIndex((group) => group.name === name)));
+  }
+
+  // Everything the grade already has, in any section.
+  const { data: existingRows, error } = await supabase
+    .from("practice_questions")
+    .select(`${PRACTICE_QUESTION_COLUMNS}, practice_sections!inner(grade)`)
+    .eq("teacher_id", userId)
+    .eq("practice_sections.grade", grade);
+  if (error) throw error;
+  const seen = new Set(((existingRows ?? []) as PracticeQuestionRow[]).map((row) => practiceQuestionKey(toPracticeQuestion(row))));
+
+  parsed.questions.forEach((spec, index) => {
+    const group = groups[groupFor[index]];
+    const key = practiceQuestionKey(spec);
+    if (seen.has(key)) group.skipped++;
+    else {
+      seen.add(key);
+      group.specs.push(spec);
+    }
+  });
+  return { ok: true, plan: { groups } };
+}
+
+/** The import preview's numbers: per section, how many questions are new and how many the grade already has. */
+export async function checkPracticeImportAction(input: {
+  grade: string;
+  markdown: string;
+  sectionId?: string | null;
+}): Promise<PracticeImportCheck> {
+  const { supabase, userId } = await requireTeacherSession();
+  const planned = await planImport(supabase, userId, checkGrade(input.grade), input.markdown, input.sectionId);
+  if (!planned.ok) return planned;
+  return {
+    ok: true,
+    sections: planned.plan.groups.map((group) => ({
+      name: group.name,
+      exists: group.sectionId !== null,
+      fresh: group.specs.length,
+      skipped: group.skipped,
+    })),
+  };
+}
+
+/**
+ * Imports a Markdown file: everything into the section given, or each
+ * question into the "# " section it sits under in the file (a file can hold
+ * several; missing ones are created under the grade). Questions the grade
+ * already has are left out, so importing a file again only adds what's new.
+ * All or nothing - any problem and nothing is saved, sections it created
+ * included.
+ */
+export async function importPracticeMarkdownAction(input: {
+  grade: string;
+  markdown: string;
+  sectionId?: string | null;
+}): Promise<PracticeImportResult> {
+  const { supabase, userId } = await requireTeacherSession();
+  const grade = checkGrade(input.grade);
+  const planned = await planImport(supabase, userId, grade, input.markdown, input.sectionId);
+  if (!planned.ok) return planned;
+  const { groups } = planned.plan;
+
+  // Sections the file names that don't exist yet - only those getting questions.
+  const created: { id: string; name: string }[] = [];
+  for (const group of groups) {
+    if (group.sectionId || group.specs.length === 0 || !group.name) continue;
+    try {
+      const section = await createPracticeSectionAction({ grade, name: group.name });
+      group.sectionId = section.id;
+      created.push({ id: section.id, name: group.name });
+    } catch (error) {
+      await removeSections(supabase, userId, created);
+      throw error;
     }
   }
 
-  const sectionFor = (index: number) => input.sectionId ?? sectionIdByName.get(checkName(parsed.sectionNames[index]!))!;
-  const nextPosition = new Map<string, number>();
   const rows: (ReturnType<typeof toPracticeQuestionColumns> & {
     teacher_id: string;
     section_id: string;
     source: "import";
     position: number;
   })[] = [];
-  for (const [index, spec] of parsed.questions.entries()) {
-    const sectionId = sectionFor(index);
-    if (!nextPosition.has(sectionId)) nextPosition.set(sectionId, await nextQuestionPosition(supabase, sectionId));
-    const position = nextPosition.get(sectionId)!;
-    nextPosition.set(sectionId, position + 1);
-    rows.push({ ...toPracticeQuestionColumns(spec), teacher_id: userId, section_id: sectionId, source: "import" as const, position });
+  for (const group of groups) {
+    if (!group.specs.length) continue;
+    let position = await nextQuestionPosition(supabase, group.sectionId!);
+    for (const spec of group.specs) {
+      rows.push({ ...toPracticeQuestionColumns(spec), teacher_id: userId, section_id: group.sectionId!, source: "import" as const, position: position++ });
+    }
   }
-  const { error } = await supabase.from("practice_questions").insert(rows);
-  if (error) {
-    // All or nothing: the insert is one statement (none of the rows went
-    // in), and sections this import created go too.
-    await removeSections(supabase, userId, created);
-    throw error;
+  if (rows.length) {
+    const { error } = await supabase.from("practice_questions").insert(rows);
+    if (error) {
+      // All or nothing: the insert is one statement (none of the rows went
+      // in), and sections this import created go too.
+      await removeSections(supabase, userId, created);
+      throw error;
+    }
   }
 
-  const sections = input.sectionId
-    ? [{ id: input.sectionId, name: null, imported: rows.length, created: false }]
-    : targetNames.map((name) => {
-        const id = sectionIdByName.get(name)!;
-        return { id, name, imported: rows.filter((row) => row.section_id === id).length, created: created.some((item) => item.id === id) };
-      });
-  return { ok: true, sectionId: sections[0].id, imported: rows.length, createdSection: created.length > 0, sections };
+  const sections = groups.map((group) => ({
+    id: group.sectionId,
+    name: group.name,
+    imported: group.specs.length,
+    skipped: group.skipped,
+    created: created.some((item) => item.id === group.sectionId),
+  }));
+  return {
+    ok: true,
+    sectionId: sections.find((section) => section.imported > 0)?.id ?? sections.find((section) => section.id)?.id ?? null,
+    imported: rows.length,
+    skipped: sections.reduce((sum, section) => sum + section.skipped, 0),
+    createdSection: created.length > 0,
+    sections,
+  };
 }
 
 async function removeSections(supabase: SupabaseServerClient, userId: string, sections: { id: string }[]) {

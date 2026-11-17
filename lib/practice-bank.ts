@@ -223,3 +223,43 @@ export function summarizeAnswers(
   }
   return new Map([...out].map(([id, entry]) => [id, { week: { ...entry.week, days: entry.weekDays.size }, recent: entry.recent, last: entry.last }]));
 }
+
+const squash = (text: unknown) => (typeof text === "string" ? text.replace(/\s+/g, " ").trim() : (text ?? null));
+
+/**
+ * What makes two questions "the same" for duplicate checks: the question
+ * as played - type, text, options, answer, numbers settings, graph,
+ * variables - ignoring spacing. The explanation, source and image don't
+ * count, so a reworded explanation is still a duplicate.
+ */
+export function practiceQuestionKey(spec: PracticeQuestionSpec): string {
+  const c = toPracticeQuestionColumns(spec);
+  return JSON.stringify([
+    c.type,
+    squash(c.prompt),
+    c.options ? c.options.map((option) => [squash(option.text), option.correct]) : null,
+    squash(c.answer),
+    c.tolerance ?? null,
+    c.slider_min ?? null,
+    c.slider_max ?? null,
+    c.slider_step ?? null,
+    c.graph ? [c.graph.xMin, c.graph.xMax, c.graph.yMin, c.graph.yMax, c.graph.plots.map(squash)] : null,
+    squash(c.variables),
+    squash(c.condition),
+  ]);
+}
+
+/**
+ * The later copies among questions (in the order given): every question
+ * whose key matches an earlier one. The first copy is the one kept.
+ */
+export function duplicateQuestions<T extends PracticeQuestionSpec>(questions: T[]): T[] {
+  const seen = new Set<string>();
+  const duplicates: T[] = [];
+  for (const question of questions) {
+    const key = practiceQuestionKey(question);
+    if (seen.has(key)) duplicates.push(question);
+    else seen.add(key);
+  }
+  return duplicates;
+}

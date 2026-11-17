@@ -5,6 +5,7 @@ import {
   ArrowDownIcon,
   ArrowUpIcon,
   CopyIcon,
+  CopyXIcon,
   DicesIcon,
   DownloadIcon,
   EyeIcon,
@@ -27,11 +28,14 @@ import {
   createPracticeSectionAction,
   deletePracticeQuestionAction,
   deletePracticeSectionAction,
+  checkPracticeImportAction,
+  deletePracticeQuestionsAction,
   importPracticeMarkdownAction,
   listCopyableQuizzesAction,
   listPracticeQuestionsAction,
   listPracticeSectionsAction,
   movePracticeQuestionsAction,
+  removePracticeDuplicatesAction,
   reorderPracticeSectionsAction,
   setPracticeQuestionActiveAction,
   updatePracticeSectionAction,
@@ -59,6 +63,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { CLASS_GRADES } from "@/lib/class-grades";
 import { getErrorMessage } from "@/lib/expected-error";
 import {
+  duplicateQuestions,
   practiceImageUrl,
   type CopyableQuizQuestion,
   type PracticeQuestion,
@@ -336,6 +341,40 @@ function PracticeBank({
     }
   };
 
+  const deleteSelected = async () => {
+    if (!section) return;
+    const ids = [...selectedIds];
+    if (!window.confirm(`Delete ${ids.length} question${ids.length === 1 ? "" : "s"}? This can't be undone.`)) return;
+    const deletedActive = (questions ?? []).filter((question) => selectedIds.has(question.id) && question.isActive).length;
+    try {
+      const { deleted } = await deletePracticeQuestionsAction(ids);
+      setQuestions((prev) => (prev ?? []).filter((question) => !selectedIds.has(question.id)));
+      setCount(section.id, -deletedActive);
+      toast.success(`Deleted ${deleted} question${deleted === 1 ? "" : "s"}`);
+      clearSelection();
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, "Couldn't delete the questions"));
+    }
+  };
+
+  // Repeated copies in the open section (e.g. a file imported twice before duplicates were skipped).
+  const duplicates = questions ? duplicateQuestions(questions) : [];
+  const removeDuplicates = async () => {
+    if (!section || !duplicates.length) return;
+    if (!window.confirm(`Remove ${duplicates.length} duplicate question${duplicates.length === 1 ? "" : "s"}? The first copy of each stays.`)) return;
+    const removedActive = duplicates.filter((question) => question.isActive).length;
+    const removedIds = new Set(duplicates.map((question) => question.id));
+    try {
+      const { removed } = await removePracticeDuplicatesAction(section.id);
+      setQuestions((prev) => (prev ?? []).filter((question) => !removedIds.has(question.id)));
+      setCount(section.id, -removedActive);
+      toast.success(`Removed ${removed} duplicate${removed === 1 ? "" : "s"}`);
+      clearSelection();
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, "Couldn't remove the duplicates"));
+    }
+  };
+
   const downloadTemplate = () => {
     const blob = new Blob([PRACTICE_MARKDOWN_TEMPLATE], { type: "text/markdown;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -497,13 +536,21 @@ function PracticeBank({
                       <Button type="button" variant="outline" size="sm" onClick={() => setMoveOpen(true)}>
                         <FolderInputIcon className="size-4" /> Move to…
                       </Button>
+                      <Button type="button" variant="outline" size="sm" onClick={() => void deleteSelected()}>
+                        <Trash2Icon className="size-4" /> Delete selected
+                      </Button>
                       <Button type="button" variant="ghost" size="sm" onClick={clearSelection}>
                         Clear
                       </Button>
                     </>
                   ) : (
-                    <span className="text-xs text-muted-foreground">Tick questions to move them to another section.</span>
+                    <span className="text-xs text-muted-foreground">Tick questions to move or delete them.</span>
                   )}
+                  {duplicates.length ? (
+                    <Button type="button" variant="outline" size="sm" className="ml-auto border-amber-500/50" onClick={() => void removeDuplicates()}>
+                      <CopyXIcon className="size-4" /> Remove {duplicates.length} duplicate{duplicates.length === 1 ? "" : "s"}
+                    </Button>
+                  ) : null}
                 </div>
                 <ol className="divide-y rounded-lg border">
                   {questions.map((question, index) => {
@@ -664,6 +711,7 @@ function PracticeBank({
           setImportOpen(false);
           const rows = await listPracticeSectionsAction().catch(() => null);
           if (rows) setSections(rows);
+          if (!targetId) return;
           setLoaded(null);
           setSectionId(targetId);
           loadQuestions(targetId);
@@ -701,7 +749,8 @@ export function ImportDialog({
   sections: PracticeSection[];
   currentSectionId: string | null;
   onClose: () => void;
-  onImported: (sectionId: string) => void;
+  /** The first section that got questions (null when nothing new went in). */
+  onImported: (sectionId: string | null) => void;
 }) {
   const [markdown, setMarkdown] = React.useState("");
   const [target, setTarget] = React.useState<string>("file");
@@ -723,7 +772,34 @@ export function ImportDialog({
   }, [parsed, target, sections]);
   const unplaced = target === "file" && parsed ? parsed.sectionNames.flatMap((name, index) => (name ? [] : [index + 1])) : [];
   const targetName = groups.length === 1 ? groups[0].name : null;
-  const ready = parsed && parsed.errors.length === 0 && parsed.questions.length > 0 && groups.length > 0 && unplaced.length === 0;
+  const valid = Boolean(parsed && parsed.errors.length === 0 && parsed.questions.length > 0 && groups.length > 0 && unplaced.length === 0);
+
+  // Which questions the grade already has: asked of the server once the file
+  // is valid (and again after each change, a moment after typing stops).
+  const checkKey = valid ? `${grade}\n${target}\n${markdown}` : null;
+  const [check, setCheck] = React.useState<{ key: string; sections: { name: string | null; fresh: number; skipped: number }[] } | null>(null);
+  React.useEffect(() => {
+    if (!checkKey) return;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      checkPracticeImportAction({ grade, markdown, sectionId: target === "file" ? null : target })
+        .then((result) => {
+          if (!cancelled && result?.ok) setCheck({ key: checkKey, sections: result.sections });
+        })
+        .catch(() => {
+          // The preview just goes without duplicate counts; the import still skips them.
+        });
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [checkKey, grade, markdown, target]);
+  const checked = check && check.key === checkKey ? check.sections : null;
+  const checkedFor = (name: string | null) => checked?.find((item) => item.name === name) ?? (checked?.length === 1 ? checked[0] : null);
+  const fresh = checked ? checked.reduce((sum, item) => sum + item.fresh, 0) : null;
+  const skipped = checked ? checked.reduce((sum, item) => sum + item.skipped, 0) : 0;
+  const ready = valid && fresh !== 0;
 
   const readFile = async (file: File) => {
     setServerErrors([]);
@@ -740,10 +816,14 @@ export function ImportDialog({
         return;
       }
       const added = result.sections.filter((item) => item.created).length;
+      const into = result.sections.filter((item) => item.imported > 0).length;
+      const skippedNote = result.skipped ? ` · ${result.skipped} already there, skipped` : "";
       toast.success(
-        result.sections.length > 1
-          ? `Imported ${result.imported} questions into ${result.sections.length} sections${added ? ` (${added} new)` : ""}`
-          : `Imported ${result.imported} question${result.imported === 1 ? "" : "s"}${result.createdSection ? " into a new section" : ""}`,
+        result.imported === 0
+          ? `Nothing new to import - all ${result.skipped} questions are already there`
+          : into > 1
+            ? `Imported ${result.imported} questions into ${into} sections${added ? ` (${added} new)` : ""}${skippedNote}`
+            : `Imported ${result.imported} question${result.imported === 1 ? "" : "s"}${result.createdSection ? " into a new section" : ""}${skippedNote}`,
       );
       setMarkdown("");
       onImported(result.sectionId);
@@ -821,14 +901,18 @@ export function ImportDialog({
               {groups.length > 1 ? (
                 <div className="space-y-1.5">
                   <p className="text-sm font-medium">
-                    {parsed.questions.length} questions ready for {groups.length} sections
+                    {parsed.questions.length} questions {checked ? "in" : "ready for"} {groups.length} sections
                   </p>
                   <ul className="divide-y rounded-lg border text-sm">
                     {groups.map((group) => (
                       <li key={group.name} className="flex items-center justify-between gap-3 px-3 py-1.5">
                         <span className="min-w-0 truncate">{group.name}</span>
                         <span className="shrink-0 text-xs text-muted-foreground">
-                          {group.count} question{group.count === 1 ? "" : "s"} · {group.exists ? "adds to it" : "new section"}
+                          {checkedFor(group.name)
+                            ? `${checkedFor(group.name)!.fresh} new${checkedFor(group.name)!.skipped ? ` · ${checkedFor(group.name)!.skipped} already there` : ""}`
+                            : `${group.count} question${group.count === 1 ? "" : "s"}`}
+                          {" · "}
+                          {group.exists ? "adds to it" : "new section"}
                         </span>
                       </li>
                     ))}
@@ -840,6 +924,13 @@ export function ImportDialog({
                   {targetName && !unplaced.length ? ` for "${targetName}"` : " - pick a section above"}
                 </p>
               )}
+              {checked && skipped ? (
+                <p className="text-sm text-muted-foreground">
+                  {fresh === 0
+                    ? `Nothing new: all ${skipped} question${skipped === 1 ? " is" : "s are"} already in this grade.`
+                    : `${skipped} of them ${skipped === 1 ? "is" : "are"} already in this grade and will be skipped - ${fresh} new.`}
+                </p>
+              ) : null}
               {unplaced.length && groups.length ? (
                 <p className="text-sm text-destructive">
                   Question{unplaced.length === 1 ? "" : "s"} {unplaced.join(", ")} come{unplaced.length === 1 ? "s" : ""} before any
@@ -865,7 +956,7 @@ export function ImportDialog({
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
           <Button type="button" onClick={() => void submit()} disabled={!ready || saving}>
-            {saving ? "Importing…" : parsed?.questions.length ? `Import ${parsed.questions.length}` : "Import"}
+            {saving ? "Importing…" : parsed?.questions.length ? `Import ${fresh ?? parsed.questions.length}` : "Import"}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -24,6 +24,9 @@ vi.mock("@/app/protected/teacher/practice-actions", () => ({
   listPracticeQuestionsAction: vi.fn(),
   listPracticeReportsAction: vi.fn(),
   listPracticeSectionsAction: vi.fn(),
+  checkPracticeImportAction: vi.fn(),
+  deletePracticeQuestionsAction: vi.fn(),
+  removePracticeDuplicatesAction: vi.fn(),
   movePracticeQuestionsAction: vi.fn(),
   reorderPracticeSectionsAction: vi.fn(),
   resolvePracticeReportAction: vi.fn(),
@@ -52,7 +55,7 @@ describe("importing a Markdown file", () => {
     fireEvent.change(screen.getByPlaceholderText(/Η ευθεία/), { target: { value: markdown } });
 
   it("previews a correct file and imports it into the section it names", async () => {
-    vi.mocked(importPracticeMarkdownAction).mockResolvedValue({ ok: true, sectionId: "s-line", imported: 7, createdSection: false, sections: [{ id: "s-line", name: "Η ευθεία", imported: 7, created: false }] });
+    vi.mocked(importPracticeMarkdownAction).mockResolvedValue({ ok: true, sectionId: "s-line", imported: 7, skipped: 0, createdSection: false, sections: [{ id: "s-line", name: "Η ευθεία", imported: 7, created: false, skipped: 0 }] });
     const onImported = renderImport();
     paste(PRACTICE_MARKDOWN_TEMPLATE);
 
@@ -64,7 +67,7 @@ describe("importing a Markdown file", () => {
   });
 
   it("imports into a section picked instead of the file's", async () => {
-    vi.mocked(importPracticeMarkdownAction).mockResolvedValue({ ok: true, sectionId: "s-poly", imported: 7, createdSection: false, sections: [{ id: "s-poly", name: null, imported: 7, created: false }] });
+    vi.mocked(importPracticeMarkdownAction).mockResolvedValue({ ok: true, sectionId: "s-poly", imported: 7, skipped: 0, createdSection: false, sections: [{ id: "s-poly", name: null, imported: 7, created: false, skipped: 0 }] });
     renderImport();
     paste(PRACTICE_MARKDOWN_TEMPLATE);
     await userEvent.selectOptions(screen.getByLabelText("Into"), "s-poly");
@@ -260,8 +263,8 @@ describe("moving questions to another section", () => {
 describe("importing a file with several sections", () => {
   it("previews where each section's questions go and imports them all", async () => {
     vi.mocked(importPracticeMarkdownAction).mockResolvedValue({
-      ok: true, sectionId: "s-line", imported: 3, createdSection: true,
-      sections: [{ id: "s-line", name: "Η ευθεία", imported: 1, created: false }, { id: "s-new", name: "Κύκλος", imported: 2, created: true }],
+      ok: true, sectionId: "s-line", imported: 3, skipped: 0, createdSection: true,
+      sections: [{ id: "s-line", name: "Η ευθεία", imported: 1, skipped: 0, created: false }, { id: "s-new", name: "Κύκλος", imported: 2, skipped: 0, created: true }],
     });
     const onImported = vi.fn();
     render(<ImportDialog open grade="lyk_b" sections={SECTIONS} currentSectionId="s-line" onClose={vi.fn()} onImported={onImported} />);
@@ -282,5 +285,68 @@ describe("importing a file with several sections", () => {
     fireEvent.change(screen.getByPlaceholderText(/Η ευθεία/), { target: { value: "## $1+1$;\nAnswer: 2\n# Κύκλος\n## $2+2$;\nAnswer: 4\n" } });
     expect(screen.getByText(/Question 1 comes before any/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Import 2" })).toBeDisabled();
+  });
+});
+
+describe("duplicates", () => {
+  const QUESTION = {
+    sectionId: "s-line", type: "number" as const, prompt: "$2 + 2$", options: null, answer: "4", tolerance: null, sliderMin: null, sliderMax: null,
+    sliderStep: null, graph: null, variables: null, condition: null, explanation: null, origin: null, originDetail: null, imagePath: null,
+    source: "import" as const, sourceQuizQuestionId: null, isActive: true, createdAt: "2026-11-16T10:00:00Z",
+  };
+
+  it("the import preview says which questions are already there, and imports only the new ones", async () => {
+    const { checkPracticeImportAction } = await import("@/app/protected/teacher/practice-actions");
+    vi.mocked(checkPracticeImportAction).mockResolvedValue({ ok: true, sections: [{ name: "Η ευθεία", exists: true, fresh: 2, skipped: 5 }] });
+    vi.mocked(importPracticeMarkdownAction).mockResolvedValue({
+      ok: true, sectionId: "s-line", imported: 2, skipped: 5, createdSection: false,
+      sections: [{ id: "s-line", name: "Η ευθεία", imported: 2, skipped: 5, created: false }],
+    });
+    render(<ImportDialog open grade="lyk_b" sections={SECTIONS} currentSectionId="s-line" onClose={vi.fn()} onImported={vi.fn()} />);
+    fireEvent.change(screen.getByPlaceholderText(/Η ευθεία/), { target: { value: PRACTICE_MARKDOWN_TEMPLATE } });
+
+    expect(await screen.findByText("5 of them are already in this grade and will be skipped - 2 new.")).toBeInTheDocument();
+    expect(checkPracticeImportAction).toHaveBeenCalledWith({ grade: "lyk_b", markdown: PRACTICE_MARKDOWN_TEMPLATE, sectionId: null });
+    await userEvent.click(screen.getByRole("button", { name: "Import 2" }));
+    expect(importPracticeMarkdownAction).toHaveBeenCalled();
+  });
+
+  it("won't import a file that has nothing new", async () => {
+    const { checkPracticeImportAction } = await import("@/app/protected/teacher/practice-actions");
+    vi.mocked(checkPracticeImportAction).mockResolvedValue({ ok: true, sections: [{ name: "Η ευθεία", exists: true, fresh: 0, skipped: 7 }] });
+    render(<ImportDialog open grade="lyk_b" sections={SECTIONS} currentSectionId="s-line" onClose={vi.fn()} onImported={vi.fn()} />);
+    fireEvent.change(screen.getByPlaceholderText(/Η ευθεία/), { target: { value: PRACTICE_MARKDOWN_TEMPLATE } });
+    expect(await screen.findByText("Nothing new: all 7 questions are already in this grade.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Import 0" })).toBeDisabled();
+  });
+
+  it("deletes the ticked questions after asking, and offers to remove a section's duplicates", async () => {
+    const { TeacherPractice } = await import("@/components/teacher-practice");
+    const actions = await import("@/app/protected/teacher/practice-actions");
+    vi.mocked(actions.getPracticeQuestionStatsAction).mockResolvedValue({});
+    vi.mocked(actions.listPracticeQuestionsAction).mockResolvedValue([
+      { ...QUESTION, id: "q1", position: 0, prompt: "Πρώτη" },
+      { ...QUESTION, id: "q2", position: 1, prompt: "Δεύτερη" },
+      { ...QUESTION, id: "q3", position: 2, prompt: "Πρώτη" }, // a copy of q1
+      { ...QUESTION, id: "q4", position: 3, prompt: "Τρίτη" },
+    ]);
+    vi.mocked(actions.deletePracticeQuestionsAction).mockResolvedValue({ deleted: 1 });
+    vi.mocked(actions.removePracticeDuplicatesAction).mockResolvedValue({ removed: 1 });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<TeacherPractice initialSections={[{ ...SECTIONS[0], questionCount: 4 }, SECTIONS[1]]} initialProgress={[]} initialReports={[]} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Remove 1 duplicate" }));
+    expect(confirm).toHaveBeenCalledWith("Remove 1 duplicate question? The first copy of each stays.");
+    expect(actions.removePracticeDuplicatesAction).toHaveBeenCalledWith("s-line");
+    await waitFor(() => expect(screen.getAllByText("Πρώτη")).toHaveLength(1));
+    expect(screen.queryByRole("button", { name: /duplicate/ })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("checkbox", { name: "Select question 3" }));
+    await userEvent.click(screen.getByRole("button", { name: "Delete selected" }));
+    expect(confirm).toHaveBeenLastCalledWith("Delete 1 question? This can't be undone.");
+    expect(actions.deletePracticeQuestionsAction).toHaveBeenCalledWith(["q4"]);
+    await waitFor(() => expect(screen.queryByText("Τρίτη")).not.toBeInTheDocument());
+    expect(screen.getByText(/2 active questions$/)).toBeInTheDocument();
+    confirm.mockRestore();
   });
 });
