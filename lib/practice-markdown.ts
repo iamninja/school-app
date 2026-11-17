@@ -216,7 +216,36 @@ export function parsePracticeMarkdown(source: string): ParsedPracticeMarkdown {
     let bodyStarted = false;
     let explanationLines: string[] | null = null;
 
+    // A figure: a ```tikz block, or a bare \begin{tikzpicture} ... \end{tikzpicture}.
+    const bodyLines: string[] = [];
+    let figureLines: string[] | null = null;
+    let figureEnd: RegExp | null = null;
     for (const line of lines.slice(start + 1, end)) {
+      if (figureLines && figureEnd) {
+        if (figureEnd.test(line.trim())) {
+          if (!figureEnd.source.includes("```")) figureLines.push(line);
+          figureEnd = null;
+        } else figureLines.push(line);
+        continue;
+      }
+      if (/^```\s*(tikz|latex|tex)\s*$/i.test(line.trim())) {
+        if (figureLines) problems.push("has two figures - one per question");
+        figureLines = [];
+        figureEnd = /^```\s*$/;
+        continue;
+      }
+      if (/^\\begin\{tikzpicture\}/.test(line.trim())) {
+        if (figureLines) problems.push("has two figures - one per question");
+        figureLines = [line];
+        figureEnd = /^\\end\{tikzpicture\}/;
+        if (/\\end\{tikzpicture\}/.test(line)) figureEnd = null;
+        continue;
+      }
+      bodyLines.push(line);
+    }
+    if (figureEnd) problems.push("a figure isn't closed (```, or \\end{tikzpicture})");
+
+    for (const line of bodyLines) {
       const option = OPTION_LINE.exec(line);
       const key = KEY_LINE.exec(line);
       if (option) {
@@ -284,6 +313,7 @@ export function parsePracticeMarkdown(source: string): ParsedPracticeMarkdown {
     const spec: PracticeQuestionSpec = {
       type,
       prompt,
+      ...(figureLines && figureLines.join("\n").trim() ? { figure: figureLines.join("\n").trim() } : {}),
       variables: values.get("variables") || null,
       condition: values.get("condition") || null,
       explanation: values.get("explanation") || null,

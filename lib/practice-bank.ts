@@ -27,7 +27,7 @@ export interface PracticeQuestion extends PracticeQuestionSpec {
 }
 
 export const PRACTICE_QUESTION_COLUMNS =
-  "id, section_id, type, prompt, options, answer, tolerance, slider_min, slider_max, slider_step, graph, variables, condition, explanation, origin, origin_detail, counterexample_mode, image_path, source, source_quiz_question_id, position, is_active, created_at";
+  "id, section_id, type, prompt, options, answer, tolerance, slider_min, slider_max, slider_step, graph, variables, condition, explanation, origin, origin_detail, counterexample_mode, figure, image_path, source, source_quiz_question_id, position, is_active, created_at";
 
 export type PracticeQuestionRow = {
   id: string;
@@ -47,6 +47,7 @@ export type PracticeQuestionRow = {
   origin: PracticeOrigin | null;
   origin_detail: string | null;
   counterexample_mode?: CounterexampleMode | null;
+  figure?: string | null;
   image_path: string | null;
   source: "manual" | "quiz" | "import";
   source_quiz_question_id: string | null;
@@ -77,6 +78,7 @@ export function toPracticeQuestion(row: PracticeQuestionRow): PracticeQuestion {
     origin: row.origin ?? null,
     originDetail: row.origin_detail ?? null,
     counterexampleMode: row.counterexample_mode ?? "auto",
+    figure: row.figure ?? null,
     imagePath: row.image_path,
     source: row.source,
     sourceQuizQuestionId: row.source_quiz_question_id,
@@ -130,6 +132,7 @@ export function toPracticeQuestionColumns(spec: PracticeQuestionSpec) {
     origin_detail: spec.origin ? clean(spec.originDetail) : null,
     counterexample_mode:
       spec.type === "counterexample" && spec.counterexampleMode && COUNTEREXAMPLE_MODES.includes(spec.counterexampleMode) ? spec.counterexampleMode : "auto",
+    figure: clean(spec.figure),
   };
 }
 
@@ -341,6 +344,7 @@ export function practiceQuestionKey(spec: PracticeQuestionSpec): string {
     c.graph ? [c.graph.xMin, c.graph.xMax, c.graph.yMin, c.graph.yMax, c.graph.plots.map(squash)] : null,
     squash(c.variables),
     squash(c.condition),
+    squash(c.figure),
   ]);
 }
 

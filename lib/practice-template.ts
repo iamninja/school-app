@@ -17,6 +17,7 @@
 
 import { evalExpr, exprVariables, normalizeTyped, PracticeExprError } from "@/lib/practice-expr";
 import { readCounterexampleOption, type TypedOption } from "@/lib/practice-latex";
+import { figureProblems } from "@/lib/practice-tikz";
 
 export type PracticeQuestionType =
   | "choice"
@@ -149,6 +150,8 @@ export interface PracticeQuestionSpec {
   originDetail?: string | null;
   /** Counterexample questions: options, typed, or auto (the default). */
   counterexampleMode?: CounterexampleMode | null;
+  /** A figure in TikZ (lib/practice-tikz.ts), with {{a}} placeholders for a template's numbers. */
+  figure?: string | null;
 }
 
 /** One concrete question, numbers filled in - what a round plays. */
@@ -179,6 +182,8 @@ export interface PlayableQuestion {
    */
   typeable?: { x0: boolean } | null;
   counterexampleMode?: CounterexampleMode;
+  /** The figure's TikZ, the template's numbers filled in, or null. */
+  figure?: string | null;
 }
 
 export type VariableDef =
@@ -376,6 +381,49 @@ export function fillPlaceholders(text: string, scope: Record<string, number>): s
   return out;
 }
 
+/**
+ * Fills {{expr}} in a TikZ figure: plain numbers in coordinates ("2.5",
+ * "-3", and "+3" for {{+b}}), and the Greek way inside $...$ labels.
+ */
+export function fillFigure(text: string, scope: Record<string, number>): string {
+  let out = "";
+  let inMath = false;
+  let i = 0;
+  while (i < text.length) {
+    if (text[i] === "\\" && text[i + 1] === "$") {
+      out += "\\$";
+      i += 2;
+      continue;
+    }
+    if (text[i] === "$") {
+      inMath = !inMath;
+      out += "$";
+      i++;
+      continue;
+    }
+    if (text.startsWith("{{", i)) {
+      const end = text.indexOf("}}", i + 2);
+      if (end === -1) throw new PracticeTemplateError('A "{{" in the figure has no closing "}}"');
+      let expr = text.slice(i + 2, end).trim();
+      const signed = expr.startsWith("+");
+      if (signed) expr = expr.slice(1).trim();
+      const value = evalExpr(expr, scope);
+      if (!Number.isFinite(value)) throw new PracticeTemplateError(`{{${expr}}} in the figure has no value for these numbers`);
+      if (inMath) {
+        out += signed ? `${value < 0 ? "-" : "+"} ${formatNumber(Math.abs(value), true)}` : formatNumber(value, true);
+      } else {
+        const plainNumber = String(Math.round(value * 1e6) / 1e6);
+        out += signed && value >= 0 ? `+${plainNumber}` : plainNumber;
+      }
+      i = end + 2;
+      continue;
+    }
+    out += text[i];
+    i++;
+  }
+  return out;
+}
+
 /** "(2, 1)" / "2, 1" -> two expressions. */
 export function splitPoint(answer: string): [string, string] | null {
   const inner = answer.trim().replace(/^\(/, "").replace(/\)$/, "");
@@ -432,6 +480,7 @@ export function instantiate(spec: PracticeQuestionSpec, rng: Rng = Math.random):
     type: spec.type,
     prompt: fill(spec.prompt),
     explanation: spec.explanation ? fill(spec.explanation) : null,
+    figure: spec.figure && spec.figure.trim() ? fillFigure(spec.figure, scope) : null,
     originLabel: practiceOriginLabel(spec.origin, spec.originDetail),
     options: [] as PracticeOption[],
     answer: 0,
@@ -736,6 +785,7 @@ export function validatePracticeQuestion(spec: PracticeQuestionSpec, samples = 4
   for (let i = 0; i < runs; i++) {
     try {
       const played = instantiate(spec, rng);
+      for (const problem of figureProblems(played.figure)) problems.add(problem);
       if (spec.type === "number" && (spec.tolerance ?? 0) === 0 && Math.abs(played.answer * 100 - Math.round(played.answer * 100)) > 1e-6) {
         problems.add(`The answer can come out as ${round4(played.answer)} - round it (round(…, 2)) or set a tolerance`);
       }

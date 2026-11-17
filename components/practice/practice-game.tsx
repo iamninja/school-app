@@ -14,6 +14,7 @@ import {
 import { BrandMark } from "@/components/brand";
 import { MathText } from "@/components/math-text";
 import { exprToTex } from "@/lib/practice-expr";
+import { PracticeFigure } from "@/components/practice/practice-figure";
 import { PracticeGraphView } from "@/components/practice/practice-graph";
 import {
   CHOICE,
@@ -795,6 +796,7 @@ export function QuestionScreen({
       <p className="whitespace-pre-line text-[1.35rem] font-bold leading-snug text-balance">
         <MathText text={question.prompt} />
       </p>
+      {question.figure ? <PracticeFigure source={question.figure} className="max-w-[340px]" /> : null}
       {question.imageUrl ? (
         // eslint-disable-next-line @next/next/no-img-element -- public bucket image of any size
         <img src={question.imageUrl} alt="" className="max-h-60 self-start rounded-xl border object-contain" />
@@ -986,7 +988,7 @@ export function QuestionScreen({
               placeholder={typedError ? "Γράψε έναν αριθμό" : "Η απάντησή σου"}
               aria-label="Η απάντησή σου"
               className={cn(
-                "min-w-0 flex-1 rounded-2xl border-2 bg-card px-4 py-3 text-2xl font-bold tabular-nums outline-none focus:border-brand",
+                "w-0 min-w-0 flex-1 rounded-2xl border-2 bg-card px-4 py-3 text-2xl font-bold tabular-nums outline-none focus:border-brand",
                 typedError && "border-destructive",
                 answered && (feedback?.correct ? "border-emerald-500" : "border-red-500"),
               )}

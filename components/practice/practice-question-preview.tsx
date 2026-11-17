@@ -3,6 +3,7 @@
 import { CheckIcon } from "lucide-react";
 
 import { MathText } from "@/components/math-text";
+import { PracticeFigure } from "@/components/practice/practice-figure";
 import { PracticeGraphView } from "@/components/practice/practice-graph";
 import { PracticeOriginBadge } from "@/components/practice/practice-origin-badge";
 import { exprToTex } from "@/lib/practice-expr";
@@ -44,6 +45,7 @@ export function PracticeQuestionPreview({
       <p className={cn("whitespace-pre-line font-medium", compact ? "text-sm" : "text-base")}>
         <MathText text={question.prompt} />
       </p>
+      {question.figure ? <PracticeFigure source={question.figure} className={compact ? "max-w-[260px]" : "max-w-[320px]"} /> : null}
       {imageUrl ? (
         // eslint-disable-next-line @next/next/no-img-element -- public bucket URL, any size
         <img src={imageUrl} alt="" className="max-h-48 rounded-md border object-contain" />

@@ -59,8 +59,8 @@ describe("importing a Markdown file", () => {
     const onImported = renderImport();
     paste(PRACTICE_MARKDOWN_TEMPLATE);
 
-    expect(screen.getByText('14 questions ready for "Η ευθεία"')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Import 14" }));
+    expect(screen.getByText('15 questions ready for "Η ευθεία"')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Import 15" }));
 
     expect(importPracticeMarkdownAction).toHaveBeenCalledWith({ grade: "lyk_b", markdown: PRACTICE_MARKDOWN_TEMPLATE, sectionId: null });
     await waitFor(() => expect(onImported).toHaveBeenCalledWith("s-line"));
@@ -72,8 +72,8 @@ describe("importing a Markdown file", () => {
     paste(PRACTICE_MARKDOWN_TEMPLATE);
     await userEvent.selectOptions(screen.getByLabelText("Into"), "s-poly");
 
-    expect(screen.getByText('14 questions ready for "Πολυώνυμα"')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Import 14" }));
+    expect(screen.getByText('15 questions ready for "Πολυώνυμα"')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Import 15" }));
     expect(vi.mocked(importPracticeMarkdownAction).mock.calls[0][0].sectionId).toBe("s-poly");
   });
 
@@ -100,7 +100,7 @@ describe("importing a Markdown file", () => {
     vi.mocked(importPracticeMarkdownAction).mockResolvedValue({ ok: false, errors: ["Question 3: the answer isn't a number"] });
     const onImported = renderImport();
     paste(PRACTICE_MARKDOWN_TEMPLATE);
-    await userEvent.click(screen.getByRole("button", { name: "Import 14" }));
+    await userEvent.click(screen.getByRole("button", { name: "Import 15" }));
 
     expect(await screen.findByText("Question 3: the answer isn't a number")).toBeInTheDocument();
     expect(onImported).not.toHaveBeenCalled();
