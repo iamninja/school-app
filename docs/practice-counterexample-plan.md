@@ -101,8 +101,8 @@ I convert `panellinies-sl.md`. Each of the 8 «Ποια συνάρτηση απ�
 
 Split in two. **v3a** (built 2026-11-17) is everything below except the AI:
 a typed answer no option matches falls back to the options, not counted.
-**v3b** adds the Claude API check, the daily cap and the console view of
-typed answers.
+**v3b** (built 2026-11-17) adds the Claude API check, the daily cap and the
+console view of typed answers, where the teacher can overrule a verdict.
 
 Decided 2026-11-17. v1 (pick from options) and v2 (mistakes shown to the
 teacher) are live. In v3 the same question can also be answered by typing
