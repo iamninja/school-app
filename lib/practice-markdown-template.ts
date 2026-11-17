@@ -28,11 +28,12 @@ students. Follow these rules exactly:
    lines right under it continue the question text.
 4. Every question gets an "Explanation:" - one or two short sentences a
    student can learn from: the method, not just the result.
-5. Questions must be checkable automatically. Use only the six types
-   below. Never ask for a proof, a sketch or a written answer.
-6. Each question must have exactly one correct answer. For multiple choice,
-   make the wrong options the mistakes students really make (sign errors,
-   forgetting a case, a wrong formula) - not random numbers.
+5. Questions must be checkable automatically. Use only the types below.
+   Never ask for a proof, a sketch or a written answer.
+6. Each question must have exactly one correct answer (for multi: one
+   correct set of options). Make the wrong options the mistakes students
+   really make (sign errors, forgetting a case, a wrong formula) - not
+   random numbers.
 7. Prefer templates with random numbers (see VARIABLES) for routine
    exercises, so practice never repeats the same numbers. Use fixed
    questions for concepts and definitions.
@@ -60,9 +61,11 @@ students. Follow these rules exactly:
    "# <section name>", nothing before or after it. Unless you are asked
    for a number, write 15 to 25 questions per section.
 
-THE SIX TYPES
--------------
+THE TYPES
+---------
 choice      Multiple choice. 2 to 6 options, exactly one marked [x].
+multi       Tick all that apply. 2 to 8 options, one or more marked [x];
+            right only when exactly those are ticked.
 true_false  "Answer: Σωστό" or "Answer: Λάθος" (True/False also work).
 number      The student types a number. "Answer:" is the number or an
             expression; add "Tolerance: 0.01" when the answer isn't exact.
@@ -75,6 +78,25 @@ point       The student drags a point on a coordinate grid (snaps to 0.5).
             then y range; default -5..5 for both), "Plot: x + 1" to draw
             a curve on the grid (repeatable), optional "Tolerance:"
             (default 0.25).
+interval    The student builds an interval: two endpoints and a bracket at
+            each end. "Type: interval" is required. "Answer: [-1, 3)",
+            "(-∞, {{a}}]" (also -inf/+inf). Endpoints may be expressions
+            (sqrt(2), a/2); students may type 3/4, √2, 2π.
+order       The student puts items in order. Write them in the RIGHT order
+            as a numbered list "1. ...", "2. ..." (2 to 8 items); the game
+            shuffles them. No "Answer:".
+match       The student pairs items. One line per pair, "- left -> right"
+            (2 to 6 pairs; → works too); the game shuffles the right side.
+            No "Answer:".
+sign_table  The student fills the sign (+/-) of an expression in each
+            interval between its roots. "Roots: -1, 2" (smallest first,
+            "Roots: none" for none), "Answer: + - +" (one sign per interval:
+            one more than the roots), optional "Row: $f'(x)$" (what the
+            sign is of).
+expression  The student types an expression in x. "Type: expression" is
+            required; "Answer: 3x^2 + 2" (may use the variables). Checked
+            by value at many x, so any equal form counts - it can't insist
+            on a form ("factorise" is not checkable).
 counterexample  A claim the student marks Αληθής/Ψευδής; if false, they
             then pick the counterexample. "Type: counterexample" is
             required. "Answer: Σωστό" (no options) or "Answer: Λάθος" with
@@ -83,9 +105,12 @@ counterexample  A claim the student marks Αληθής/Ψευδής; if false, t
             holds, [ ] wrong for another reason. Under each option, an
             indented line says why it is or isn't a counterexample. No
             Variables/Condition in this type.
-If "Type:" is left out it is worked out: options -> choice, Range ->
-slider, a point answer or Window/Plot -> point, Σωστό/Λάθος -> true_false,
-otherwise number. A counterexample question always needs its "Type:".
+If "Type:" is left out it is worked out: options -> choice (multi if
+several are [x]), numbered items -> order, "->" pairs -> match, Roots ->
+sign_table, Range -> slider, a point answer or Window/Plot -> point,
+Σωστό/Λάθος -> true_false, otherwise number. Interval, expression and
+counterexample questions always need their "Type:".
+Students may type exact values in number answers too: 3/4, √2, 2π.
 
 WHAT TO ASK WITH EACH TYPE
 --------------------------
@@ -95,21 +120,33 @@ choice      Concepts, choosing the right formula or method, recognising a
             options).
 true_false  Definitions, theorems and their conditions, properties students
             mix up (e.g. "if f'(x0) = 0 then f has an extremum at x0").
+multi       Properties that several items have: which numbers are
+            rational, which points lie on the line, which functions are
+            increasing. Mix true and false ones; vary how many are right.
 number      Calculations with one numeric result: solutions of equations,
             values of f, f', limits, slopes, areas, probabilities.
 slider      Estimating where a value lies: roots, square roots, a
             probability between 0 and 1, a percentage.
 point       Coordinates: a vertex, an intersection, a point on a line, a
             symmetric point, an extremum of a plotted function.
+interval    Solutions of inequalities, domains, where f is increasing or
+            positive.
+order       Numbers to sort (fractions, roots, negatives, powers), or the
+            steps of a method in order.
+match       Function <-> derivative or graph property, equation <-> slope or
+            solution, term <-> definition.
+sign_table  The sign of a polynomial, a product or f' - the step before
+            monotonicity and inequalities.
+expression  Derivatives, simplified forms, a line's or parabola's equation.
 counterexample  Claims students believe but are false (converse of a
             theorem, a dropped condition): "continuous => differentiable",
             "f'(x0) = 0 => extremum". Make the wrong options one [h] and
             one [c] at least - the two checks every counterexample needs.
             Mix in some true claims, so the answer isn't always Ψευδής.
-The format can't check proofs, sketches, tables of variation, answers with
-several parts, or expressions typed by the student. Turn such exercises
-into one of the above: ask for one value (f'(2), the coefficient of x),
-or offer the expression or interval as multiple choice.
+The format can't check proofs, sketches, full tables of variation or
+answers with several parts. Turn such exercises into one of the above:
+ask for one value (f'(2), the coefficient of x), the interval, the signs,
+or the expression.
 
 VARIABLES (random numbers)
 --------------------------
@@ -201,4 +238,45 @@ Answer: Λάθος
 - [h] $f(x) = \frac{|x|}{x}$ στο $x_0 = 0$
   Δεν ορίζεται στο $0$, άρα δεν είναι συνεχής εκεί.
 Explanation: Ισχύει το αντίστροφο: παραγωγίσιμη στο $x_0$ $\Rightarrow$ συνεχής στο $x_0$.
+
+## Ποια σημεία ανήκουν στην ευθεία $y = 2x - 1$;
+- [x] $(0, -1)$
+- [x] $(2, 3)$
+- [ ] $(1, 3)$
+- [ ] $(-1, -1)$
+Explanation: Ένα σημείο ανήκει στην ευθεία όταν οι συντεταγμένες του επαληθεύουν την εξίσωση: $2 \cdot 2 - 1 = 3$, ενώ $2 \cdot 1 - 1 = 1 \neq 3$.
+
+## Βάλε τις ευθείες στη σειρά, από τη μικρότερη κλίση στη μεγαλύτερη.
+1. $y = -3x + 1$
+2. $y = -\frac{1}{2}x$
+3. $y = 4$
+4. $y = x - 5$
+5. $y = 3x + 2$
+Explanation: Συγκρίνουμε μόνο τους συντελεστές του $x$: $-3 < -\frac{1}{2} < 0 < 1 < 3$.
+
+## Αντιστοίχισε κάθε ευθεία με την κλίση της.
+- $y = 2x + 1$ -> $2$
+- $2y = x$ -> $\frac{1}{2}$
+- $y = -x + 3$ -> $-1$
+- $y = 5$ -> $0$
+Explanation: Λύνουμε ως προς $y$: η κλίση είναι ο συντελεστής του $x$.
+
+## Βρες το πρόσημο της $y = {{a}}x {{+(-a*r)}}$.
+Roots: {{r}}
+Answer: - +
+Variables: a=2..4, r=-4..4 !0
+Explanation: Για $a > 0$ η $y = ax + β$ είναι αρνητική αριστερά από τη ρίζα της $x = {{r}}$ και θετική δεξιά.
+
+## Για ποια $x$ είναι ${"$"}{{a}}x {{+b}} \ge 0$;
+Type: interval
+Answer: [-b/a, +∞)
+Variables: a=2..5, b=-10..10 !0, k=b/a
+Condition: k == round(k)
+Explanation: ${"$"}{{a}}x \ge {{-b}}$, άρα $x \ge {{-b/a}}$.
+
+## Γράψε την εξίσωση της ευθείας με κλίση ${"$"}{{a}}$ που τέμνει τον $y'y$ στο ${"$"}{{b}}$.
+Type: expression
+Answer: a x + b
+Variables: a=-4..4 !0 !1, b=-5..5 !0
+Explanation: Η ευθεία $y = λx + β$ έχει κλίση $λ$ και τέμνει τον $y'y$ στο $β$: $y = {{a}}x {{+b}}$.
 `;

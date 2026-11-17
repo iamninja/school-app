@@ -13,6 +13,19 @@ import {
 import { BrandMark } from "@/components/brand";
 import { MathText } from "@/components/math-text";
 import { PracticeGraphView } from "@/components/practice/practice-graph";
+import {
+  CHOICE,
+  ExpressionInput,
+  IntervalInput,
+  MatchInput,
+  MultiInput,
+  OrderInput,
+  PRIMARY,
+  SECONDARY,
+  SignTableInput,
+  newTypeCorrectText,
+  useInsert,
+} from "@/components/practice/practice-inputs";
 import { PracticeOriginBadge } from "@/components/practice/practice-origin-badge";
 import { ThemeSwitcher } from "@/components/theme-switcher";
 import type { PracticeCatalogGrade, RoundQuestion } from "@/lib/practice-server";
@@ -31,7 +44,7 @@ import {
   sectionMastery,
   type PracticeProgress,
 } from "@/lib/practice-progress";
-import { checkCounterexample, formatNumber, isCorrect, parseTypedNumber, type CounterexampleDetail } from "@/lib/practice-template";
+import { checkCounterexample, formatNumber, isCorrect, parseTypedValue, type CounterexampleDetail } from "@/lib/practice-template";
 import { cn } from "@/lib/utils";
 
 const TYPE_LABEL: Record<string, string> = {
@@ -41,6 +54,12 @@ const TYPE_LABEL: Record<string, string> = {
   slider: "Σύρε στην τιμή",
   point: "Στο γράφημα",
   counterexample: "Αντιπαράδειγμα",
+  multi: "Διάλεξε όσα ισχύουν",
+  interval: "Διάστημα",
+  order: "Βάλε σε σειρά",
+  match: "Αντιστοίχιση",
+  sign_table: "Πίνακας προσήμων",
+  expression: "Γράψε την παράσταση",
 };
 
 /** What each counterexample option was, shown after the answer. */
@@ -54,13 +73,6 @@ const fmt = (value: number) => formatNumber(value, false);
 /** Slider answers and ranges: two decimals are plenty to read. */
 const fmt2 = (value: number) => formatNumber(Math.round(value * 100) / 100, false);
 
-// The game's buttons press down (the "game" feel from the prototype).
-const PRIMARY =
-  "inline-flex items-center justify-center gap-2 rounded-2xl bg-brand px-5 py-3.5 text-base font-bold text-brand-foreground shadow-[0_4px_0_0_hsl(var(--brand)/0.45)] transition active:translate-y-1 active:shadow-none disabled:cursor-not-allowed disabled:opacity-45 disabled:active:translate-y-0";
-const SECONDARY =
-  "inline-flex items-center justify-center gap-2 rounded-2xl border-2 border-border bg-card px-4 py-3 text-sm font-semibold transition hover:border-brand/60 active:translate-y-0.5";
-const CHOICE =
-  "flex w-full items-center gap-3 rounded-2xl border-2 border-border bg-card px-4 py-3.5 text-left text-base font-medium shadow-[0_4px_0_0_hsl(var(--border))] transition enabled:hover:border-brand/70 enabled:active:translate-y-1 enabled:active:shadow-none disabled:cursor-default";
 
 type Viewer = { kind: "guest" | "parent" | "teacher" } | { kind: "student"; firstName: string; grade: string | null };
 
@@ -669,6 +681,18 @@ export function QuestionScreen({
     finishCounterexample(false, i);
   };
   const counterexample = question.type === "counterexample" ? question.options.find((option) => option.marker === "x") ?? null : null;
+  const { ref: numberRef, insert: insertNumber } = useInsert(typed, (text) => {
+    setTyped(text);
+    setTypedError(false);
+  });
+
+  /** The newer types check themselves and report right/wrong here. */
+  const finish = (correct: boolean) => {
+    if (answered) return;
+    setFeedback({ correct, ...onAnswer(correct) });
+    setTimeout(() => nextRef.current?.focus({ preventScroll: true }), 50);
+  };
+  const inputProps = { question, result: feedback ? feedback.correct : null, onSubmit: finish };
 
   const submit = (value: number | { x: number; y: number }) => {
     if (answered) return;
@@ -679,8 +703,10 @@ export function QuestionScreen({
   };
 
   const correctText =
-    question.type === "choice"
+    question.type === "choice" || question.type === "multi" || question.type === "order" || question.type === "match" || question.type === "sign_table"
       ? null
+      : question.type === "interval" || question.type === "expression"
+        ? newTypeCorrectText(question)
       : question.type === "counterexample"
         ? claim === null || claim === (question.answer === 1)
           ? null
@@ -809,6 +835,13 @@ export function QuestionScreen({
         </div>
       ) : null}
 
+      {question.type === "multi" ? <MultiInput {...inputProps} /> : null}
+      {question.type === "order" ? <OrderInput {...inputProps} /> : null}
+      {question.type === "match" ? <MatchInput {...inputProps} /> : null}
+      {question.type === "sign_table" ? <SignTableInput {...inputProps} /> : null}
+      {question.type === "interval" ? <IntervalInput {...inputProps} /> : null}
+      {question.type === "expression" ? <ExpressionInput {...inputProps} /> : null}
+
       {question.type === "true_false" ? (
         <div className="grid grid-cols-2 gap-3">
           {[1, 0].map((value) => {
@@ -836,10 +869,10 @@ export function QuestionScreen({
 
       {question.type === "number" ? (
         <form
-          className="flex gap-2"
+          className="grid gap-2"
           onSubmit={(event) => {
             event.preventDefault();
-            const value = parseTypedNumber(typed);
+            const value = parseTypedValue(typed);
             if (value === null) {
               setTypedError(true);
               return;
@@ -847,28 +880,45 @@ export function QuestionScreen({
             submit(value);
           }}
         >
-          <input
-            id="practice-number"
-            inputMode="decimal"
-            autoComplete="off"
-            autoFocus
-            disabled={answered}
-            value={typed}
-            onChange={(event) => {
-              setTyped(event.target.value);
-              setTypedError(false);
-            }}
-            placeholder={typedError ? "Γράψε έναν αριθμό" : "Η απάντησή σου"}
-            aria-label="Η απάντησή σου"
-            className={cn(
-              "min-w-0 flex-1 rounded-2xl border-2 bg-card px-4 py-3 text-2xl font-bold tabular-nums outline-none focus:border-brand",
-              typedError && "border-destructive",
-              answered && (feedback?.correct ? "border-emerald-500" : "border-red-500"),
-            )}
-          />
-          <button type="submit" className={PRIMARY} disabled={answered}>
-            Έλεγχος
-          </button>
+          <div className="flex gap-2">
+            <input
+              ref={numberRef}
+              id="practice-number"
+              inputMode="decimal"
+              autoComplete="off"
+              autoFocus
+              disabled={answered}
+              value={typed}
+              onChange={(event) => {
+                setTyped(event.target.value);
+                setTypedError(false);
+              }}
+              placeholder={typedError ? "Γράψε έναν αριθμό" : "Η απάντησή σου"}
+              aria-label="Η απάντησή σου"
+              className={cn(
+                "min-w-0 flex-1 rounded-2xl border-2 bg-card px-4 py-3 text-2xl font-bold tabular-nums outline-none focus:border-brand",
+                typedError && "border-destructive",
+                answered && (feedback?.correct ? "border-emerald-500" : "border-red-500"),
+              )}
+            />
+            <button type="submit" className={PRIMARY} disabled={answered}>
+              Έλεγχος
+            </button>
+          </div>
+          {!answered ? (
+            <div className="flex gap-1.5" aria-label="Σύμβολα">
+              {[["−", "-"], ["/", "/"], ["√", "√"], ["π", "π"]].map(([label, text]) => (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => insertNumber(text)}
+                  className="min-w-10 rounded-xl border-2 border-border bg-card px-2.5 py-1.5 text-base font-semibold shadow-[0_2px_0_0_hsl(var(--border))] transition active:translate-y-0.5 active:shadow-none"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </form>
       ) : null}
 

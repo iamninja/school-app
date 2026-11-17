@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { DicesIcon, ImageIcon, PlusIcon, Trash2Icon, XIcon } from "lucide-react";
+import { ArrowUpIcon, DicesIcon, ImageIcon, PlusIcon, Trash2Icon, XIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { savePracticeQuestionAction } from "@/app/protected/teacher/practice-actions";
@@ -21,8 +21,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { getErrorMessage } from "@/lib/expected-error";
 import { PRACTICE_IMAGES_BUCKET, practiceImageUrl, type PracticeQuestion } from "@/lib/practice-bank";
 import {
+  formatSignAnswer,
   instantiate,
   MAX_ORIGIN_DETAIL,
+  parseSignAnswer,
   PRACTICE_ORIGIN_LABELS,
   seededRng,
   validatePracticeQuestion,
@@ -42,8 +44,33 @@ export const PRACTICE_TYPE_LABELS: Record<PracticeQuestionType, string> = {
   number: "Number",
   slider: "Slider",
   point: "Graph point",
+  multi: "Tick all that apply",
+  interval: "Interval",
+  order: "Put in order",
+  match: "Matching",
+  sign_table: "Sign table",
+  expression: "Expression",
   counterexample: "Counterexample",
 };
+
+/** Splits "-1, $\\frac{1}{2}$, 3" at commas outside $...$ and brackets. */
+function splitList(raw: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let inMath = false;
+  let current = "";
+  for (const ch of raw) {
+    if (ch === "$") inMath = !inMath;
+    if (!inMath && "({[".includes(ch)) depth++;
+    if (!inMath && ")}]".includes(ch)) depth--;
+    if ((ch === "," || ch === ";") && depth === 0 && !inMath) {
+      parts.push(current.trim());
+      current = "";
+    } else current += ch;
+  }
+  parts.push(current.trim());
+  return parts.filter(Boolean);
+}
 
 type Draft = {
   type: PracticeQuestionType;
@@ -53,6 +80,10 @@ type Draft = {
   /** Counterexample: is the claim true? (Usually not.) */
   ceAnswer: "true" | "false";
   answer: string;
+  /** Sign table: the roots as written ("-1, 2"), the row's label and the signs. */
+  roots: string;
+  signRow: string;
+  signs: number[];
   tolerance: string;
   sliderMin: string;
   sliderMax: string;
@@ -74,6 +105,14 @@ const text = (value: number | null | undefined) => (value === null || value === 
 
 export function draftFrom(question: Partial<PracticeQuestion> | null): Draft {
   const graph = question?.graph ?? { xMin: -5, xMax: 5, yMin: -5, yMax: 5, plots: [] };
+  let sign: { label: string | null; signs: number[] } = { label: null, signs: [1, -1, 1] };
+  if (question?.type === "sign_table") {
+    try {
+      sign = parseSignAnswer(question.answer);
+    } catch {
+      // keep the default
+    }
+  }
   return {
     type: question?.type ?? "choice",
     prompt: question?.prompt ?? "",
@@ -86,7 +125,10 @@ export function draftFrom(question: Partial<PracticeQuestion> | null): Draft {
         ],
     tfAnswer: question?.type === "true_false" && question.answer === "false" ? "false" : "true",
     ceAnswer: question?.type === "counterexample" && question.answer === "true" ? "true" : "false",
-    answer: question?.type === "true_false" || question?.type === "counterexample" ? "" : (question?.answer ?? ""),
+    answer: question?.type === "true_false" || question?.type === "counterexample" || question?.type === "sign_table" ? "" : (question?.answer ?? ""),
+    roots: question?.type === "sign_table" ? (question.options ?? []).map((option) => option.text).join(", ") : "-1, 1",
+    signRow: sign.label ?? "",
+    signs: sign.signs,
     tolerance: text(question?.tolerance),
     sliderMin: text(question?.sliderMin ?? (question?.type === "slider" ? null : 0)),
     sliderMax: text(question?.sliderMax ?? (question?.type === "slider" ? null : 10)),
@@ -122,8 +164,19 @@ export function specFrom(draft: Draft): PracticeQuestionSpec {
     origin: draft.origin || null,
     originDetail: draft.origin ? draft.originDetail.trim() || null : null,
   };
-  if (draft.type === "choice") {
+  if (draft.type === "choice" || draft.type === "multi") {
     spec.options = draft.options.filter((option) => option.text.trim()).map((option) => ({ text: option.text, correct: option.correct }));
+  } else if (draft.type === "order") {
+    spec.options = draft.options.filter((option) => option.text.trim()).map((option) => ({ text: option.text, correct: false }));
+  } else if (draft.type === "match") {
+    spec.options = draft.options
+      .filter((option) => option.text.trim() || (option.match ?? "").trim())
+      .map((option) => ({ text: option.text, correct: false, match: option.match ?? "" }));
+  } else if (draft.type === "sign_table") {
+    const roots = splitList(draft.roots);
+    spec.options = roots.map((root) => ({ text: root, correct: false }));
+    const signs = Array.from({ length: roots.length + 1 }, (_, i) => draft.signs[i] ?? (i % 2 ? -1 : 1));
+    spec.answer = formatSignAnswer(draft.signRow, signs);
   } else if (draft.type === "counterexample") {
     spec.answer = draft.ceAnswer;
     spec.variables = null;
@@ -138,7 +191,7 @@ export function specFrom(draft: Draft): PracticeQuestionSpec {
     }
   } else if (draft.type === "true_false") spec.answer = draft.tfAnswer;
   else spec.answer = draft.answer;
-  if (draft.type === "number" || draft.type === "slider" || draft.type === "point") {
+  if (draft.type === "number" || draft.type === "slider" || draft.type === "point" || draft.type === "interval") {
     spec.tolerance = toNumber(draft.tolerance);
   }
   if (draft.type === "slider") {
@@ -269,7 +322,7 @@ export function PracticeQuestionEditor({
 
         <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_minmax(0,380px)]">
           <div className="min-w-0 space-y-4">
-            <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1 text-sm sm:grid-cols-3" role="radiogroup" aria-label="Question type">
+            <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1 text-sm sm:grid-cols-4" role="radiogroup" aria-label="Question type">
               {(Object.keys(PRACTICE_TYPE_LABELS) as PracticeQuestionType[]).map((type) => (
                 <button
                   key={type}
@@ -301,18 +354,26 @@ export function PracticeQuestionEditor({
               </p>
             </div>
 
-            {draft.type === "choice" ? (
+            {draft.type === "choice" || draft.type === "multi" ? (
               <fieldset className="space-y-2">
-                <legend className="text-sm font-medium">Options · pick the correct one</legend>
+                <legend className="text-sm font-medium">
+                  {draft.type === "multi" ? "Options · tick every correct one" : "Options · pick the correct one"}
+                </legend>
                 {draft.options.map((option, index) => (
                   <div key={index} className="flex items-center gap-2">
                     <input
-                      type="radio"
+                      type={draft.type === "multi" ? "checkbox" : "radio"}
                       name="pq-correct"
                       id={`pq-correct-${index}`}
                       className="size-4 accent-emerald-600"
                       checked={option.correct}
-                      onChange={() => update({ options: draft.options.map((item, i) => ({ ...item, correct: i === index })) })}
+                      onChange={() =>
+                        update({
+                          options: draft.options.map((item, i) =>
+                            draft.type === "multi" ? (i === index ? { ...item, correct: !item.correct } : item) : { ...item, correct: i === index },
+                          ),
+                        })
+                      }
                       aria-label={`Option ${index + 1} is correct`}
                     />
                     <Input
@@ -331,7 +392,7 @@ export function PracticeQuestionEditor({
                       disabled={draft.options.length <= 2}
                       onClick={() => {
                         const options = draft.options.filter((_, i) => i !== index);
-                        if (!options.some((item) => item.correct)) options[0] = { ...options[0], correct: true };
+                        if (draft.type === "choice" && !options.some((item) => item.correct)) options[0] = { ...options[0], correct: true };
                         update({ options });
                       }}
                       aria-label={`Remove option ${index + 1}`}
@@ -340,12 +401,154 @@ export function PracticeQuestionEditor({
                     </Button>
                   </div>
                 ))}
-                {draft.options.length < 6 ? (
+                {draft.options.length < (draft.type === "multi" ? 8 : 6) ? (
                   <Button type="button" variant="outline" size="sm" onClick={() => update({ options: [...draft.options, { text: "", correct: false }] })}>
                     <PlusIcon className="size-3.5" /> Add option
                   </Button>
                 ) : null}
               </fieldset>
+            ) : null}
+
+            {draft.type === "order" ? (
+              <fieldset className="space-y-2">
+                <legend className="text-sm font-medium">Items · in the right order (students get them shuffled)</legend>
+                {draft.options.map((option, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <span className="w-5 shrink-0 text-right text-sm tabular-nums text-muted-foreground">{index + 1}.</span>
+                    <Input
+                      aria-label={`Item ${index + 1}`}
+                      value={option.text}
+                      onChange={(event) =>
+                        update({ options: draft.options.map((item, i) => (i === index ? { ...item, text: event.target.value } : item)) })
+                      }
+                      placeholder={index === 0 ? "The first (e.g. the smallest)" : ""}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="size-8 shrink-0 p-0"
+                      disabled={index === 0}
+                      onClick={() => {
+                        const options = [...draft.options];
+                        [options[index - 1], options[index]] = [options[index], options[index - 1]];
+                        update({ options });
+                      }}
+                      aria-label={`Move item ${index + 1} up`}
+                    >
+                      <ArrowUpIcon className="size-4" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="size-8 shrink-0 p-0"
+                      disabled={draft.options.length <= 2}
+                      onClick={() => update({ options: draft.options.filter((_, i) => i !== index) })}
+                      aria-label={`Remove item ${index + 1}`}
+                    >
+                      <XIcon className="size-4" />
+                    </Button>
+                  </div>
+                ))}
+                {draft.options.length < 8 ? (
+                  <Button type="button" variant="outline" size="sm" onClick={() => update({ options: [...draft.options, { text: "", correct: false }] })}>
+                    <PlusIcon className="size-3.5" /> Add item
+                  </Button>
+                ) : null}
+              </fieldset>
+            ) : null}
+
+            {draft.type === "match" ? (
+              <fieldset className="space-y-2">
+                <legend className="text-sm font-medium">Pairs · students get the right side shuffled</legend>
+                {draft.options.map((option, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <Input
+                      aria-label={`Pair ${index + 1}, left`}
+                      value={option.text}
+                      onChange={(event) =>
+                        update({ options: draft.options.map((item, i) => (i === index ? { ...item, text: event.target.value } : item)) })
+                      }
+                      placeholder="$f(x) = x^2$"
+                    />
+                    <span className="text-muted-foreground" aria-hidden="true">→</span>
+                    <Input
+                      aria-label={`Pair ${index + 1}, right`}
+                      value={option.match ?? ""}
+                      onChange={(event) =>
+                        update({ options: draft.options.map((item, i) => (i === index ? { ...item, match: event.target.value } : item)) })
+                      }
+                      placeholder="$f'(x) = 2x$"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="size-8 shrink-0 p-0"
+                      disabled={draft.options.length <= 2}
+                      onClick={() => update({ options: draft.options.filter((_, i) => i !== index) })}
+                      aria-label={`Remove pair ${index + 1}`}
+                    >
+                      <XIcon className="size-4" />
+                    </Button>
+                  </div>
+                ))}
+                {draft.options.length < 6 ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => update({ options: [...draft.options, { text: "", correct: false, match: "" }] })}
+                  >
+                    <PlusIcon className="size-3.5" /> Add pair
+                  </Button>
+                ) : null}
+              </fieldset>
+            ) : null}
+
+            {draft.type === "sign_table" ? (
+              <div className="space-y-3">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="pq-roots">Roots · smallest first, comma-separated</Label>
+                    <Input id="pq-roots" value={draft.roots} onChange={(event) => update({ roots: event.target.value })} placeholder="-1, 2  (empty: none)" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="pq-sign-row">
+                      The sign of <span className="text-muted-foreground">(optional)</span>
+                    </Label>
+                    <Input id="pq-sign-row" value={draft.signRow} onChange={(event) => update({ signRow: event.target.value })} placeholder="$f'(x)$" />
+                  </div>
+                </div>
+                <fieldset className="space-y-2">
+                  <legend className="text-sm font-medium">Signs · click to switch</legend>
+                  <div className="flex flex-wrap items-center gap-1.5 text-sm">
+                    {Array.from({ length: splitList(draft.roots).length + 1 }, (_, i) => {
+                      const sign = draft.signs[i] ?? (i % 2 ? -1 : 1);
+                      return (
+                        <React.Fragment key={i}>
+                          {i > 0 ? <span className="px-1 text-muted-foreground">{splitList(draft.roots)[i - 1]}</span> : null}
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="w-10 text-lg font-bold"
+                            aria-label={`Interval ${i + 1}: ${sign > 0 ? "positive" : "negative"}`}
+                            onClick={() => {
+                              const signs = Array.from({ length: splitList(draft.roots).length + 1 }, (_, j) => draft.signs[j] ?? (j % 2 ? -1 : 1));
+                              signs[i] = -sign;
+                              update({ signs });
+                            }}
+                          >
+                            {sign > 0 ? "+" : "−"}
+                          </Button>
+                        </React.Fragment>
+                      );
+                    })}
+                  </div>
+                </fieldset>
+              </div>
             ) : null}
 
             {draft.type === "counterexample" ? (
@@ -458,7 +661,7 @@ export function PracticeQuestionEditor({
               </fieldset>
             ) : null}
 
-            {draft.type === "number" || draft.type === "slider" || draft.type === "point" ? (
+            {draft.type === "number" || draft.type === "slider" || draft.type === "point" || draft.type === "interval" || draft.type === "expression" ? (
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="pq-answer">Answer</Label>
@@ -466,9 +669,23 @@ export function PracticeQuestionEditor({
                     id="pq-answer"
                     value={draft.answer}
                     onChange={(event) => update({ answer: event.target.value })}
-                    placeholder={draft.type === "point" ? "(2, 1)" : hasVariables ? "x  or  a*x + b" : "6"}
+                    placeholder={
+                      draft.type === "point"
+                        ? "(2, 1)"
+                        : draft.type === "interval"
+                          ? "[-1, 3)  or  (-inf, 2]"
+                          : draft.type === "expression"
+                            ? "3x^2 + 2  (in x)"
+                            : hasVariables
+                              ? "x  or  a*x + b"
+                              : "6"
+                    }
                   />
+                  {draft.type === "expression" ? (
+                    <p className="text-xs text-muted-foreground">Checked by value, so any equal form counts.</p>
+                  ) : null}
                 </div>
+                {draft.type !== "expression" ? (
                 <div className="space-y-2">
                   <Label htmlFor="pq-tolerance">
                     Counts as right within ± <span className="text-muted-foreground">(optional)</span>
@@ -478,9 +695,10 @@ export function PracticeQuestionEditor({
                     inputMode="decimal"
                     value={draft.tolerance}
                     onChange={(event) => update({ tolerance: event.target.value })}
-                    placeholder={draft.type === "number" ? "exact" : draft.type === "point" ? "0.25" : "1/40 of the range"}
+                    placeholder={draft.type === "number" || draft.type === "interval" ? "exact" : draft.type === "point" ? "0.25" : "1/40 of the range"}
                   />
                 </div>
+                ) : null}
               </div>
             ) : null}
 

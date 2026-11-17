@@ -324,3 +324,110 @@ function run(node: Node, scope: Record<string, number>): number {
 export function evalExpr(source: string, scope: Record<string, number> = {}): number {
   return run(parseExpr(source), scope);
 }
+
+const TEX_FUNCTIONS: Record<string, string> = {
+  sin: "\\sin", cos: "\\cos", tan: "\\tan", ln: "\\ln", log: "\\log",
+};
+
+/**
+ * An expression as LaTeX, for showing what a student typed ("2x^2 + sqrt(x)"
+ * -> "2x^{2} + \\sqrt{x}"). Throws PracticeExprError on bad syntax.
+ */
+export function exprToTex(source: string): string {
+  const num = (value: number) => {
+    const text = String(Math.round(value * 1e9) / 1e9);
+    return text.replace(".", "{,}");
+  };
+  const prec = (node: Node): number => {
+    if (node.t === "bin") return node.op === "+" || node.op === "-" ? 1 : node.op === "*" || node.op === "/" ? 2 : node.op === "^" ? 4 : 0;
+    if (node.t === "un") return node.op === "neg" ? 1.5 : 0;
+    return 5;
+  };
+  const wrap = (tex: string) => `\\left(${tex}\\right)`;
+  const tex = (node: Node): string => {
+    switch (node.t) {
+      case "num":
+        return num(node.v);
+      case "var": {
+        const lower = node.name.toLowerCase();
+        return lower === "pi" || node.name === "π" ? "\\pi" : node.name.length > 1 ? `\\mathrm{${node.name}}` : node.name;
+      }
+      case "un":
+        if (node.op === "neg") return `-${prec(node.a) <= 1.5 ? wrap(tex(node.a)) : tex(node.a)}`;
+        return `\\neg ${tex(node.a)}`;
+      case "call": {
+        const args = node.args.map(tex);
+        if (node.fn === "sqrt") return `\\sqrt{${args[0]}}`;
+        if (node.fn === "abs") return `\\left|${args[0]}\\right|`;
+        if (node.fn === "exp") return `e^{${args[0]}}`;
+        const name = TEX_FUNCTIONS[node.fn] ?? `\\operatorname{${node.fn}}`;
+        return `${name}${wrap(args.join(", "))}`;
+      }
+      case "bin": {
+        // Filled-in negatives read naturally: a + (-b) -> a - b, a - (-b) -> a + b, (-3)x -> -3x.
+        if ((node.op === "+" || node.op === "-") && node.b.t === "un" && node.b.op === "neg") {
+          return tex({ t: "bin", op: node.op === "+" ? "-" : "+", a: node.a, b: node.b.a });
+        }
+        if (node.op === "*" && node.a.t === "un" && node.a.op === "neg") {
+          return tex({ t: "un", op: "neg", a: { t: "bin", op: "*", a: node.a.a, b: node.b } });
+        }
+        if (node.op === "*" && node.a.t === "num" && node.a.v === 1) return tex(node.b);
+        if ((node.op === "+" || node.op === "-") && node.b.t === "num" && node.b.v < 0) {
+          return tex({ t: "bin", op: node.op === "+" ? "-" : "+", a: node.a, b: { t: "num", v: -node.b.v } });
+        }
+        const p = prec(node);
+        if (node.op === "/") return `\\frac{${tex(node.a)}}{${tex(node.b)}}`;
+        if (node.op === "^") {
+          const base = prec(node.a) < 5 || (node.a.t === "num" && node.a.v < 0) || node.a.t === "call" ? wrap(tex(node.a)) : tex(node.a);
+          return `${base}^{${tex(node.b)}}`;
+        }
+        const left = prec(node.a) < p ? wrap(tex(node.a)) : tex(node.a);
+        const rightNeedsParens = prec(node.b) < p || (node.op === "-" && prec(node.b) === p) || (prec(node.b) === 1.5 && (node.op === "+" || node.op === "-" || node.op === "*"));
+        const right = rightNeedsParens ? wrap(tex(node.b)) : tex(node.b);
+        if (node.op === "*") {
+          // 2x, 3\sqrt{x}, 2(x+1) - a number times something that starts with a letter or a bracket.
+          const juxtapose = node.a.t === "num" && !/^[\d{-]/.test(right.replace(/^\\left/, "("));
+          return juxtapose ? `${left}${right}` : `${left} \\cdot ${right}`;
+        }
+        const ops: Record<string, string> = { "+": "+", "-": "-", "==": "=", "!=": "\\neq", "<": "<", "<=": "\\le", ">": ">", ">=": "\\ge", and: "\\wedge", or: "\\vee" };
+        return `${left} ${ops[node.op] ?? node.op} ${right}`;
+      }
+    }
+  };
+  return tex(parseExpr(source));
+}
+
+const TYPED_NAMES = ["sqrt", "abs", "ln", "log", "exp", "sin", "cos", "tan", "pi", "e"];
+
+/**
+ * What a student typed, made readable for the parser: √ -> sqrt, π -> pi,
+ * x² -> x^2, a decimal comma -> point, and runs of letters split into known
+ * names ("xsqrt(x)" -> "x sqrt(x)", "xx" -> "x x"). `variables` are the
+ * one-letter names allowed (usually x).
+ */
+export function normalizeTyped(raw: string, variables: string[] = []): string {
+  let text = raw
+    .replace(/[−–]/g, "-")
+    .replace(/[·×]/g, "*")
+    .replace(/÷/g, "/")
+    .replace(/²/g, "^2")
+    .replace(/³/g, "^3")
+    .replace(/π/g, " pi ")
+    .replace(/(\d),(\d)/g, "$1.$2");
+  // √x, √(x+1), √2 -> sqrt(...)
+  text = text.replace(/√\s*(\((?:[^()]|\([^()]*\))*\)|[A-Za-z0-9.]+)/g, (_, arg: string) => (arg.startsWith("(") ? `sqrt${arg}` : `sqrt(${arg})`));
+  const names = [...TYPED_NAMES, ...variables].sort((a, b) => b.length - a.length);
+  text = text.replace(/[A-Za-z]+/g, (run) => {
+    const parts: string[] = [];
+    let i = 0;
+    while (i < run.length) {
+      const name = names.find((candidate) => run.toLowerCase().startsWith(candidate.toLowerCase(), i));
+      if (!name) return run; // unknown: leave it for the parser to name
+      parts.push(run.slice(i, i + name.length));
+      i += name.length;
+    }
+    return ` ${parts.join(" ")} `;
+  });
+  // "sin x", "ln 2" -> sin(x), ln(2): a function name needs its brackets.
+  return text.replace(/\b(sqrt|abs|ln|log|exp|sin|cos|tan)\s+([A-Za-z]\b|\d+(?:\.\d+)?)(?!\s*[(^])/g, "$1($2)");
+}
