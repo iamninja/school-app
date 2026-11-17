@@ -16,6 +16,7 @@
 // Inside $...$ a decimal is written 7{,}5 (LaTeX), outside 7,5.
 
 import { evalExpr, exprVariables, normalizeTyped, PracticeExprError } from "@/lib/practice-expr";
+import { readCounterexampleOption, type TypedOption } from "@/lib/practice-latex";
 
 export type PracticeQuestionType =
   | "choice"
@@ -51,7 +52,16 @@ export interface PracticeOption {
   reason?: string | null;
   /** Match questions only: the right-hand item this one pairs with. */
   match?: string;
+  /** Counterexample options, when played: the option as a function of x (null when it can't be read). */
+  typed?: TypedOption | null;
 }
+
+/**
+ * How a false counterexample claim is answered at step 2: "auto" (options
+ * until the student has got it right once, then typed), or always one way.
+ */
+export type CounterexampleMode = "auto" | "options" | "typed";
+export const COUNTEREXAMPLE_MODES: CounterexampleMode[] = ["auto", "options", "typed"];
 
 /** An interval's endpoints; null is -∞ (lo) or +∞ (hi), always open. */
 export interface PracticeInterval {
@@ -137,6 +147,8 @@ export interface PracticeQuestionSpec {
   /** Where it comes from (optional), and a short detail ("2019 · Θέμα Β"). */
   origin?: PracticeOrigin | null;
   originDetail?: string | null;
+  /** Counterexample questions: options, typed, or auto (the default). */
+  counterexampleMode?: CounterexampleMode | null;
 }
 
 /** One concrete question, numbers filled in - what a round plays. */
@@ -161,6 +173,12 @@ export interface PlayableQuestion {
   signLabel?: string | null;
   /** expression: the answer in x, template numbers filled in. */
   expression?: string | null;
+  /**
+   * Counterexample (false claim): can the counterexample be typed? Only when
+   * the [x] option reads as a formula of x; `x0` when it names a point.
+   */
+  typeable?: { x0: boolean } | null;
+  counterexampleMode?: CounterexampleMode;
 }
 
 export type VariableDef =
@@ -442,11 +460,12 @@ export function instantiate(spec: PracticeQuestionSpec, rng: Rng = Math.random):
       const given = spec.options ?? [];
       if (value) {
         if (given.length) throw new PracticeTemplateError("A true claim has no counterexamples - leave out the options");
-        return { ...base, answer: 1 };
+        return { ...base, answer: 1, counterexampleMode: spec.counterexampleMode ?? "auto" };
       }
       const options: PracticeOption[] = given.map((option) => {
         const marker: CounterexampleMarker = option.marker ?? (option.correct ? "x" : "");
-        return { text: fill(option.text), correct: marker === "x", marker, reason: option.reason ? fill(option.reason) : null };
+        const text = fill(option.text);
+        return { text, correct: marker === "x", marker, reason: option.reason ? fill(option.reason) : null, typed: readCounterexampleOption(text) };
       });
       if (options.length < 2 || options.length > 6) throw new PracticeTemplateError("A false claim needs 2 to 6 options to pick the counterexample from");
       if (options.filter((option) => option.marker === "x").length !== 1) {
@@ -455,7 +474,14 @@ export function instantiate(spec: PracticeQuestionSpec, rng: Rng = Math.random):
       if (options.some((option) => !COUNTEREXAMPLE_MARKERS.includes(option.marker as CounterexampleMarker))) {
         throw new PracticeTemplateError("Options are marked [x], [h], [c] or [ ]");
       }
-      return { ...base, answer: 0, options };
+      const typedAnswer = options.find((option) => option.marker === "x")?.typed;
+      return {
+        ...base,
+        answer: 0,
+        options,
+        typeable: typedAnswer ? { x0: typedAnswer.x0 !== null } : null,
+        counterexampleMode: spec.counterexampleMode ?? "auto",
+      };
     }
     case "multi": {
       const options = (spec.options ?? []).map((option) => ({ text: fill(option.text), correct: Boolean(option.correct) }));
@@ -741,6 +767,46 @@ export function checkCounterexample(
   const option = pick === null ? undefined : question.options[pick];
   if (option?.marker === "x") return { correct: true, detail: null };
   return { correct: false, detail: option?.marker === "h" ? "h" : option?.marker === "c" ? "c" : "other" };
+}
+
+/** What a typed counterexample turned out to be: right, or which kind of wrong; "unknown" when no option matches it. */
+export type TypedCounterexampleResult = "right" | "h" | "c" | "other" | "unknown";
+
+/** The same function as an option: equal wherever the option has a value (at least 3 sample points). */
+function sameFunction(a: string, b: string): boolean {
+  let compared = 0;
+  for (const x of [-3.71, -2.43, -1.37, -0.61, -0.29, 0.17, 0.53, 1.29, 1.83, 2.57, 3.19, 4.61]) {
+    let expected: number;
+    let value: number;
+    try {
+      expected = evalExpr(b, { x });
+      value = evalExpr(a, { x });
+    } catch {
+      return false;
+    }
+    if (!Number.isFinite(expected)) continue;
+    if (!Number.isFinite(value) || Math.abs(value - expected) > 1e-6 * Math.max(1, Math.abs(expected))) return false;
+    compared++;
+  }
+  return compared >= 3;
+}
+
+/**
+ * Compares a typed counterexample (a function of x, and x₀ when the
+ * question has one) with the teacher's options by value. A match takes the
+ * option's marker; no match is "unknown" - v3a can't judge it, so the game
+ * offers the options instead (v3b asks the AI).
+ */
+export function checkTypedCounterexample(question: PlayableQuestion, typed: string, x0: string | null): TypedCounterexampleResult {
+  const expr = parseTypedExpression(typed);
+  if (!expr) return "unknown";
+  const point = x0 === null ? null : parseTypedValue(x0);
+  for (const option of question.options) {
+    if (!option.typed || !sameFunction(expr, option.typed.expr)) continue;
+    if (option.typed.x0 !== null && (point === null || Math.abs(point - option.typed.x0) > 1e-9)) continue;
+    return option.marker === "x" ? "right" : option.marker === "h" ? "h" : option.marker === "c" ? "c" : "other";
+  }
+  return "unknown";
 }
 
 /** Tick all that apply: right only when exactly the correct options are ticked. */

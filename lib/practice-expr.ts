@@ -414,6 +414,8 @@ export function normalizeTyped(raw: string, variables: string[] = []): string {
     .replace(/³/g, "^3")
     .replace(/π/g, " pi ")
     .replace(/(\d),(\d)/g, "$1.$2");
+  // |x - 1| -> abs(x - 1) (not nested)
+  text = text.replace(/\|([^|]+)\|/g, "abs($1)");
   // √x, √(x+1), √2 -> sqrt(...)
   text = text.replace(/√\s*(\((?:[^()]|\([^()]*\))*\)|[A-Za-z0-9.]+)/g, (_, arg: string) => (arg.startsWith("(") ? `sqrt${arg}` : `sqrt(${arg})`));
   const names = [...TYPED_NAMES, ...variables].sort((a, b) => b.length - a.length);

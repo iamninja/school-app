@@ -98,7 +98,7 @@ const TYPE_ALIASES: Record<string, PracticeQuestionType> = {
 
 const TYPE_LIST = "choice, multi, true_false, number, slider, point, interval, order, match, sign_table, expression or counterexample";
 
-const KEYS = ["type", "answer", "tolerance", "range", "step", "window", "plot", "roots", "row", "variables", "condition", "explanation", "source"] as const;
+const KEYS = ["type", "answer", "tolerance", "range", "step", "window", "plot", "roots", "row", "mode", "variables", "condition", "explanation", "source"] as const;
 type Key = (typeof KEYS)[number];
 /** Other spellings of a key ("Πηγή: ..." for "Source: ..."). */
 const KEY_ALIASES: Record<string, Key> = { "πηγή": "source", "πηγη": "source", "origin": "source", "ρίζες": "roots", "ριζες": "roots" };
@@ -320,6 +320,15 @@ export function parsePracticeMarkdown(source: string): ParsedPracticeMarkdown {
       if (values.has("variables") || values.has("condition")) {
         problems.push("random numbers (Variables, Condition) aren't supported in counterexample questions yet");
       }
+      const mode = values.get("mode")?.trim().toLowerCase();
+      if (mode !== undefined) {
+        const modes: Record<string, "auto" | "options" | "typed"> = {
+          auto: "auto", options: "options", choice: "options", "επιλογές": "options", "επιλογες": "options",
+          typed: "typed", "γραπτό": "typed", "γραπτο": "typed",
+        };
+        if (!modes[mode]) problems.push(`Mode is auto, options or typed, not "${values.get("mode")}"`);
+        else spec.counterexampleMode = modes[mode];
+      }
     } else if (counterMarks) {
       problems.push('[h] and [c] marks only go with "Type: counterexample"');
     } else if (reasons) {
@@ -339,6 +348,7 @@ export function parsePracticeMarkdown(source: string): ParsedPracticeMarkdown {
     if (type !== "order" && items.length) problems.push('numbered items ("1. ...") only go with "Type: order"');
     if (type !== "match" && pairs.length) problems.push('pairs ("- left -> right") only go with "Type: match"');
     if (type !== "sign_table" && (values.has("roots") || values.has("row"))) problems.push('Roots and Row only go with "Type: sign_table"');
+    if (type !== "counterexample" && values.has("mode")) problems.push('Mode only goes with "Type: counterexample"');
 
     if (type === "order") {
       spec.options = items.map((text) => ({ text, correct: false }));

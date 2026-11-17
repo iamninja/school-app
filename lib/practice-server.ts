@@ -109,6 +109,25 @@ export interface RoundQuestion extends PlayableQuestion {
   sectionId: string;
   sectionName: string;
   imageUrl: string | null;
+  /** Counterexample (false claim): step 2 with options or typed - chosen per player (counterexampleStep). */
+  step2?: "options" | "typed";
+}
+
+/**
+ * Step 2 of a false counterexample claim for this player. Typing needs a
+ * counterexample that reads as a formula and a logged-in student (or the
+ * teacher trying it); then "typed" always types, and "auto" types once the
+ * student has answered this question right before. Everyone else picks.
+ */
+export function counterexampleStep(
+  question: Pick<PlayableQuestion, "typeable" | "counterexampleMode">,
+  viewer: PracticeViewer,
+  answeredRightBefore: boolean,
+): "options" | "typed" {
+  if (!question.typeable || (viewer.kind !== "student" && viewer.kind !== "teacher")) return "options";
+  if (question.counterexampleMode === "options") return "options";
+  if (question.counterexampleMode === "typed") return "typed";
+  return viewer.kind === "student" && answeredRightBefore ? "typed" : "options";
 }
 
 /**
@@ -151,6 +170,19 @@ export async function drawPracticeRound(
   if (rowsError) throw rowsError;
   const byId = new Map(((rows ?? []) as PracticeQuestionRow[]).map((row) => [row.id, toPracticeQuestion(row)]));
 
+  // The counterexample questions this student has answered right before ("auto" types them).
+  const typeableIds = picked.filter((id) => byId.get(id)?.type === "counterexample");
+  const rightBefore = new Set<string>();
+  if (viewer.kind === "student" && typeableIds.length) {
+    const { data: answered } = await service
+      .from("practice_answers")
+      .select("question_id")
+      .eq("student_id", viewer.studentId)
+      .eq("correct", true)
+      .in("question_id", typeableIds);
+    for (const row of (answered ?? []) as { question_id: string }[]) rightBefore.add(row.question_id);
+  }
+
   const round: RoundQuestion[] = [];
   for (const id of picked) {
     const question = byId.get(id);
@@ -164,6 +196,9 @@ export async function drawPracticeRound(
         sectionId: question.sectionId,
         sectionName: nameBySection.get(question.sectionId) ?? "",
         imageUrl: question.imagePath ? practiceImageUrl(question.imagePath) : null,
+        ...(question.type === "counterexample" && played.answer === 0
+          ? { step2: counterexampleStep(played, viewer, rightBefore.has(question.id)) }
+          : {}),
       });
     } catch {
       // A question that can't be played (edited into a bad state) is skipped, not shown broken.

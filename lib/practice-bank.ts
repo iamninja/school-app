@@ -3,7 +3,7 @@
 // Pure - shared by app/protected/teacher/practice-actions.ts and the
 // Practice tab.
 
-import { trueFalseValue, type PracticeGraph, type PracticeOption, type PracticeOrigin, type PracticeQuestionSpec, type PracticeQuestionType } from "@/lib/practice-template";
+import { COUNTEREXAMPLE_MODES, trueFalseValue, type CounterexampleMode, type PracticeGraph, type PracticeOption, type PracticeOrigin, type PracticeQuestionSpec, type PracticeQuestionType } from "@/lib/practice-template";
 
 export interface PracticeSection {
   id: string;
@@ -27,7 +27,7 @@ export interface PracticeQuestion extends PracticeQuestionSpec {
 }
 
 export const PRACTICE_QUESTION_COLUMNS =
-  "id, section_id, type, prompt, options, answer, tolerance, slider_min, slider_max, slider_step, graph, variables, condition, explanation, origin, origin_detail, image_path, source, source_quiz_question_id, position, is_active, created_at";
+  "id, section_id, type, prompt, options, answer, tolerance, slider_min, slider_max, slider_step, graph, variables, condition, explanation, origin, origin_detail, counterexample_mode, image_path, source, source_quiz_question_id, position, is_active, created_at";
 
 export type PracticeQuestionRow = {
   id: string;
@@ -46,6 +46,7 @@ export type PracticeQuestionRow = {
   explanation: string | null;
   origin: PracticeOrigin | null;
   origin_detail: string | null;
+  counterexample_mode?: CounterexampleMode | null;
   image_path: string | null;
   source: "manual" | "quiz" | "import";
   source_quiz_question_id: string | null;
@@ -75,6 +76,7 @@ export function toPracticeQuestion(row: PracticeQuestionRow): PracticeQuestion {
     explanation: row.explanation,
     origin: row.origin ?? null,
     originDetail: row.origin_detail ?? null,
+    counterexampleMode: row.counterexample_mode ?? "auto",
     imagePath: row.image_path,
     source: row.source,
     sourceQuizQuestionId: row.source_quiz_question_id,
@@ -126,6 +128,8 @@ export function toPracticeQuestionColumns(spec: PracticeQuestionSpec) {
     explanation: clean(spec.explanation),
     origin: spec.origin ?? null,
     origin_detail: spec.origin ? clean(spec.originDetail) : null,
+    counterexample_mode:
+      spec.type === "counterexample" && spec.counterexampleMode && COUNTEREXAMPLE_MODES.includes(spec.counterexampleMode) ? spec.counterexampleMode : "auto",
   };
 }
 
