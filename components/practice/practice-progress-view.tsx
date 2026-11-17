@@ -10,7 +10,13 @@ import { getPracticeProgressOverviewAction } from "@/app/protected/teacher/pract
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getErrorMessage } from "@/lib/expected-error";
-import type { PracticeStudentProgress } from "@/lib/practice-bank";
+import {
+  COUNTEREXAMPLE_MISTAKE_LABELS,
+  counterexampleHint,
+  type CounterexampleMistakes,
+  type CounterexampleTally,
+  type PracticeStudentProgress,
+} from "@/lib/practice-bank";
 import { cn } from "@/lib/utils";
 
 const percent = (right: number, total: number) => (total ? Math.round((right / total) * 100) : 0);
@@ -152,6 +158,7 @@ export function PracticeProgressView({ initialRows }: { initialRows?: PracticeSt
                     <Badge variant="outline" className="gap-1"><TargetIcon className="size-3 text-red-500" aria-hidden="true" />{open.mistakes} to review</Badge>
                   ) : null}
                 </div>
+                {open.counterexample.answers ? <CounterexampleSummary tally={open.counterexample} /> : null}
                 <div className="space-y-2">
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">Sections, last 30 days</p>
                   {open.sections.length === 0 ? (
@@ -175,6 +182,42 @@ export function PracticeProgressView({ initialRows }: { initialRows?: PracticeSt
           </CardContent>
         </Card>
       </div>
+    </div>
+  );
+}
+
+/** A student's counterexample answers: how many right, and what the wrong ones got wrong. */
+function CounterexampleSummary({ tally }: { tally: CounterexampleTally }) {
+  const wrong = tally.answers - tally.right;
+  const hint = counterexampleHint(tally);
+  const keys = Object.keys(COUNTEREXAMPLE_MISTAKE_LABELS) as (keyof CounterexampleMistakes)[];
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs uppercase tracking-wide text-muted-foreground">Counterexamples</p>
+        <span className="flex items-center gap-3">
+          <span className="text-xs tabular-nums text-muted-foreground">{tally.answers}</span>
+          <AccuracyBar right={tally.right} total={tally.answers} />
+        </span>
+      </div>
+      {wrong ? (
+        <div className="space-y-1.5">
+          {keys.map((key) => (
+            <div key={key} className="flex items-center justify-between gap-3 text-sm">
+              <span className={cn("min-w-0 truncate", !tally[key] && "text-muted-foreground")}>{COUNTEREXAMPLE_MISTAKE_LABELS[key]}</span>
+              <span className="flex shrink-0 items-center gap-2">
+                <span className="h-1.5 w-20 overflow-hidden rounded-full bg-muted">
+                  <span className="block h-full rounded-full bg-red-500/80" style={{ width: `${(tally[key] / wrong) * 100}%` }} />
+                </span>
+                <span className="w-9 text-right text-xs tabular-nums text-muted-foreground">{tally[key]}</span>
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm text-muted-foreground">All right so far.</p>
+      )}
+      {hint ? <p className="rounded-md bg-muted/60 px-3 py-2 text-sm">{hint}</p> : null}
     </div>
   );
 }

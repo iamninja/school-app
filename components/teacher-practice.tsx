@@ -62,7 +62,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { CLASS_GRADES } from "@/lib/class-grades";
 import { getErrorMessage } from "@/lib/expected-error";
-import {
+import { COUNTEREXAMPLE_MISTAKE_LABELS, type CounterexampleMistakes, type PracticeQuestionStats,
   duplicateQuestions,
   practiceImageUrl,
   type CopyableQuizQuestion,
@@ -196,7 +196,7 @@ function PracticeBank({
   const setQuestions = (change: (prev: PracticeQuestion[] | null) => PracticeQuestion[]) =>
     setLoaded((prev) => (prev ? { ...prev, questions: change(prev.questions) } : prev));
 
-  const [stats, setStats] = React.useState<Record<string, { answers: number; right: number; reports: number }>>({});
+  const [stats, setStats] = React.useState<Record<string, PracticeQuestionStats>>({});
 
   const loadQuestions = React.useCallback((id: string) => {
     getPracticeQuestionStatsAction(id).then(setStats).catch(() => setStats({}));
@@ -608,6 +608,7 @@ function PracticeBank({
                                   {stats[question.id].answers} answered · {Math.round((stats[question.id].right / stats[question.id].answers) * 100)}% right
                                 </Badge>
                               ) : null}
+                              {stats[question.id]?.mistakes ? <CounterexampleMistakesBadge mistakes={stats[question.id].mistakes!} /> : null}
                               {stats[question.id]?.reports ? (
                                 <Badge variant="outline" className="border-amber-500/60 text-[11px] text-amber-700 dark:text-amber-400">
                                   {stats[question.id].reports} report{stats[question.id].reports === 1 ? "" : "s"}
@@ -1188,5 +1189,24 @@ export function MoveQuestionsDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+const MISTAKE_SHORT: Record<keyof CounterexampleMistakes, string> = { claim: "claim", h: "hyp.", c: "concl.", other: "other" };
+
+/** A counterexample question's wrong answers by what went wrong, e.g. "Wrong: 3 hyp. · 1 claim". */
+function CounterexampleMistakesBadge({ mistakes }: { mistakes: CounterexampleMistakes }) {
+  const parts = (Object.keys(MISTAKE_SHORT) as (keyof CounterexampleMistakes)[])
+    .filter((key) => mistakes[key] > 0)
+    .sort((a, b) => mistakes[b] - mistakes[a]);
+  if (!parts.length) return null;
+  return (
+    <Badge
+      variant="outline"
+      className="text-[11px] tabular-nums"
+      title={parts.map((key) => `${COUNTEREXAMPLE_MISTAKE_LABELS[key]}: ${mistakes[key]}`).join("\n")}
+    >
+      Wrong: {parts.map((key) => `${mistakes[key]} ${MISTAKE_SHORT[key]}`).join(" · ")}
+    </Badge>
   );
 }

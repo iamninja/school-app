@@ -350,3 +350,25 @@ describe("duplicates", () => {
     confirm.mockRestore();
   });
 });
+
+describe("a counterexample question's wrong answers in the list (counterexample v2)", () => {
+  it("shows what went wrong, most common first", async () => {
+    const { TeacherPractice } = await import("@/components/teacher-practice");
+    const { listPracticeQuestionsAction, getPracticeQuestionStatsAction } = await import("@/app/protected/teacher/practice-actions");
+    vi.mocked(getPracticeQuestionStatsAction).mockResolvedValue({
+      q1: { answers: 9, right: 3, reports: 0, mistakes: { claim: 1, h: 4, c: 1, other: 0 } },
+    });
+    vi.mocked(listPracticeQuestionsAction).mockResolvedValue([
+      {
+        id: "q1", sectionId: "s-line", type: "counterexample", prompt: "Συνεχής ⇒ παραγωγίσιμη", answer: "false",
+        options: [{ text: "|x|", correct: true, marker: "x" }, { text: "x^2", correct: false, marker: "c" }],
+        tolerance: null, sliderMin: null, sliderMax: null, sliderStep: null, graph: null, variables: null, condition: null,
+        explanation: null, origin: null, originDetail: null, imagePath: null, source: "manual", sourceQuizQuestionId: null,
+        position: 0, isActive: true, createdAt: "2026-11-17T10:00:00Z",
+      },
+    ]);
+    render(<TeacherPractice initialSections={[{ ...SECTIONS[0], questionCount: 1 }]} initialProgress={[]} initialReports={[]} />);
+    expect(await screen.findByText("9 answered · 33% right")).toBeInTheDocument();
+    expect(screen.getByText("Wrong: 4 hyp. · 1 claim · 1 concl.")).toBeInTheDocument();
+  });
+});

@@ -204,4 +204,44 @@ describe("RLS: practice", () => {
       }
     });
   });
+
+  describe("counterexample answers (Progress, counterexample v2)", () => {
+    it("reach the teacher with what went wrong, through the question's type; not another teacher", async () => {
+      const { data: ce, error } = await teacherA
+        .from("practice_questions")
+        .insert({
+          teacher_id: fixtures.teacherA.id, section_id: sectionId, type: "counterexample", prompt: "continuous => differentiable",
+          answer: "false", options: [{ text: "|x|", correct: true, marker: "x" }, { text: "x^2", correct: false, marker: "c" }],
+        })
+        .select("id")
+        .single();
+      expect(error).toBeNull();
+      const row = (clientId: string, correct: boolean, detail: string | null) => ({
+        student_id: fixtures.studentA.id, question_id: ce!.id, section_id: sectionId, correct, points: correct ? 10 : 0, client_id: clientId, detail,
+      });
+      const { error: insertError } = await serviceClient()
+        .from("practice_answers")
+        .insert([row("rls-ce-1", false, "h"), row("rls-ce-2", false, "claim"), row("rls-ce-3", true, null)]);
+      expect(insertError).toBeNull();
+
+      // The query getPracticeProgressOverviewAction makes.
+      const query = (client: typeof teacherA) =>
+        client
+          .from("practice_answers")
+          .select("student_id, correct, detail, practice_questions!inner(type)")
+          .eq("practice_questions.type", "counterexample");
+      const { data: mine } = await query(teacherA);
+      expect((mine ?? []).map((answer) => answer.detail).sort()).toEqual(["claim", "h", null]);
+      const { data: theirs } = await query(teacherB);
+      expect(theirs ?? []).toEqual([]);
+      await serviceClient().from("practice_questions").delete().eq("id", ce!.id);
+    });
+
+    it("refuses a detail that isn't one of claim, h, c, other", async () => {
+      const { error } = await serviceClient().from("practice_answers").insert({
+        student_id: fixtures.studentA.id, question_id: questionId, section_id: sectionId, correct: false, points: 0, client_id: "rls-ce-bad", detail: "x",
+      });
+      expect(error).not.toBeNull();
+    });
+  });
 });

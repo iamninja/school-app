@@ -189,6 +189,71 @@ export interface PracticeStudentProgress {
   points: number;
   /** Per section: name and answers/right (last 30 days). */
   sections: { sectionId: string; name: string; answers: number; right: number }[];
+  /** Counterexample questions, all time: answers, right, and what went wrong. */
+  counterexample: CounterexampleTally;
+}
+
+/**
+ * What went wrong in counterexample answers (practice_answers.detail):
+ * the claim called wrong, or a pick where the hypothesis fails (h), the
+ * conclusion still holds (c), or another reason.
+ */
+export interface CounterexampleMistakes {
+  claim: number;
+  h: number;
+  c: number;
+  other: number;
+}
+
+export interface CounterexampleTally extends CounterexampleMistakes {
+  answers: number;
+  right: number;
+}
+
+export const emptyCounterexampleTally = (): CounterexampleTally => ({ answers: 0, right: 0, claim: 0, h: 0, c: 0, other: 0 });
+
+/** Adds one counterexample answer to a tally. */
+export function addCounterexampleAnswer(tally: CounterexampleMistakes & Partial<CounterexampleTally>, correct: boolean, detail: string | null) {
+  if (tally.answers !== undefined) tally.answers++;
+  if (correct && tally.right !== undefined) tally.right++;
+  if (!correct) {
+    const key = detail === "claim" || detail === "h" || detail === "c" ? detail : "other";
+    tally[key]++;
+  }
+}
+
+export const COUNTEREXAMPLE_MISTAKE_LABELS: Record<keyof CounterexampleMistakes, string> = {
+  claim: "Called the claim wrong",
+  h: "Hypothesis doesn't hold",
+  c: "Conclusion still holds",
+  other: "Other wrong pick",
+};
+
+/**
+ * One sentence on a student's most common counterexample mistake, for the
+ * teacher - or null with too few mistakes to say (fewer than 3).
+ */
+export function counterexampleHint(mistakes: CounterexampleMistakes): string | null {
+  const entries = (Object.keys(COUNTEREXAMPLE_MISTAKE_LABELS) as (keyof CounterexampleMistakes)[]).map((key) => [key, mistakes[key]] as const);
+  const total = entries.reduce((sum, [, count]) => sum + count, 0);
+  if (total < 3) return null;
+  const [top, count] = entries.reduce((best, entry) => (entry[1] > best[1] ? entry : best));
+  if (count / total < 0.5) return "Mistakes are spread out - no single habit stands out.";
+  return {
+    claim: "Mostly calls the claim itself wrong - practise true vs false claims (converses, dropped conditions).",
+    h: "Mostly picks examples where the hypothesis doesn't hold - check the conditions first.",
+    c: "Mostly picks examples where the conclusion still holds - check that the example really breaks the claim.",
+    other: "Mostly wrong picks for other reasons - go over why each option fails.",
+  }[top];
+}
+
+/** A question's answers in a section's list (students only). */
+export interface PracticeQuestionStats {
+  answers: number;
+  right: number;
+  reports: number;
+  /** Counterexample questions: what the wrong answers got wrong. */
+  mistakes?: CounterexampleMistakes;
 }
 
 export interface PracticeReport {
