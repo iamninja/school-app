@@ -988,7 +988,7 @@ export function QuestionScreen({
               placeholder={typedError ? "Γράψε έναν αριθμό" : "Η απάντησή σου"}
               aria-label="Η απάντησή σου"
               className={cn(
-                "min-w-0 flex-1 rounded-2xl border-2 bg-card px-4 py-3 text-2xl font-bold tabular-nums outline-none focus:border-brand",
+                "w-0 min-w-0 flex-1 rounded-2xl border-2 bg-card px-4 py-3 text-2xl font-bold tabular-nums outline-none focus:border-brand",
                 typedError && "border-destructive",
                 answered && (feedback?.correct ? "border-emerald-500" : "border-red-500"),
               )}

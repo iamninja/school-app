@@ -624,6 +624,8 @@ function cleanLabel(raw: string): string {
   return raw
     .replace(/\\(tiny|scriptsize|footnotesize|small|normalsize|large|Large|LARGE|huge|bfseries|itshape)\b\s*/g, "")
     .replace(/\\\\/g, " ")
+    // "$ 3 $" (how {{a}} placeholders are often written) renders as math only without the inner spaces.
+    .replace(/\$\s*([^$]*?)\s*\$/g, (_, inner: string) => `$${inner}$`)
     .trim();
 }
 
