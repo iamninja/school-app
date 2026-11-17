@@ -10,6 +10,7 @@ import { counterexampleStep, type PracticeViewer, type RoundQuestion } from "@/l
 import { checkTypedCounterexample, instantiate, seededRng } from "@/lib/practice-template";
 
 vi.mock("@/app/practice/actions", () => ({
+  checkTypedCounterexampleAction: vi.fn().mockResolvedValue({ ok: false, reason: "unavailable" }),
   drawPracticeRoundAction: vi.fn(),
   reportPracticeQuestionAction: vi.fn(),
   syncPracticeProgressAction: vi.fn(),
@@ -175,12 +176,12 @@ describe("the typed step in the game", () => {
     expect(screen.getByText("Δεν είναι γνησίως αύξουσα.")).toBeInTheDocument();
   });
 
-  it("falls back to the options for what it can't judge, not counted as wrong", () => {
+  it("falls back to the options for what it can't judge, not counted as wrong", async () => {
     const onAnswer = play(INCREASING);
     type("Το αντιπαράδειγμά σου", "x^3 + x^5");
     check();
+    expect(await screen.findByText(/Δεν μπορώ να ελέγξω/)).toBeInTheDocument();
     expect(onAnswer).not.toHaveBeenCalled();
-    expect(screen.getByText(/Δεν μπορώ ακόμα να ελέγξω/)).toBeInTheDocument();
     fireEvent.click(screen.getAllByRole("button").find((button) => button.textContent?.includes("x3"))!);
     expect(onAnswer).toHaveBeenCalledWith(true, null, { mode: "options", typed: "x^3 + x^5" });
   });

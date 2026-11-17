@@ -833,3 +833,49 @@ export async function resolvePracticeReportAction(reportId: string): Promise<voi
   const { error } = await supabase.from("practice_reports").update({ resolved_at: new Date().toISOString() }).eq("id", reportId);
   if (error) throw error;
 }
+
+/** A typed counterexample the AI checked (counterexample v3b), for the console. */
+export interface PracticeAiCheck {
+  id: string;
+  typed: string;
+  verdict: "valid" | "hypothesis_fails" | "conclusion_holds" | "invalid";
+  teacherVerdict: PracticeAiCheck["verdict"] | null;
+  reason: string | null;
+  studentName: string | null;
+  createdAt: string;
+}
+
+const AI_VERDICTS = ["valid", "hypothesis_fails", "conclusion_holds", "invalid"] as const;
+
+/** A question's AI-checked typed counterexamples, newest first. */
+export async function listPracticeAiChecksAction(questionId: string): Promise<PracticeAiCheck[]> {
+  const { supabase } = await requireTeacherSession();
+  const { data, error } = await supabase
+    .from("practice_ai_checks")
+    .select("id, typed, verdict, teacher_verdict, reason, created_at, students(first_name, last_name)")
+    .eq("question_id", questionId)
+    .order("created_at", { ascending: false })
+    .limit(100);
+  if (error) throw error;
+  type Row = {
+    id: string; typed: string; verdict: PracticeAiCheck["verdict"]; teacher_verdict: PracticeAiCheck["verdict"] | null;
+    reason: string | null; created_at: string; students: { first_name: string; last_name: string } | null;
+  };
+  return ((data ?? []) as unknown as Row[]).map((row) => ({
+    id: row.id,
+    typed: row.typed,
+    verdict: row.verdict,
+    teacherVerdict: row.teacher_verdict,
+    reason: row.reason,
+    studentName: row.students ? `${row.students.first_name} ${row.students.last_name}`.trim() : null,
+    createdAt: row.created_at,
+  }));
+}
+
+/** The teacher's own verdict on an AI check (null: agree with the AI). */
+export async function correctPracticeAiCheckAction(checkId: string, verdict: PracticeAiCheck["verdict"] | null): Promise<void> {
+  const { supabase } = await requireTeacherSession();
+  if (verdict !== null && !AI_VERDICTS.includes(verdict)) throw new Error("Unknown verdict");
+  const { error } = await supabase.from("practice_ai_checks").update({ teacher_verdict: verdict }).eq("id", checkId);
+  if (error) throw error;
+}
