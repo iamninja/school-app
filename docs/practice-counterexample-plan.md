@@ -99,6 +99,11 @@ I convert `panellinies-sl.md`. Each of the 8 «Ποια συνάρτηση απ�
 
 ## v3: the student writes their own counterexample
 
+Split in two. **v3a** (built 2026-11-17) is everything below except the AI:
+a typed answer no option matches falls back to the options, not counted.
+**v3b** adds the Claude API check, the daily cap and the console view of
+typed answers.
+
 Decided 2026-11-17. v1 (pick from options) and v2 (mistakes shown to the
 teacher) are live. In v3 the same question can also be answered by typing
 a counterexample.

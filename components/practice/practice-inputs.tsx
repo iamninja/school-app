@@ -574,7 +574,7 @@ export function TypedCounterexampleInput({
           autoFocus
           aria-label="Το αντιπαράδειγμά σου"
           placeholder="π.χ. |x|"
-          className="h-14 min-w-0 flex-1 rounded-2xl border-2 bg-card px-4 text-xl font-bold outline-none focus:border-brand"
+          className="h-14 w-0 min-w-0 flex-1 rounded-2xl border-2 bg-card px-4 text-xl font-bold outline-none focus:border-brand"
         />
       </div>
       {needsPoint ? (

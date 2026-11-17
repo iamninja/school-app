@@ -237,6 +237,25 @@ describe("RLS: practice", () => {
       await serviceClient().from("practice_questions").delete().eq("id", ce!.id);
     });
 
+    it("lets a student save how step 2 was answered and what they typed (v3); refuses other modes", async () => {
+      const base = { student_id: fixtures.studentA.id, question_id: questionId, section_id: sectionId, correct: true, points: 15 };
+      const { error } = await studentA.from("practice_answers").insert({ ...base, client_id: "rls-ce-typed", mode: "typed", typed: "|x| @ 0" });
+      expect(error).toBeNull();
+      const { data } = await studentA.from("practice_answers").select("mode, typed").eq("client_id", "rls-ce-typed");
+      expect(data).toEqual([{ mode: "typed", typed: "|x| @ 0" }]);
+      const { error: badMode } = await studentA.from("practice_answers").insert({ ...base, client_id: "rls-ce-bad-mode", mode: "guessed" });
+      expect(badMode).not.toBeNull();
+      const { error: tooLong } = await studentA.from("practice_answers").insert({ ...base, client_id: "rls-ce-long", mode: "typed", typed: "x".repeat(201) });
+      expect(tooLong).not.toBeNull();
+    });
+
+    it("keeps each question's step-2 setting, auto unless the teacher says otherwise", async () => {
+      const { data } = await teacherA.from("practice_questions").select("counterexample_mode").eq("id", questionId).single();
+      expect(data?.counterexample_mode).toBe("auto");
+      const { error } = await teacherA.from("practice_questions").update({ counterexample_mode: "sometimes" }).eq("id", questionId);
+      expect(error).not.toBeNull();
+    });
+
     it("refuses a detail that isn't one of claim, h, c, other", async () => {
       const { error } = await serviceClient().from("practice_answers").insert({
         student_id: fixtures.studentA.id, question_id: questionId, section_id: sectionId, correct: false, points: 0, client_id: "rls-ce-bad", detail: "x",
