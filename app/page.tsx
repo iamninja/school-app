@@ -2,6 +2,8 @@ import Link from "next/link";
 import {
   ArrowRight,
   CalendarDays,
+  Check,
+  Gamepad2,
   ClipboardCheck,
   MapPin,
   PenLine,
@@ -14,7 +16,8 @@ import { BrandDots, BrandMark, MathDoodles, ModusLogo } from "@/components/brand
 import { ChristmasMessage, ChristmasSnow, SantaHat } from "@/components/christmas";
 import { RememberChristmas } from "@/components/remember-christmas";
 import { createPublicClient } from "@/lib/supabase/server";
-import { getPracticeCatalog } from "@/lib/practice-server";
+import { HomePracticeQuestion } from "@/components/practice/home-practice-question";
+import { getPracticeCatalog, samplePracticeQuestion } from "@/lib/practice-server";
 import { athensToday } from "@/lib/push/athens-time";
 import {
   DEFAULT_SITE_SETTINGS,
@@ -45,6 +48,13 @@ const CENTER_FEATURES = [
     description:
       "Οι γονείς γνωρίζουν ανά πάσα στιγμή την πορεία του παιδιού τους — από τον ίδιο τον καθηγητή.",
   },
+];
+
+const PRACTICE_POINTS = [
+  "Χωρίς λογαριασμό, και από το κινητό",
+  "Η λύση εξηγείται μετά από κάθε απάντηση",
+  "Διαλέγεις τις ενότητες που θέλεις",
+  "Σερί ημερών και πόντοι",
 ];
 
 const PORTAL_ROLES = [
@@ -112,6 +122,9 @@ export default async function Home() {
   ]);
   const christmas = christmasLook(settings, athensToday());
   const practiceQuestions = practiceGrades.reduce((sum, grade) => sum + grade.count, 0);
+  // A real question to try on the spot (a new one each time the page is rebuilt).
+  const sample = practiceQuestions > 0 ? await samplePracticeQuestion(practiceGrades).catch(() => null) : null;
+  const sampleGrade = sample ? practiceGrades.find((grade) => grade.sections.some((section) => section.id === sample.sectionId)) : null;
   return (
     <main className="flex min-h-screen flex-col bg-background">
       {/* Top bar */}
@@ -120,7 +133,13 @@ export default async function Home() {
           <Link href="/" aria-label="Modus — Αρχική">
             <ModusLogo size={34} variant="compact" priority />
           </Link>
-          <div className="flex items-center gap-3 text-sm">
+          <div className="flex items-center gap-4 text-sm">
+            {practiceQuestions > 0 ? (
+              <Link href="/practice" className="inline-flex items-center gap-1.5 font-medium transition-colors hover:text-brand">
+                <Gamepad2 className="size-4 text-brand" aria-hidden="true" />
+                Εξάσκηση
+              </Link>
+            ) : null}
             <Link
               href="#portal"
               className="text-muted-foreground transition-colors hover:text-foreground"
@@ -181,6 +200,15 @@ export default async function Home() {
               <Button asChild size="lg" variant="outline">
                 <Link href="/auth/parent-login">Είσοδος γονέα</Link>
               </Button>
+              {practiceQuestions > 0 ? (
+                <Link
+                  href="#practice"
+                  className="inline-flex items-center gap-1.5 px-2 py-2 text-sm font-semibold underline-offset-4 hover:underline"
+                >
+                  <Gamepad2 className="size-4 text-brand" aria-hidden="true" />
+                  ή δοκίμασε την εξάσκηση
+                </Link>
+              ) : null}
             </div>
           </div>
         </div>
@@ -212,23 +240,63 @@ export default async function Home() {
         </div>
       </section>
 
+      {/* Practice: open to everyone, shown once there are public questions. */}
       {practiceQuestions > 0 ? (
-        <section className="border-y border-border/70 bg-card/60">
-          <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-5 py-12 sm:flex-row sm:items-center sm:justify-between">
-            <div className="max-w-xl">
+        <section id="practice" className="scroll-mt-20 border-t border-border/70 bg-brand/5">
+          <div
+            className={cn(
+              "mx-auto grid w-full max-w-6xl items-center gap-10 px-5 py-16 lg:py-20",
+              sample && "lg:grid-cols-[minmax(0,1fr)_400px]",
+            )}
+          >
+            <div className="min-w-0">
               <BrandDots className="mb-4" />
-              <h2 className="text-3xl font-bold tracking-tight">Εξάσκηση</h2>
-              <p className="mt-2 text-muted-foreground">
-                Γύροι 10 ερωτήσεων μαθηματικών για {practiceGrades.length === 1 ? practiceGrades[0].label : "κάθε τάξη"}: διάλεξε
-                ενότητες, απάντησε, δες αμέσως τη λύση. Όσες φορές θέλεις, χωρίς λογαριασμό.
+              <h2 className="text-3xl font-bold tracking-tight">Εξάσκηση που μοιάζει με παιχνίδι</h2>
+              <p className="mt-3 max-w-xl text-muted-foreground">
+                Γύροι 10 ερωτήσεων μαθηματικών: διάλεξε τάξη και ενότητες, απάντησε, δες αμέσως τη λύση. Τα λάθη σου ξανάρχονται
+                μέχρι να τα μάθεις.
               </p>
+              <ul className="mt-5 grid gap-2 text-sm sm:grid-cols-2">
+                {PRACTICE_POINTS.map((point) => (
+                  <li key={point} className="flex items-start gap-2">
+                    <Check className="mt-0.5 size-4 shrink-0 text-emerald-600" aria-hidden="true" />
+                    {point}
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-6 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+                {practiceGrades.length === 1 ? "Διαθέσιμη τάξη" : "Διάλεξε τάξη"}
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {practiceGrades.map((grade) => (
+                  <Link
+                    key={grade.code}
+                    href={`/practice?grade=${grade.code}`}
+                    className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-sm font-semibold shadow-xs transition-colors hover:border-brand/60"
+                  >
+                    {grade.label}
+                    <span className="text-xs font-normal text-muted-foreground">
+                      {grade.count} {grade.count === 1 ? "ερώτηση" : "ερωτήσεις"}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+              <Button asChild size="lg" className="mt-6">
+                <Link href="/practice">
+                  Ξεκίνα να παίζεις
+                  <ArrowRight className="size-4" aria-hidden="true" />
+                </Link>
+              </Button>
             </div>
-            <Button asChild size="lg">
-              <Link href="/practice">
-                Ξεκίνα να παίζεις
-                <ArrowRight className="size-4" aria-hidden="true" />
-              </Link>
-            </Button>
+            {sample ? (
+              <div className="min-w-0">
+                <p className="mb-3 flex items-center gap-2 text-sm font-semibold">
+                  <Gamepad2 className="size-4 text-brand" aria-hidden="true" />
+                  Δοκίμασε μια ερώτηση
+                </p>
+                <HomePracticeQuestion question={sample} gradeLabel={sampleGrade?.label} />
+              </div>
+            ) : null}
           </div>
         </section>
       ) : null}

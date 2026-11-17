@@ -15,7 +15,8 @@ export const dynamic = "force-dynamic";
  * sections; the centre's students and the teacher see them all, and a
  * student starts at their own grade.
  */
-export default async function PracticePage() {
+export default async function PracticePage({ searchParams }: { searchParams: Promise<{ grade?: string | string[] }> }) {
+  const { grade } = await searchParams;
   const viewer = await getPracticeViewer();
   const [catalog, savedProgress] = await Promise.all([
     getPracticeCatalog(viewer).catch(() => []),
@@ -25,6 +26,7 @@ export default async function PracticePage() {
     <PracticeGame
       catalog={catalog}
       savedProgress={savedProgress}
+      startGrade={typeof grade === "string" ? grade : null}
       viewer={viewer.kind === "student" ? { kind: "student", firstName: viewer.firstName, grade: viewer.grade } : { kind: viewer.kind }}
     />
   );

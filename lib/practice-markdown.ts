@@ -26,6 +26,8 @@
 
 import {
   parseOriginText,
+  trueFalseValue,
+  type CounterexampleMarker,
   validatePracticeQuestion,
   type PracticeGraph,
   type PracticeQuestionSpec,
@@ -57,16 +59,95 @@ const TYPE_ALIASES: Record<string, PracticeQuestionType> = {
   slider: "slider",
   point: "point",
   graph: "point",
+  counterexample: "counterexample",
+  "αντιπαράδειγμα": "counterexample",
+  "αντιπαραδειγμα": "counterexample",
+  multi: "multi",
+  multiple: "multi",
+  multiple_answer: "multi",
+  select_all: "multi",
+  tick_all: "multi",
+  checkbox: "multi",
+  interval: "interval",
+  "διάστημα": "interval",
+  "διαστημα": "interval",
+  order: "order",
+  ordering: "order",
+  sort: "order",
+  "σειρά": "order",
+  "σειρα": "order",
+  "ταξινόμηση": "order",
+  "ταξινομηση": "order",
+  match: "match",
+  matching: "match",
+  pairs: "match",
+  "αντιστοίχιση": "match",
+  "αντιστοιχιση": "match",
+  sign_table: "sign_table",
+  signs: "sign_table",
+  sign: "sign_table",
+  "πρόσημα": "sign_table",
+  "προσημα": "sign_table",
+  "πίνακας_προσήμων": "sign_table",
+  "πινακας_προσημων": "sign_table",
+  expression: "expression",
+  expr: "expression",
+  "παράσταση": "expression",
+  "παρασταση": "expression",
 };
 
-const KEYS = ["type", "answer", "tolerance", "range", "step", "window", "plot", "variables", "condition", "explanation", "source"] as const;
+const TYPE_LIST = "choice, multi, true_false, number, slider, point, interval, order, match, sign_table, expression or counterexample";
+
+const KEYS = ["type", "answer", "tolerance", "range", "step", "window", "plot", "roots", "row", "variables", "condition", "explanation", "source"] as const;
 type Key = (typeof KEYS)[number];
 /** Other spellings of a key ("Πηγή: ..." for "Source: ..."). */
-const KEY_ALIASES: Record<string, Key> = { "πηγή": "source", "πηγη": "source", "origin": "source" };
+const KEY_ALIASES: Record<string, Key> = { "πηγή": "source", "πηγη": "source", "origin": "source", "ρίζες": "roots", "ριζες": "roots" };
 const keyName = (raw: string): Key => (KEY_ALIASES[raw.toLowerCase()] ?? raw.toLowerCase()) as Key;
 
 const KEY_LINE = new RegExp(`^\\s*(${[...KEYS, ...Object.keys(KEY_ALIASES)].join("|")})\\s*:\\s*(.*)$`, "iu");
-const OPTION_LINE = /^\s*[-*]\s*\[([ xX])\]\s*(.+?)\s*$/;
+// [x] right / [ ] wrong; counterexample questions also take [h] (hypothesis
+// fails) and [c] (conclusion holds).
+const OPTION_LINE = /^\s*[-*]\s*\[([ xXhHcC])\]\s*(.+?)\s*$/;
+/** An indented line right under an option: that option's reason (counterexample questions). */
+const INDENTED = /^[ \t]+\S/;
+/** "1. text" - an item of an ordering question, in the right order. */
+const ITEM_LINE = /^\s*\d+[.)]\s+(.+?)\s*$/;
+/** "- left -> right" - a pair of a matching question. */
+const PAIR_LINE = /^\s*[-*]\s+(?!\[[ xXhHcC]\])(.+?)\s*$/;
+
+/** Splits "left -> right" (or →) at the first arrow outside $...$. */
+function splitPair(text: string): [string, string] | null {
+  let inMath = false;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === "$" && text[i - 1] !== "\\") inMath = !inMath;
+    if (inMath) continue;
+    for (const arrow of [" -> ", " → ", " ⟶ "]) {
+      if (text.startsWith(arrow, i)) return [text.slice(0, i).trim(), text.slice(i + arrow.length).trim()];
+    }
+  }
+  return null;
+}
+
+/** "-1, $\\frac{1}{2}$, 3" -> roots, split at commas outside $...$ and brackets. */
+function splitRoots(raw: string): string[] {
+  const text = raw.trim();
+  if (/^(none|no|-|—|καμία|καμια|δεν έχει|δεν εχει|∅)$/i.test(text)) return [];
+  const parts: string[] = [];
+  let depth = 0;
+  let inMath = false;
+  let current = "";
+  for (const ch of text) {
+    if (ch === "$") inMath = !inMath;
+    if (!inMath && "({[".includes(ch)) depth++;
+    if (!inMath && ")}]".includes(ch)) depth--;
+    if ((ch === "," || ch === ";") && depth === 0 && !inMath) {
+      parts.push(current.trim());
+      current = "";
+    } else current += ch;
+  }
+  parts.push(current.trim());
+  return parts.filter(Boolean);
+}
 const ATTRIBUTE_TAIL = /^(.*?)\s*\{((?:\s*[a-z_]+\s*=[^,}]*,?)+)\}\s*$/i;
 
 function parseNumber(raw: string): number | null {
@@ -128,7 +209,10 @@ export function parsePracticeMarkdown(source: string): ParsedPracticeMarkdown {
     }
 
     const promptLines = [heading.trim()];
-    const options: { text: string; correct: boolean }[] = [];
+    const options: { text: string; marker: CounterexampleMarker; reasonLines: string[] }[] = [];
+    const items: string[] = [];
+    const pairs: [string, string][] = [];
+    let lastOption: (typeof options)[number] | null = null;
     let bodyStarted = false;
     let explanationLines: string[] | null = null;
 
@@ -138,9 +222,24 @@ export function parsePracticeMarkdown(source: string): ParsedPracticeMarkdown {
       if (option) {
         bodyStarted = true;
         explanationLines = null;
-        options.push({ text: option[2], correct: option[1].toLowerCase() === "x" });
+        const mark = option[1].toLowerCase();
+        lastOption = { text: option[2], marker: (mark === " " ? "" : mark) as CounterexampleMarker, reasonLines: [] };
+        options.push(lastOption);
+      } else if (!key && ITEM_LINE.test(line)) {
+        bodyStarted = true;
+        explanationLines = null;
+        lastOption = null;
+        items.push(ITEM_LINE.exec(line)![1]);
+      } else if (!key && PAIR_LINE.test(line) && splitPair(PAIR_LINE.exec(line)![1])) {
+        bodyStarted = true;
+        explanationLines = null;
+        lastOption = null;
+        pairs.push(splitPair(PAIR_LINE.exec(line)![1])!);
+      } else if (lastOption && INDENTED.test(line) && !key) {
+        lastOption.reasonLines.push(line.trim());
       } else if (key) {
         bodyStarted = true;
+        lastOption = null;
         const name = keyName(key[1]);
         const value = key[2].trim();
         if (name === "explanation") {
@@ -155,6 +254,7 @@ export function parsePracticeMarkdown(source: string): ParsedPracticeMarkdown {
       } else if (!bodyStarted) {
         promptLines.push(line);
       } else if (line.trim()) {
+        lastOption = null;
         problems.push(`didn't understand "${line.trim().slice(0, 60)}" (options start with "- [ ]", settings with "Answer:", "Range:"…)`);
       }
     }
@@ -168,13 +268,16 @@ export function parsePracticeMarkdown(source: string): ParsedPracticeMarkdown {
     const typeRaw = values.get("type");
     if (typeRaw) {
       type = TYPE_ALIASES[typeRaw.toLowerCase().replace(/[\s-]/g, "_")] ?? null;
-      if (!type) problems.push(`unknown type "${typeRaw}" (use choice, true_false, number, slider or point)`);
+      if (!type) problems.push(`unknown type "${typeRaw}" (use ${TYPE_LIST})`);
     }
     if (!type) {
-      if (options.length) type = "choice";
+      if (options.length) type = options.filter((option) => option.marker === "x").length > 1 ? "multi" : "choice";
+      else if (items.length) type = "order";
+      else if (pairs.length) type = "match";
+      else if (values.has("roots")) type = "sign_table";
       else if (values.has("range")) type = "slider";
       else if (values.has("window") || plots.length || (answer && /^\(.*[,;].*\)$/.test(answer.trim()))) type = "point";
-      else if (answer && /^(true|false|σωστό|σωστο|λάθος|λαθος)$/i.test(answer.trim())) type = "true_false";
+      else if (answer && trueFalseValue(answer) !== null && !/^\s*[αψσλ]\s*$/i.test(answer)) type = "true_false";
       else type = "number";
     }
 
@@ -194,14 +297,65 @@ export function parsePracticeMarkdown(source: string): ParsedPracticeMarkdown {
       else spec.tolerance = tolerance;
     }
 
-    if (type === "choice") {
-      spec.options = options;
+    const reasons = options.some((option) => option.reasonLines.length > 0);
+    const counterMarks = options.some((option) => option.marker === "h" || option.marker === "c");
+    if (type === "counterexample") {
+      spec.answer = answer;
+      const claimTrue = trueFalseValue(answer);
+      if (!answer) problems.push('needs "Answer: Σωστό" (the claim is true) or "Answer: Λάθος"');
+      else if (claimTrue === null) problems.push(`the answer is Σωστό or Λάθος (Αληθής/Ψευδής), not "${answer}"`);
+      else if (claimTrue) {
+        if (options.length) problems.push('a true claim has no options - leave them out, or the answer is "Λάθος"');
+      } else {
+        spec.options = options.map((option) => ({
+          text: option.text,
+          correct: option.marker === "x",
+          marker: option.marker,
+          reason: option.reasonLines.join(" ") || null,
+        }));
+        if (options.length < 2 || options.length > 6) problems.push('a false claim needs 2 to 6 options to pick the counterexample from ("- [x]", "- [h]", "- [c]", "- [ ]")');
+        const found = options.filter((option) => option.marker === "x").length;
+        if (found !== 1) problems.push(`needs exactly one counterexample "- [x]" (found ${found})`);
+      }
+      if (values.has("variables") || values.has("condition")) {
+        problems.push("random numbers (Variables, Condition) aren't supported in counterexample questions yet");
+      }
+    } else if (counterMarks) {
+      problems.push('[h] and [c] marks only go with "Type: counterexample"');
+    } else if (reasons) {
+      problems.push('lines under an option only go with "Type: counterexample" (they give its reason)');
+    } else if (type === "choice" || type === "multi") {
+      spec.options = options.map((option) => ({ text: option.text, correct: option.marker === "x" }));
+      const max = type === "multi" ? 8 : 6;
       if (options.length < 2) problems.push('needs at least 2 options ("- [ ] text")');
-      if (options.length > 6) problems.push("can have at most 6 options");
-      const correct = options.filter((option) => option.correct).length;
-      if (correct !== 1) problems.push(`needs exactly one correct option "- [x]" (found ${correct})`);
-    } else {
-      if (options.length) problems.push(`options only go with multiple choice, not ${type}`);
+      if (options.length > max) problems.push(`can have at most ${max} options`);
+      const correct = options.filter((option) => option.marker === "x").length;
+      if (type === "choice" && correct !== 1) problems.push(`needs exactly one correct option "- [x]" (found ${correct})`);
+      if (type === "multi" && correct < 1) problems.push('needs at least one correct option "- [x]"');
+    } else if (options.length) {
+      problems.push(`"- [ ]" options only go with multiple choice, multi and counterexample, not ${type}`);
+    }
+
+    if (type !== "order" && items.length) problems.push('numbered items ("1. ...") only go with "Type: order"');
+    if (type !== "match" && pairs.length) problems.push('pairs ("- left -> right") only go with "Type: match"');
+    if (type !== "sign_table" && (values.has("roots") || values.has("row"))) problems.push('Roots and Row only go with "Type: sign_table"');
+
+    if (type === "order") {
+      spec.options = items.map((text) => ({ text, correct: false }));
+      if (items.length < 2 || items.length > 8) problems.push('needs 2 to 8 items, in the right order ("1. ...", "2. ...")');
+      if (answer) problems.push('an ordering question has no "Answer:" - the items are written in the right order');
+    } else if (type === "match") {
+      spec.options = pairs.map(([text, match]) => ({ text, correct: false, match }));
+      if (pairs.length < 2 || pairs.length > 6) problems.push('needs 2 to 6 pairs ("- left -> right")');
+      if (answer) problems.push('a matching question has no "Answer:" - each pair is written "- left -> right"');
+    } else if (type === "sign_table") {
+      const rootsRaw = values.get("roots");
+      if (rootsRaw === undefined) problems.push('needs "Roots: -1, 2" (smallest first; "Roots: none" for none)');
+      spec.options = splitRoots(rootsRaw ?? "").map((text) => ({ text, correct: false }));
+      if (!answer) problems.push('needs the signs from left to right, like "Answer: + - +"');
+      const row = values.get("row")?.trim();
+      spec.answer = answer ? (row ? `${row} | ${answer}` : answer) : null;
+    } else if (type !== "choice" && type !== "multi" && type !== "counterexample") {
       spec.answer = answer;
       if (!answer) problems.push(`needs an "Answer:" line`);
     }

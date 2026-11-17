@@ -13,6 +13,19 @@ import {
 import { BrandMark } from "@/components/brand";
 import { MathText } from "@/components/math-text";
 import { PracticeGraphView } from "@/components/practice/practice-graph";
+import {
+  CHOICE,
+  ExpressionInput,
+  IntervalInput,
+  MatchInput,
+  MultiInput,
+  OrderInput,
+  PRIMARY,
+  SECONDARY,
+  SignTableInput,
+  newTypeCorrectText,
+  useInsert,
+} from "@/components/practice/practice-inputs";
 import { PracticeOriginBadge } from "@/components/practice/practice-origin-badge";
 import { ThemeSwitcher } from "@/components/theme-switcher";
 import type { PracticeCatalogGrade, RoundQuestion } from "@/lib/practice-server";
@@ -31,7 +44,7 @@ import {
   sectionMastery,
   type PracticeProgress,
 } from "@/lib/practice-progress";
-import { formatNumber, isCorrect, parseTypedNumber } from "@/lib/practice-template";
+import { checkCounterexample, formatNumber, isCorrect, parseTypedValue, type CounterexampleDetail } from "@/lib/practice-template";
 import { cn } from "@/lib/utils";
 
 const TYPE_LABEL: Record<string, string> = {
@@ -40,19 +53,26 @@ const TYPE_LABEL: Record<string, string> = {
   number: "Αριθμός",
   slider: "Σύρε στην τιμή",
   point: "Στο γράφημα",
+  counterexample: "Αντιπαράδειγμα",
+  multi: "Διάλεξε όσα ισχύουν",
+  interval: "Διάστημα",
+  order: "Βάλε σε σειρά",
+  match: "Αντιστοίχιση",
+  sign_table: "Πίνακας προσήμων",
+  expression: "Γράψε την παράσταση",
+};
+
+/** What each counterexample option was, shown after the answer. */
+const MARKER_TAG: Record<string, { text: string; good: boolean } | undefined> = {
+  x: { text: "✓ αντιπαράδειγμα", good: true },
+  h: { text: "✗ δεν ισχύει η υπόθεση", good: false },
+  c: { text: "✗ ισχύει το συμπέρασμα", good: false },
 };
 
 const fmt = (value: number) => formatNumber(value, false);
 /** Slider answers and ranges: two decimals are plenty to read. */
 const fmt2 = (value: number) => formatNumber(Math.round(value * 100) / 100, false);
 
-// The game's buttons press down (the "game" feel from the prototype).
-const PRIMARY =
-  "inline-flex items-center justify-center gap-2 rounded-2xl bg-brand px-5 py-3.5 text-base font-bold text-brand-foreground shadow-[0_4px_0_0_hsl(var(--brand)/0.45)] transition active:translate-y-1 active:shadow-none disabled:cursor-not-allowed disabled:opacity-45 disabled:active:translate-y-0";
-const SECONDARY =
-  "inline-flex items-center justify-center gap-2 rounded-2xl border-2 border-border bg-card px-4 py-3 text-sm font-semibold transition hover:border-brand/60 active:translate-y-0.5";
-const CHOICE =
-  "flex w-full items-center gap-3 rounded-2xl border-2 border-border bg-card px-4 py-3.5 text-left text-base font-medium shadow-[0_4px_0_0_hsl(var(--border))] transition enabled:hover:border-brand/70 enabled:active:translate-y-1 enabled:active:shadow-none disabled:cursor-default";
 
 type Viewer = { kind: "guest" | "parent" | "teacher" } | { kind: "student"; firstName: string; grade: string | null };
 
@@ -209,15 +229,20 @@ export function PracticeGame({
   catalog,
   viewer,
   savedProgress = null,
+  startGrade = null,
 }: {
   catalog: PracticeCatalogGrade[];
   viewer: Viewer;
+  /** Open at this grade's sections (/practice?grade=..., from the homepage). */
+  startGrade?: string | null;
   /** A student's progress from their account. */
   savedProgress?: PracticeProgress | null;
 }) {
   const { progress, update: updateProgress, queueAnswer, carriedOver } = useProgress(viewer.kind === "student", savedProgress);
   const today = localDay();
-  const studentGrade = viewer.kind === "student" && viewer.grade && catalog.some((grade) => grade.code === viewer.grade) ? viewer.grade : null;
+  const ownGrade = viewer.kind === "student" && viewer.grade && catalog.some((grade) => grade.code === viewer.grade) ? viewer.grade : null;
+  // The grade to open at: the one asked for, else a student's own.
+  const studentGrade = (startGrade && catalog.some((grade) => grade.code === startGrade) ? startGrade : null) ?? ownGrade;
 
   const [screen, setScreen] = React.useState<Screen>(studentGrade ? "sections" : "grade");
   const [grade, setGrade] = React.useState<string | null>(studentGrade);
@@ -274,7 +299,7 @@ export function PracticeGame({
     setScreen("question");
   };
 
-  const answer = (correct: boolean) => {
+  const answer = (correct: boolean, detail: CounterexampleDetail | null = null) => {
     const question = round[index];
     const nextStreak = correct ? streak + 1 : 0;
     const points = correct ? pointsFor(nextStreak) : 0;
@@ -296,6 +321,7 @@ export function PracticeGame({
       correct,
       points,
       answeredAt: new Date().toISOString(),
+      ...(detail ? { detail } : {}),
     });
     return { points, streak: nextStreak };
   };
@@ -609,7 +635,8 @@ function ProgressBar({ index, total, results }: { index: number; total: number; 
   );
 }
 
-function QuestionScreen({
+/** Exported for tests. */
+export function QuestionScreen({
   question,
   index,
   total,
@@ -621,7 +648,7 @@ function QuestionScreen({
   index: number;
   total: number;
   results: Result[];
-  onAnswer: (correct: boolean) => { points: number; streak: number };
+  onAnswer: (correct: boolean, detail?: CounterexampleDetail | null) => { points: number; streak: number };
   onNext: () => void;
 }) {
   const [given, setGiven] = React.useState<number | { x: number; y: number } | null>(null);
@@ -632,6 +659,40 @@ function QuestionScreen({
   const [point, setPoint] = React.useState({ x: 0, y: 0 });
   const nextRef = React.useRef<HTMLButtonElement>(null);
   const answered = feedback !== null;
+  // Counterexample: step 1 (the claim called true/false), then step 2 (the pick).
+  const [claim, setClaim] = React.useState<boolean | null>(null);
+  const [pick, setPick] = React.useState<number | null>(null);
+
+  const finishCounterexample = (claimTrue: boolean, picked: number | null) => {
+    if (answered) return;
+    const result = checkCounterexample(question, claimTrue, picked);
+    setFeedback({ correct: result.correct, ...onAnswer(result.correct, result.detail) });
+    setTimeout(() => nextRef.current?.focus({ preventScroll: true }), 50);
+  };
+  const chooseClaim = (claimTrue: boolean) => {
+    if (answered || claim !== null) return;
+    setClaim(claimTrue);
+    // A false claim called false goes on to step 2; anything else ends here.
+    if (claimTrue || question.answer === 1) finishCounterexample(claimTrue, null);
+  };
+  const choosePick = (i: number) => {
+    if (answered || pick !== null) return;
+    setPick(i);
+    finishCounterexample(false, i);
+  };
+  const counterexample = question.type === "counterexample" ? question.options.find((option) => option.marker === "x") ?? null : null;
+  const { ref: numberRef, insert: insertNumber } = useInsert(typed, (text) => {
+    setTyped(text);
+    setTypedError(false);
+  });
+
+  /** The newer types check themselves and report right/wrong here. */
+  const finish = (correct: boolean) => {
+    if (answered) return;
+    setFeedback({ correct, ...onAnswer(correct) });
+    setTimeout(() => nextRef.current?.focus({ preventScroll: true }), 50);
+  };
+  const inputProps = { question, result: feedback ? feedback.correct : null, onSubmit: finish };
 
   const submit = (value: number | { x: number; y: number }) => {
     if (answered) return;
@@ -642,8 +703,16 @@ function QuestionScreen({
   };
 
   const correctText =
-    question.type === "choice"
+    question.type === "choice" || question.type === "multi" || question.type === "order" || question.type === "match" || question.type === "sign_table"
       ? null
+      : question.type === "interval" || question.type === "expression"
+        ? newTypeCorrectText(question)
+      : question.type === "counterexample"
+        ? claim === null || claim === (question.answer === 1)
+          ? null
+          : question.answer === 1
+            ? "ο ισχυρισμός είναι αληθής"
+            : "ο ισχυρισμός είναι ψευδής"
       : question.type === "true_false"
         ? question.answer ? "Σωστό" : "Λάθος"
         : question.type === "point"
@@ -695,6 +764,84 @@ function QuestionScreen({
         </div>
       ) : null}
 
+      {question.type === "counterexample" ? (
+        <div className="grid gap-4">
+          <div className="grid gap-2">
+            <p className="text-sm font-semibold text-muted-foreground">Είναι αληθής ή ψευδής;</p>
+            <div className="grid grid-cols-2 gap-3">
+              {[true, false].map((value) => {
+                const state = claim === null ? "" : value === (question.answer === 1) && answered ? "right" : claim === value ? (answered && !feedback?.correct && claim !== (question.answer === 1) ? "wrong" : "picked") : "dim";
+                return (
+                  <button
+                    key={String(value)}
+                    type="button"
+                    disabled={claim !== null}
+                    onClick={() => chooseClaim(value)}
+                    className={cn(
+                      CHOICE,
+                      "justify-center py-4 text-lg font-bold",
+                      state === "right" && "border-emerald-500 bg-emerald-500/10",
+                      state === "picked" && "border-brand bg-brand/10",
+                      state === "wrong" && "animate-[practice-shake_.35s_ease-out] border-red-500 bg-red-500/10",
+                      state === "dim" && "opacity-50",
+                    )}
+                  >
+                    {value ? "Αληθής" : "Ψευδής"}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {claim === false && question.answer === 0 ? (
+            <div className="grid animate-[practice-rise_.28s_ease-out] gap-2">
+              <p className="text-sm font-semibold text-muted-foreground">Σωστά, είναι ψευδής. Διάλεξε ένα αντιπαράδειγμα:</p>
+              {question.options.map((option, i) => {
+                const tag = answered ? MARKER_TAG[option.marker ?? ""] : undefined;
+                const state = !answered ? "" : option.marker === "x" ? "right" : pick === i ? "wrong" : "dim";
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    disabled={answered}
+                    onClick={() => choosePick(i)}
+                    className={cn(
+                      CHOICE,
+                      "flex-col items-stretch gap-1.5",
+                      state === "right" && "border-emerald-500 bg-emerald-500/10",
+                      state === "wrong" && "animate-[practice-shake_.35s_ease-out] border-red-500 bg-red-500/10",
+                      state === "dim" && "opacity-75",
+                    )}
+                  >
+                    <span className="flex items-center gap-3">
+                      <span className="grid size-7 shrink-0 place-items-center rounded-lg border-2 border-border text-xs font-bold text-muted-foreground">
+                        {"ΑΒΓΔΕΣ"[i]}
+                      </span>
+                      <span className="min-w-0 flex-1"><MathText text={option.text} /></span>
+                      {tag ? (
+                        <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold", tag.good ? "bg-emerald-600 text-white" : "bg-red-500/15 text-red-700 dark:text-red-300")}>
+                          {tag.text}
+                        </span>
+                      ) : null}
+                    </span>
+                    {answered && option.reason ? (
+                      <span className="pl-10 text-sm font-normal text-muted-foreground"><MathText text={option.reason} /></span>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {question.type === "multi" ? <MultiInput {...inputProps} /> : null}
+      {question.type === "order" ? <OrderInput {...inputProps} /> : null}
+      {question.type === "match" ? <MatchInput {...inputProps} /> : null}
+      {question.type === "sign_table" ? <SignTableInput {...inputProps} /> : null}
+      {question.type === "interval" ? <IntervalInput {...inputProps} /> : null}
+      {question.type === "expression" ? <ExpressionInput {...inputProps} /> : null}
+
       {question.type === "true_false" ? (
         <div className="grid grid-cols-2 gap-3">
           {[1, 0].map((value) => {
@@ -722,10 +869,10 @@ function QuestionScreen({
 
       {question.type === "number" ? (
         <form
-          className="flex gap-2"
+          className="grid gap-2"
           onSubmit={(event) => {
             event.preventDefault();
-            const value = parseTypedNumber(typed);
+            const value = parseTypedValue(typed);
             if (value === null) {
               setTypedError(true);
               return;
@@ -733,28 +880,45 @@ function QuestionScreen({
             submit(value);
           }}
         >
-          <input
-            id="practice-number"
-            inputMode="decimal"
-            autoComplete="off"
-            autoFocus
-            disabled={answered}
-            value={typed}
-            onChange={(event) => {
-              setTyped(event.target.value);
-              setTypedError(false);
-            }}
-            placeholder={typedError ? "Γράψε έναν αριθμό" : "Η απάντησή σου"}
-            aria-label="Η απάντησή σου"
-            className={cn(
-              "min-w-0 flex-1 rounded-2xl border-2 bg-card px-4 py-3 text-2xl font-bold tabular-nums outline-none focus:border-brand",
-              typedError && "border-destructive",
-              answered && (feedback?.correct ? "border-emerald-500" : "border-red-500"),
-            )}
-          />
-          <button type="submit" className={PRIMARY} disabled={answered}>
-            Έλεγχος
-          </button>
+          <div className="flex gap-2">
+            <input
+              ref={numberRef}
+              id="practice-number"
+              inputMode="decimal"
+              autoComplete="off"
+              autoFocus
+              disabled={answered}
+              value={typed}
+              onChange={(event) => {
+                setTyped(event.target.value);
+                setTypedError(false);
+              }}
+              placeholder={typedError ? "Γράψε έναν αριθμό" : "Η απάντησή σου"}
+              aria-label="Η απάντησή σου"
+              className={cn(
+                "min-w-0 flex-1 rounded-2xl border-2 bg-card px-4 py-3 text-2xl font-bold tabular-nums outline-none focus:border-brand",
+                typedError && "border-destructive",
+                answered && (feedback?.correct ? "border-emerald-500" : "border-red-500"),
+              )}
+            />
+            <button type="submit" className={PRIMARY} disabled={answered}>
+              Έλεγχος
+            </button>
+          </div>
+          {!answered ? (
+            <div className="flex gap-1.5" aria-label="Σύμβολα">
+              {[["−", "-"], ["/", "/"], ["√", "√"], ["π", "π"]].map(([label, text]) => (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => insertNumber(text)}
+                  className="min-w-10 rounded-xl border-2 border-border bg-card px-2.5 py-1.5 text-base font-semibold shadow-[0_2px_0_0_hsl(var(--border))] transition active:translate-y-0.5 active:shadow-none"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </form>
       ) : null}
 
@@ -840,6 +1004,17 @@ function QuestionScreen({
           {!feedback.correct && correctText ? (
             <p>
               <span className="font-semibold">Σωστή απάντηση:</span> {correctText}
+            </p>
+          ) : null}
+          {question.type === "counterexample" && !feedback.correct && claim !== false && counterexample ? (
+            <p>
+              <span className="font-semibold">Αντιπαράδειγμα:</span> <MathText text={counterexample.text} />
+              {counterexample.reason ? (
+                <>
+                  {" - "}
+                  <MathText text={counterexample.reason} />
+                </>
+              ) : null}
             </p>
           ) : null}
           {question.explanation ? (

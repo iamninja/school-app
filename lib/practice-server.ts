@@ -159,7 +159,7 @@ export async function drawPracticeRound(
       const played = instantiate(question);
       round.push({
         ...played,
-        options: question.type === "choice" ? shuffleOptions(played.options) : played.options,
+        options: question.type === "choice" || question.type === "counterexample" || question.type === "multi" ? shuffleOptions(played.options) : played.options,
         id: question.id,
         sectionId: question.sectionId,
         sectionName: nameBySection.get(question.sectionId) ?? "",
@@ -192,4 +192,17 @@ export async function canSeeQuestion(viewer: PracticeViewer, questionId: string)
   if (!data) return false;
   const section = (data as unknown as { practice_sections: { is_public: boolean } | null }).practice_sections;
   return Boolean(section?.is_public) || seesPrivateSections(viewer);
+}
+
+/**
+ * One question from the public sections to show on the homepage: a
+ * multiple-choice or true/false one without an image, so it can be
+ * answered with one tap. null when there's none.
+ */
+export async function samplePracticeQuestion(catalog: PracticeCatalogGrade[]): Promise<RoundQuestion | null> {
+  const sectionIds = catalog.flatMap((grade) => grade.sections.map((section) => section.id)).slice(0, 100);
+  if (sectionIds.length === 0) return null;
+  const round = await drawPracticeRound({ kind: "guest" }, { sectionIds, mistakeIds: [], mistakesOnly: false });
+  const tappable = round.filter((question) => (question.type === "choice" || question.type === "true_false") && !question.imageUrl);
+  return tappable.find((question) => question.type === "choice") ?? tappable[0] ?? null;
 }

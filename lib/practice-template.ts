@@ -15,9 +15,51 @@
 //   {{+b}}    with its sign, for "x {{+b}}" -> "x + 3" / "x − 3"
 // Inside $...$ a decimal is written 7{,}5 (LaTeX), outside 7,5.
 
-import { evalExpr, exprVariables, PracticeExprError } from "@/lib/practice-expr";
+import { evalExpr, exprVariables, normalizeTyped, PracticeExprError } from "@/lib/practice-expr";
 
-export type PracticeQuestionType = "choice" | "true_false" | "number" | "slider" | "point";
+export type PracticeQuestionType =
+  | "choice"
+  | "true_false"
+  | "number"
+  | "slider"
+  | "point"
+  | "counterexample"
+  | "multi"
+  | "interval"
+  | "order"
+  | "match"
+  | "sign_table"
+  | "expression";
+
+export const PRACTICE_QUESTION_TYPES: PracticeQuestionType[] = [
+  "choice", "true_false", "number", "slider", "point", "counterexample", "multi", "interval", "order", "match", "sign_table", "expression",
+];
+
+/**
+ * A counterexample question's option: "x" the counterexample, "h" the
+ * claim's hypothesis fails for it, "c" its conclusion still holds, ""
+ * wrong for another reason. Each says why in its reason.
+ */
+export type CounterexampleMarker = "x" | "h" | "c" | "";
+export const COUNTEREXAMPLE_MARKERS: CounterexampleMarker[] = ["x", "h", "c", ""];
+
+export interface PracticeOption {
+  text: string;
+  correct: boolean;
+  /** Counterexample questions only. */
+  marker?: CounterexampleMarker;
+  reason?: string | null;
+  /** Match questions only: the right-hand item this one pairs with. */
+  match?: string;
+}
+
+/** An interval's endpoints; null is -∞ (lo) or +∞ (hi), always open. */
+export interface PracticeInterval {
+  lo: number | null;
+  hi: number | null;
+  loClosed: boolean;
+  hiClosed: boolean;
+}
 
 /** Where a question comes from, shown to students as a small label. */
 export type PracticeOrigin = "panhellenic" | "textbook" | "custom";
@@ -82,7 +124,7 @@ export interface PracticeGraph {
 export interface PracticeQuestionSpec {
   type: PracticeQuestionType;
   prompt: string;
-  options?: { text: string; correct: boolean }[] | null;
+  options?: PracticeOption[] | null;
   answer?: string | null;
   tolerance?: number | null;
   sliderMin?: number | null;
@@ -101,7 +143,7 @@ export interface PracticeQuestionSpec {
 export interface PlayableQuestion {
   type: PracticeQuestionType;
   prompt: string;
-  options: { text: string; correct: boolean }[];
+  options: PracticeOption[];
   /** true_false: 1/0; number/slider: the value; point: x (and answerY). */
   answer: number;
   answerY: number;
@@ -111,6 +153,14 @@ export interface PlayableQuestion {
   explanation: string | null;
   /** "Πανελλαδικές · 2019" etc., or null (practiceOriginLabel). */
   originLabel: string | null;
+  /** interval: the answer. */
+  interval?: PracticeInterval | null;
+  /** sign_table: the sign (+1/-1) in each interval, left to right; options are the roots. */
+  signs?: number[] | null;
+  /** sign_table: what the row is the sign of ("f'(x)"), or null. */
+  signLabel?: string | null;
+  /** expression: the answer in x, template numbers filled in. */
+  expression?: string | null;
 }
 
 export type VariableDef =
@@ -344,14 +394,14 @@ function numberAnswer(answer: string | null | undefined, scope: Record<string, n
  * (or PracticeExprError) when the question can't be played as written.
  */
 /**
- * A true/false answer as written - "Σωστό"/"Λάθος", "true"/"false", "Σ"/"Λ",
+ * A true/false answer as written - "Σωστό"/"Λάθος", "Αληθής"/"Ψευδής", "true"/"false", "Σ"/"Λ",
  * any case, with or without accents - or null when it's neither. Stored
  * as "true"/"false" (lib/practice-bank.ts).
  */
 export function trueFalseValue(raw: string | null | undefined): boolean | null {
   const text = plain((raw ?? "").trim());
-  if (["true", "σωστο", "σ"].includes(text)) return true;
-  if (["false", "λαθος", "λ"].includes(text)) return false;
+  if (["true", "σωστο", "σ", "αληθης", "α"].includes(text)) return true;
+  if (["false", "λαθος", "λ", "ψευδης", "ψ"].includes(text)) return false;
   return null;
 }
 
@@ -365,7 +415,7 @@ export function instantiate(spec: PracticeQuestionSpec, rng: Rng = Math.random):
     prompt: fill(spec.prompt),
     explanation: spec.explanation ? fill(spec.explanation) : null,
     originLabel: practiceOriginLabel(spec.origin, spec.originDetail),
-    options: [] as { text: string; correct: boolean }[],
+    options: [] as PracticeOption[],
     answer: 0,
     answerY: 0,
     tolerance: Math.max(0, spec.tolerance ?? 0),
@@ -385,6 +435,83 @@ export function instantiate(spec: PracticeQuestionSpec, rng: Rng = Math.random):
         throw new PracticeTemplateError("Two options came out the same for these numbers");
       }
       return { ...base, options };
+    }
+    case "counterexample": {
+      const value = trueFalseValue(spec.answer);
+      if (value === null) throw new PracticeTemplateError("A counterexample question's answer is Σωστό (the claim is true) or Λάθος");
+      const given = spec.options ?? [];
+      if (value) {
+        if (given.length) throw new PracticeTemplateError("A true claim has no counterexamples - leave out the options");
+        return { ...base, answer: 1 };
+      }
+      const options: PracticeOption[] = given.map((option) => {
+        const marker: CounterexampleMarker = option.marker ?? (option.correct ? "x" : "");
+        return { text: fill(option.text), correct: marker === "x", marker, reason: option.reason ? fill(option.reason) : null };
+      });
+      if (options.length < 2 || options.length > 6) throw new PracticeTemplateError("A false claim needs 2 to 6 options to pick the counterexample from");
+      if (options.filter((option) => option.marker === "x").length !== 1) {
+        throw new PracticeTemplateError("Mark exactly one option as the counterexample [x]");
+      }
+      if (options.some((option) => !COUNTEREXAMPLE_MARKERS.includes(option.marker as CounterexampleMarker))) {
+        throw new PracticeTemplateError("Options are marked [x], [h], [c] or [ ]");
+      }
+      return { ...base, answer: 0, options };
+    }
+    case "multi": {
+      const options = (spec.options ?? []).map((option) => ({ text: fill(option.text), correct: Boolean(option.correct) }));
+      if (options.length < 2 || options.length > 8) throw new PracticeTemplateError("A tick-all-that-apply question needs 2 to 8 options");
+      if (!options.some((option) => option.correct)) throw new PracticeTemplateError("Mark at least one option as correct");
+      distinctTexts(options.map((option) => option.text));
+      return { ...base, options };
+    }
+    case "order": {
+      const options = (spec.options ?? []).map((option) => ({ text: fill(option.text), correct: false }));
+      if (options.length < 2 || options.length > 8) throw new PracticeTemplateError("An ordering question needs 2 to 8 items");
+      distinctTexts(options.map((option) => option.text));
+      return { ...base, options };
+    }
+    case "match": {
+      const options = (spec.options ?? []).map((option) => ({ text: fill(option.text), correct: false, match: fill(option.match ?? "") }));
+      if (options.length < 2 || options.length > 6) throw new PracticeTemplateError("A matching question needs 2 to 6 pairs");
+      if (options.some((option) => !option.text.trim() || !option.match.trim())) throw new PracticeTemplateError("Every pair needs both sides");
+      distinctTexts(options.map((option) => option.text));
+      distinctTexts(options.map((option) => option.match));
+      return { ...base, options };
+    }
+    case "interval": {
+      const interval = parseIntervalAnswer(spec.answer ?? "", scope);
+      return { ...base, interval, tolerance: Math.max(0, spec.tolerance ?? 0) };
+    }
+    case "sign_table": {
+      const { label, signs } = parseSignAnswer(spec.answer);
+      const roots = (spec.options ?? []).map((option) => ({ text: fill(option.text), correct: false }));
+      if (roots.length > 6) throw new PracticeTemplateError("A sign table takes at most 6 roots");
+      if (signs.length !== roots.length + 1) {
+        throw new PracticeTemplateError(`${roots.length} root(s) make ${roots.length + 1} intervals - give that many signs (found ${signs.length})`);
+      }
+      distinctTexts(roots.map((root) => root.text));
+      // Roots written as numbers must come in increasing order.
+      const values = roots.map((root) => parseTypedValue(root.text.replace(/\$/g, "")));
+      if (values.every((value) => value !== null)) {
+        for (let i = 1; i < values.length; i++) {
+          if (!(values[i]! > values[i - 1]!)) throw new PracticeTemplateError("Write the roots from smallest to largest");
+        }
+      }
+      return { ...base, options: roots, signs, signLabel: label ? fill(label) : null };
+    }
+    case "expression": {
+      const source = (spec.answer ?? "").trim().replace(/^\{\{(.*)\}\}$/, "$1").trim();
+      if (!source) throw new PracticeTemplateError("An expression question needs an answer, like 2x + 3");
+      let unknown: string | undefined;
+      try {
+        unknown = exprVariables(source).find((name) => name !== "x" && !Object.hasOwn(scope, name));
+      } catch (error) {
+        throw new PracticeTemplateError(`Answer "${source}": ${(error as Error).message}`);
+      }
+      if (unknown) throw new PracticeTemplateError(`Answer "${source}": "${unknown}" isn't defined - the answer is an expression in x`);
+      const expression = substituteVariables(source, scope);
+      if (expressionSamples(expression).length < 4) throw new PracticeTemplateError(`Answer "${source}" has no value for most x - check it`);
+      return { ...base, expression };
     }
     case "true_false": {
       const value = trueFalseValue(spec.answer);
@@ -420,6 +547,106 @@ export function instantiate(spec: PracticeQuestionSpec, rng: Rng = Math.random):
       return { ...base, answer: x, answerY: y, tolerance, graph: { ...graph, plots } };
     }
   }
+}
+
+function distinctTexts(texts: string[]) {
+  const keys = texts.map((text) => text.replace(/\s+/g, ""));
+  if (new Set(keys).size !== keys.length) throw new PracticeTemplateError("Two items came out the same - each must be different");
+}
+
+const INFINITY = /^([+-]?)\s*(∞|inf|infinity|\\infty|άπειρο)$/i;
+
+/** One endpoint: a number or expression, or ±∞ (as null with its sign). */
+function intervalEnd(raw: string, scope: Record<string, number>): number | "-inf" | "+inf" {
+  const text = raw.trim().replace(/^\$|\$$/g, "").replace(/[−–]/g, "-").trim();
+  const inf = INFINITY.exec(text);
+  if (inf) return inf[1] === "-" ? "-inf" : "+inf";
+  return numberAnswer(text, scope, "An interval endpoint");
+}
+
+/**
+ * "[-1, 3)", "(-∞, {{a}}]", "(2, +inf)" as an interval. Throws
+ * PracticeTemplateError when it isn't one.
+ */
+export function parseIntervalAnswer(answer: string, scope: Record<string, number> = {}): PracticeInterval {
+  const text = answer.trim().replace(/^\$|\$$/g, "").trim();
+  const open = text[0];
+  const close = text[text.length - 1];
+  if (!"[(".includes(open) || !"])".includes(close) || text.length < 5) {
+    throw new PracticeTemplateError('An interval answer looks like "[-1, 3)" or "(-∞, 2]"');
+  }
+  // The endpoints: split at the comma outside brackets (sqrt(2), max(a, b)).
+  const inner = text.slice(1, -1);
+  let depth = 0;
+  let comma = -1;
+  for (let i = 0; i < inner.length && comma < 0; i++) {
+    if (inner[i] === "(") depth++;
+    else if (inner[i] === ")") depth--;
+    else if ((inner[i] === "," || inner[i] === ";") && depth === 0) comma = i;
+  }
+  if (comma < 0) throw new PracticeTemplateError('An interval has two endpoints, like "[-1, 3)"');
+  const parts = [inner.slice(0, comma), inner.slice(comma + 1)];
+  const lo = intervalEnd(parts[0], scope);
+  const hi = intervalEnd(parts[1], scope);
+  if (lo === "+inf" || hi === "-inf") throw new PracticeTemplateError("An interval runs from left to right: -∞ only on the left, +∞ only on the right");
+  const interval: PracticeInterval = {
+    lo: lo === "-inf" ? null : lo,
+    hi: hi === "+inf" ? null : hi,
+    loClosed: lo !== "-inf" && open === "[",
+    hiClosed: hi !== "+inf" && close === "]",
+  };
+  if (interval.lo !== null && interval.hi !== null && !(interval.hi > interval.lo)) {
+    throw new PracticeTemplateError(`The interval's left end (${round4(interval.lo)}) must be below its right end (${round4(interval.hi)})`);
+  }
+  return interval;
+}
+
+/** An interval written the school way: [−1, 3), (−∞, 2]. */
+export function formatInterval(interval: PracticeInterval): string {
+  const lo = interval.lo === null ? "-\\infty" : formatNumber(interval.lo, true);
+  const hi = interval.hi === null ? "+\\infty" : formatNumber(interval.hi, true);
+  return `$${interval.loClosed ? "[" : "("}${lo}, ${hi}${interval.hiClosed ? "]" : ")"}$`;
+}
+
+/**
+ * A sign table's stored answer: "+ - +", optionally after the row's label
+ * and a bar ("f'(x) | + - +"). Throws PracticeTemplateError when the signs
+ * aren't + and -.
+ */
+export function parseSignAnswer(answer: string | null | undefined): { label: string | null; signs: number[] } {
+  const text = (answer ?? "").trim();
+  const bar = text.lastIndexOf("|");
+  const label = bar >= 0 ? text.slice(0, bar).trim() || null : null;
+  const body = (bar >= 0 ? text.slice(bar + 1) : text).replace(/[−–]/g, "-").replace(/[,;]/g, " ").trim();
+  const signs = body.split(/\s+/).filter(Boolean);
+  if (!signs.length || signs.some((sign) => sign !== "+" && sign !== "-")) {
+    throw new PracticeTemplateError('A sign table\'s answer is its signs from left to right, like "+ - +"');
+  }
+  return { label, signs: signs.map((sign) => (sign === "+" ? 1 : -1)) };
+}
+
+/** Writes a sign table's answer the way it is stored. */
+export function formatSignAnswer(label: string | null | undefined, signs: number[]): string {
+  const body = signs.map((sign) => (sign > 0 ? "+" : "-")).join(" ");
+  return label && label.trim() ? `${label.trim()} | ${body}` : body;
+}
+
+// Points an expression answer is compared at: spread out, avoiding the
+// usual special values (0, ±1, integers) where different expressions agree.
+const SAMPLE_X = [-3.71, -2.43, -1.37, -0.61, -0.29, 0.17, 0.53, 1.29, 1.83, 2.57, 3.19, 4.61];
+
+/** [x, value] at the sample points where the expression has a finite value. */
+function expressionSamples(expression: string): [number, number][] {
+  const out: [number, number][] = [];
+  for (const x of SAMPLE_X) {
+    try {
+      const value = evalExpr(expression, { x });
+      if (Number.isFinite(value)) out.push([x, value]);
+    } catch {
+      return [];
+    }
+  }
+  return out;
 }
 
 /** Replaces template variables in a plot expression with their values, keeping x. */
@@ -494,6 +721,98 @@ export function validatePracticeQuestion(spec: PracticeQuestionSpec, samples = 4
   return [...problems];
 }
 
+/** What a counterexample answer's mistake was, kept with the answer for the teacher. */
+export type CounterexampleDetail = "claim" | "h" | "c" | "other";
+
+/**
+ * A counterexample question's two steps: the claim called true or false,
+ * then (for a false claim called false) the option picked. Right only if
+ * both are; otherwise which step failed - the claim, or a pick whose
+ * hypothesis fails (h), whose conclusion holds (c), or another (other).
+ */
+export function checkCounterexample(
+  question: PlayableQuestion,
+  claimTrue: boolean,
+  pick: number | null,
+): { correct: boolean; detail: CounterexampleDetail | null } {
+  const isTrue = question.answer === 1;
+  if (claimTrue !== isTrue) return { correct: false, detail: "claim" };
+  if (isTrue) return { correct: true, detail: null };
+  const option = pick === null ? undefined : question.options[pick];
+  if (option?.marker === "x") return { correct: true, detail: null };
+  return { correct: false, detail: option?.marker === "h" ? "h" : option?.marker === "c" ? "c" : "other" };
+}
+
+/** Tick all that apply: right only when exactly the correct options are ticked. */
+export function checkMulti(question: PlayableQuestion, ticked: number[]): boolean {
+  const set = new Set(ticked);
+  return question.options.every((option, i) => option.correct === set.has(i)) && [...set].every((i) => i >= 0 && i < question.options.length);
+}
+
+/** Ordering: `order` lists the options' indexes as the student put them. */
+export function checkOrder(question: PlayableQuestion, order: number[]): boolean {
+  return order.length === question.options.length && order.every((index, position) => question.options[index]?.text === question.options[position].text);
+}
+
+/** Matching: `pairs[i]` is the index of the option whose right side the student gave to item i. */
+export function checkMatch(question: PlayableQuestion, pairs: (number | null)[]): boolean {
+  return (
+    pairs.length === question.options.length &&
+    pairs.every((index, i) => index !== null && question.options[index]?.match === question.options[i].match)
+  );
+}
+
+/** Sign table: the signs the student set, left to right. */
+export function checkSigns(question: PlayableQuestion, signs: (number | null)[]): boolean {
+  const answer = question.signs ?? [];
+  return signs.length === answer.length && signs.every((sign, i) => sign === answer[i]);
+}
+
+/** Interval: both ends (within the tolerance) and both brackets. */
+export function checkInterval(question: PlayableQuestion, given: PracticeInterval): boolean {
+  const answer = question.interval;
+  if (!answer) return false;
+  const eps = Math.max(question.tolerance, 1e-6);
+  const same = (a: number | null, b: number | null) => (a === null || b === null ? a === b : Math.abs(a - b) <= eps);
+  return (
+    same(given.lo, answer.lo) &&
+    same(given.hi, answer.hi) &&
+    (answer.lo === null || given.loClosed === answer.loClosed) &&
+    (answer.hi === null || given.hiClosed === answer.hiClosed)
+  );
+}
+
+/**
+ * Reads a typed expression in x. null when it can't be read or uses a
+ * name other than x (the game says so).
+ */
+export function parseTypedExpression(raw: string): string | null {
+  const text = normalizeTyped(raw, ["x"]).trim();
+  if (!text) return null;
+  try {
+    if (exprVariables(text).some((name) => name !== "x")) return null;
+    evalExpr(text, { x: 0.37 });
+    return text;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Expression: the same function as the answer - equal at every sample
+ * point where the answer has a value (so (x²−1)/(x−1) counts for x + 1).
+ */
+export function checkExpression(question: PlayableQuestion, typed: string): boolean {
+  const given = parseTypedExpression(typed);
+  if (!given || !question.expression) return false;
+  const samples = expressionSamples(question.expression);
+  if (samples.length < 4) return false;
+  return samples.every(([x, expected]) => {
+    const value = evalExpr(given, { x });
+    return Number.isFinite(value) && Math.abs(value - expected) <= 1e-6 * Math.max(1, Math.abs(expected));
+  });
+}
+
 /** Does the student's answer count? Tolerance applies to number, slider and point. */
 export function isCorrect(question: PlayableQuestion, given: number | { x: number; y: number }): boolean {
   const eps = 1e-9;
@@ -508,6 +827,24 @@ export function isCorrect(question: PlayableQuestion, given: number | { x: numbe
   if (question.type === "choice") return Boolean(question.options[given]?.correct);
   if (question.type === "true_false") return given === question.answer;
   return Math.abs(given - question.answer) <= question.tolerance + eps;
+}
+
+/**
+ * A typed exact value: everything parseTypedNumber reads, and also √2,
+ * 2π, 3/4, -√3/2, (1+√5)/2. null when it isn't a number.
+ */
+export function parseTypedValue(raw: string): number | null {
+  const simple = parseTypedNumber(raw);
+  if (simple !== null) return simple;
+  const text = normalizeTyped(raw).trim();
+  if (!text) return null;
+  try {
+    if (exprVariables(text).length) return null;
+    const value = evalExpr(text);
+    return Number.isFinite(value) ? value : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Reads a typed number the Greek way or the English way: "7,5", "7.5", "−3", "1/2". */
