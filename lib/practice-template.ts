@@ -798,15 +798,24 @@ function sameFunction(a: string, b: string): boolean {
  * offers the options instead (v3b asks the AI).
  */
 export function checkTypedCounterexample(question: PlayableQuestion, typed: string, x0: string | null): TypedCounterexampleResult {
+  const index = matchTypedCounterexample(question, typed, x0);
+  if (index === null) return "unknown";
+  const marker = question.options[index].marker;
+  return marker === "x" ? "right" : marker === "h" ? "h" : marker === "c" ? "c" : "other";
+}
+
+/** The option a typed counterexample is the same as (function, and point when the option has one), or null. */
+export function matchTypedCounterexample(question: PlayableQuestion, typed: string, x0: string | null): number | null {
   const expr = parseTypedExpression(typed);
-  if (!expr) return "unknown";
+  if (!expr) return null;
   const point = x0 === null ? null : parseTypedValue(x0);
-  for (const option of question.options) {
-    if (!option.typed || !sameFunction(expr, option.typed.expr)) continue;
-    if (option.typed.x0 !== null && (point === null || Math.abs(point - option.typed.x0) > 1e-9)) continue;
-    return option.marker === "x" ? "right" : option.marker === "h" ? "h" : option.marker === "c" ? "c" : "other";
-  }
-  return "unknown";
+  const index = question.options.findIndex(
+    (option) =>
+      option.typed &&
+      sameFunction(expr, option.typed.expr) &&
+      (option.typed.x0 === null || (point !== null && Math.abs(point - option.typed.x0) <= 1e-9)),
+  );
+  return index >= 0 ? index : null;
 }
 
 /** Tick all that apply: right only when exactly the correct options are ticked. */

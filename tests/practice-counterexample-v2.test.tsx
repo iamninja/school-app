@@ -21,7 +21,7 @@ describe("tallying counterexample answers", () => {
     addCounterexampleAnswer(tally, false, "claim");
     // An old answer without a detail still counts as a wrong one.
     addCounterexampleAnswer(tally, false, null);
-    expect(tally).toEqual({ answers: 5, right: 1, claim: 1, h: 2, c: 0, other: 1 });
+    expect(tally).toMatchObject({ answers: 5, right: 1, claim: 1, h: 2, c: 0, other: 1 });
   });
 
   it("names the habit once there are enough mistakes", () => {
@@ -52,7 +52,7 @@ describe("Progress: a student's counterexamples", () => {
   it("shows the answers, each kind of mistake and the habit", async () => {
     render(
       <PracticeProgressView
-        initialRows={[student({ counterexample: { answers: 10, right: 4, claim: 1, h: 4, c: 1, other: 0 } })]}
+        initialRows={[student({ counterexample: { answers: 10, right: 4, claim: 1, h: 4, c: 1, other: 0, typed: 3, typedRight: 1, switched: 1 } })]}
       />,
     );
     await userEvent.click(screen.getByRole("button", { name: "Μαρία Παπαδοπούλου" }));

@@ -212,14 +212,30 @@ export interface CounterexampleMistakes {
 export interface CounterexampleTally extends CounterexampleMistakes {
   answers: number;
   right: number;
+  /** Step 2 typed (v3), and how many of those were right; switched: asked for the options. */
+  typed: number;
+  typedRight: number;
+  switched: number;
 }
 
-export const emptyCounterexampleTally = (): CounterexampleTally => ({ answers: 0, right: 0, claim: 0, h: 0, c: 0, other: 0 });
+export const emptyCounterexampleTally = (): CounterexampleTally => ({
+  answers: 0, right: 0, claim: 0, h: 0, c: 0, other: 0, typed: 0, typedRight: 0, switched: 0,
+});
 
 /** Adds one counterexample answer to a tally. */
-export function addCounterexampleAnswer(tally: CounterexampleMistakes & Partial<CounterexampleTally>, correct: boolean, detail: string | null) {
+export function addCounterexampleAnswer(
+  tally: CounterexampleMistakes & Partial<CounterexampleTally>,
+  correct: boolean,
+  detail: string | null,
+  mode: string | null = null,
+) {
   if (tally.answers !== undefined) tally.answers++;
   if (correct && tally.right !== undefined) tally.right++;
+  if (mode === "typed" && tally.typed !== undefined) {
+    tally.typed++;
+    if (correct) tally.typedRight = (tally.typedRight ?? 0) + 1;
+  }
+  if (mode === "switched" && tally.switched !== undefined) tally.switched++;
   if (!correct) {
     const key = detail === "claim" || detail === "h" || detail === "c" ? detail : "other";
     tally[key]++;

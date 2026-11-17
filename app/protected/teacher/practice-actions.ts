@@ -732,7 +732,7 @@ export async function getPracticeProgressOverviewAction(): Promise<PracticeStude
     supabase.from("practice_answers").select("student_id, correct").limit(200_000),
     supabase
       .from("practice_answers")
-      .select("student_id, correct, detail, practice_questions!inner(type)")
+      .select("student_id, correct, detail, mode, practice_questions!inner(type)")
       .eq("practice_questions.type", "counterexample")
       .limit(50_000),
   ]);
@@ -752,9 +752,9 @@ export async function getPracticeProgressOverviewAction(): Promise<PracticeStude
   }
 
   const counterexampleBy = new Map<string, CounterexampleTally>();
-  for (const row of (counterexample ?? []) as unknown as { student_id: string; correct: boolean; detail: string | null }[]) {
+  for (const row of (counterexample ?? []) as unknown as { student_id: string; correct: boolean; detail: string | null; mode: string | null }[]) {
     const tally = counterexampleBy.get(row.student_id) ?? emptyCounterexampleTally();
-    addCounterexampleAnswer(tally, row.correct, row.detail);
+    addCounterexampleAnswer(tally, row.correct, row.detail, row.mode);
     counterexampleBy.set(row.student_id, tally);
   }
 

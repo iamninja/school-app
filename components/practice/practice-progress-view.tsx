@@ -217,6 +217,12 @@ function CounterexampleSummary({ tally }: { tally: CounterexampleTally }) {
       ) : (
         <p className="text-sm text-muted-foreground">All right so far.</p>
       )}
+      {tally.typed || tally.switched ? (
+        <p className="text-sm text-muted-foreground">
+          Typed their own: {tally.typed} ({tally.typedRight} right)
+          {tally.switched ? ` · asked for the options: ${tally.switched}` : ""}
+        </p>
+      ) : null}
       {hint ? <p className="rounded-md bg-muted/60 px-3 py-2 text-sm">{hint}</p> : null}
     </div>
   );

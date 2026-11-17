@@ -29,12 +29,14 @@ import {
   seededRng,
   validatePracticeQuestion,
   type CounterexampleMarker,
+  type CounterexampleMode,
   type PlayableQuestion,
   type PracticeOption,
   type PracticeOrigin,
   type PracticeQuestionSpec,
   type PracticeQuestionType,
 } from "@/lib/practice-template";
+import { readCounterexampleOption } from "@/lib/practice-latex";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
@@ -79,6 +81,8 @@ type Draft = {
   tfAnswer: "true" | "false";
   /** Counterexample: is the claim true? (Usually not.) */
   ceAnswer: "true" | "false";
+  /** Counterexample: step 2 with options, typed, or auto. */
+  ceMode: CounterexampleMode;
   answer: string;
   /** Sign table: the roots as written ("-1, 2"), the row's label and the signs. */
   roots: string;
@@ -125,6 +129,7 @@ export function draftFrom(question: Partial<PracticeQuestion> | null): Draft {
         ],
     tfAnswer: question?.type === "true_false" && question.answer === "false" ? "false" : "true",
     ceAnswer: question?.type === "counterexample" && question.answer === "true" ? "true" : "false",
+    ceMode: question?.counterexampleMode ?? "auto",
     answer: question?.type === "true_false" || question?.type === "counterexample" || question?.type === "sign_table" ? "" : (question?.answer ?? ""),
     roots: question?.type === "sign_table" ? (question.options ?? []).map((option) => option.text).join(", ") : "-1, 1",
     signRow: sign.label ?? "",
@@ -179,6 +184,7 @@ export function specFrom(draft: Draft): PracticeQuestionSpec {
     spec.answer = formatSignAnswer(draft.signRow, signs);
   } else if (draft.type === "counterexample") {
     spec.answer = draft.ceAnswer;
+    spec.counterexampleMode = draft.ceMode;
     spec.variables = null;
     spec.condition = null;
     if (draft.ceAnswer === "false") {
@@ -640,6 +646,13 @@ export function PracticeQuestionEditor({
                     ) : null}
                   </fieldset>
                 ) : null}
+                {draft.ceAnswer === "false" ? (
+                  <CounterexampleModeField
+                    mode={draft.ceMode}
+                    onChange={(ceMode) => update({ ceMode })}
+                    typeable={draft.options.some((option) => (option.marker ?? (option.correct ? "x" : "")) === "x" && readCounterexampleOption(option.text) !== null)}
+                  />
+                ) : null}
               </div>
             ) : null}
 
@@ -909,5 +922,45 @@ export function PracticeQuestionEditor({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+const MODE_LABELS: Record<CounterexampleMode, string> = {
+  auto: "Auto - options first, typed once the student has got it right",
+  options: "Always options",
+  typed: "Always typed (logged-in students)",
+};
+
+/** Step 2 of a false claim: options, typed, or auto; and whether typing is possible at all. */
+function CounterexampleModeField({
+  mode,
+  onChange,
+  typeable,
+}: {
+  mode: CounterexampleMode;
+  onChange: (mode: CounterexampleMode) => void;
+  typeable: boolean;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label htmlFor="pq-ce-mode">Students answer step 2</Label>
+      <select
+        id="pq-ce-mode"
+        className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-xs"
+        value={mode}
+        onChange={(event) => onChange(event.target.value as CounterexampleMode)}
+      >
+        {(Object.keys(MODE_LABELS) as CounterexampleMode[]).map((value) => (
+          <option key={value} value={value}>
+            {MODE_LABELS[value]}
+          </option>
+        ))}
+      </select>
+      <p className={cn("text-xs", typeable || mode === "options" ? "text-muted-foreground" : "text-amber-700 dark:text-amber-400")}>
+        {typeable
+          ? "The counterexample reads as a formula, so students can type it. Guests always get the options."
+          : 'To let students type it, write the counterexample as "$f(x) = ...$" (optionally ", στο $x_0 = 0$"). Until then they get the options.'}
+      </p>
+    </div>
   );
 }

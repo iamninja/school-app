@@ -507,6 +507,126 @@ export function ExpressionInput({ question, result, onSubmit }: InputProps) {
   );
 }
 
+// ---------------------------------------------------------------- typed counterexample (v3a)
+
+const COUNTEREXAMPLE_KEYS: { label: string; insert: string }[] = [
+  { label: "x", insert: "x" },
+  { label: "x²", insert: "^2" },
+  { label: "xⁿ", insert: "^" },
+  { label: "√", insert: "√(" },
+  { label: "|x|", insert: "|x|" },
+  { label: "eˣ", insert: "e^(" },
+  { label: "ln", insert: "ln(" },
+  { label: "ημ", insert: "sin(" },
+  { label: "/", insert: "/" },
+  { label: "(", insert: "(" },
+  { label: ")", insert: ")" },
+  { label: "π", insert: "π" },
+];
+
+/**
+ * Step 2 typed: "f(x) =" (and "x₀ =" when the question has a point), with
+ * keys for what a phone keyboard lacks and a preview of what was read.
+ * `onCheck` gets the typed text; `onShowOptions` is the way out.
+ */
+export function TypedCounterexampleInput({
+  needsPoint,
+  disabled,
+  onCheck,
+  onShowOptions,
+}: {
+  needsPoint: boolean;
+  disabled: boolean;
+  onCheck: (typed: string, x0: string | null) => void;
+  onShowOptions: () => void;
+}) {
+  const [typed, setTyped] = React.useState("");
+  const [point, setPoint] = React.useState("");
+  const { ref, insert } = useInsert(typed, setTyped);
+  const parsed = parseTypedExpression(typed);
+  const pointValue = needsPoint ? parseTypedValue(point) : null;
+  let preview: string | null = null;
+  try {
+    preview = parsed ? exprToTex(parsed) : null;
+  } catch {
+    preview = null;
+  }
+  const ready = Boolean(parsed) && (!needsPoint || pointValue !== null);
+  const shown = preview ? `$f(x) = ${preview}$` + (needsPoint && pointValue !== null ? `, στο $x_0 = ${point.trim()}$` : "") : null;
+  return (
+    <form
+      className="grid gap-3"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (ready) onCheck(typed, needsPoint ? point : null);
+      }}
+    >
+      <div className="flex items-center gap-2">
+        <span className="shrink-0 text-lg font-bold"><MathText text="$f(x) =$" /></span>
+        <input
+          ref={ref}
+          value={typed}
+          disabled={disabled}
+          onChange={(event) => setTyped(event.target.value)}
+          autoComplete="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          autoFocus
+          aria-label="Το αντιπαράδειγμά σου"
+          placeholder="π.χ. |x|"
+          className="h-14 min-w-0 flex-1 rounded-2xl border-2 bg-card px-4 text-xl font-bold outline-none focus:border-brand"
+        />
+      </div>
+      {needsPoint ? (
+        <div className="flex items-center gap-2">
+          <span className="shrink-0 text-lg font-bold"><MathText text="$x_0 =$" /></span>
+          <input
+            value={point}
+            disabled={disabled}
+            onChange={(event) => setPoint(event.target.value)}
+            autoComplete="off"
+            inputMode="decimal"
+            aria-label="Το σημείο x0"
+            placeholder="π.χ. 0"
+            className={cn(
+              "h-12 w-28 rounded-2xl border-2 bg-card px-3 text-center text-xl font-bold tabular-nums outline-none focus:border-brand",
+              point && pointValue === null && "border-destructive",
+            )}
+          />
+        </div>
+      ) : null}
+      {!disabled ? (
+        <div className="flex flex-wrap gap-1.5" aria-label="Σύμβολα">
+          {COUNTEREXAMPLE_KEYS.map((key) => (
+            <button key={key.label} type="button" className={KEY} onClick={() => insert(key.insert)}>
+              {key.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      <p className="min-h-8 text-center text-xl">
+        {shown ? (
+          <MathText text={shown} />
+        ) : typed.trim() ? (
+          <span className="text-sm text-muted-foreground">Δεν το διαβάζω ακόμα - έλεγξε τις παρενθέσεις. Γράψε sin(x), όχι sinx.</span>
+        ) : (
+          <span className="text-sm text-muted-foreground">Εδώ θα δεις τι διαβάζω.</span>
+        )}
+      </p>
+      {!disabled ? (
+        <>
+          <button type="submit" className={cn(PRIMARY, "w-full")} disabled={!ready}>
+            Έλεγχος
+          </button>
+          <button type="button" className="self-center text-sm text-muted-foreground underline underline-offset-2" onClick={onShowOptions}>
+            Δείξε μου επιλογές (λιγότεροι πόντοι)
+          </button>
+        </>
+      ) : null}
+    </form>
+  );
+}
+
 /** The right answer as text for the feedback panel (interval, expression), or null. */
 export function newTypeCorrectText(question: PlayableQuestion): string | null {
   if (question.type === "interval" && question.interval) return formatInterval(question.interval);

@@ -48,7 +48,7 @@ describe("a counterexample question in the game", () => {
     expect(onAnswer).not.toHaveBeenCalled();
     expect(screen.getByText(/Διάλεξε ένα αντιπαράδειγμα/)).toBeTruthy();
     click(/απόλυτη τιμή/);
-    expect(onAnswer).toHaveBeenCalledWith(true, null);
+    expect(onAnswer).toHaveBeenCalledWith(true, null, { mode: "options" });
     // Every option now says what it is and why.
     expect(screen.getByText("Δεν είναι συνεχής.")).toBeTruthy();
     expect(screen.getByText(/δεν ισχύει η υπόθεση/)).toBeTruthy();
@@ -58,13 +58,13 @@ describe("a counterexample question in the game", () => {
     const onAnswer = play(falseSpec);
     click("Ψευδής");
     click(/πρόσημο/);
-    expect(onAnswer).toHaveBeenCalledWith(false, "h");
+    expect(onAnswer).toHaveBeenCalledWith(false, "h", { mode: "options" });
   });
 
   it("ends at step 1 when the claim is called wrong, and shows the counterexample", () => {
     const onAnswer = play(falseSpec);
     click("Αληθής");
-    expect(onAnswer).toHaveBeenCalledWith(false, "claim");
+    expect(onAnswer).toHaveBeenCalledWith(false, "claim", {});
     expect(screen.getByText(/ο ισχυρισμός είναι ψευδής/)).toBeTruthy();
     expect(screen.getAllByText(/απόλυτη τιμή/).length).toBeGreaterThan(0);
   });
@@ -72,7 +72,7 @@ describe("a counterexample question in the game", () => {
   it("has one step for a true claim", () => {
     const onAnswer = play(trueSpec);
     click("Αληθής");
-    expect(onAnswer).toHaveBeenCalledWith(true, null);
+    expect(onAnswer).toHaveBeenCalledWith(true, null, {});
     expect(screen.queryByText(/Διάλεξε ένα αντιπαράδειγμα/)).toBeNull();
   });
 });
