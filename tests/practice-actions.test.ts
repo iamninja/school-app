@@ -109,6 +109,50 @@ describe("savePracticeQuestionAction", () => {
   });
 });
 
+describe("deleting several questions and removing duplicates", () => {
+  const row = (id: string, prompt: string, position: number, imagePath: string | null = null) => ({
+    id, section_id: SECTION.id, type: "number", prompt, options: null, answer: "4", tolerance: null, slider_min: null, slider_max: null,
+    slider_step: null, graph: null, variables: null, condition: null, explanation: null, origin: null, origin_detail: null,
+    image_path: imagePath, source: "import", source_quiz_question_id: null, position, is_active: true, created_at: "",
+  });
+
+  it("deletes only the teacher's own questions, and an image no other question uses", async () => {
+    const { deletePracticeQuestionsAction } = await import("@/app/protected/teacher/practice-actions");
+    const remove = vi.fn(async () => ({ data: null, error: null }));
+    const client = createMockSupabaseClient({
+      practice_questions: [
+        { data: [{ id: "q1", image_path: "teacher-1/a.png" }, { id: "q2", image_path: null }], error: null },
+        { data: null, error: null },
+        { data: [], error: null }, // nobody else uses a.png
+      ],
+    });
+    (client as unknown as { storage: unknown }).storage = { from: vi.fn(() => ({ remove })) };
+    vi.mocked(createClient).mockResolvedValue(client as never);
+    expect(await deletePracticeQuestionsAction(["q1", "q2", "q-not-mine"])).toEqual({ deleted: 2 });
+    const deleteChain = client.from.mock.results[1].value;
+    expect(deleteChain.delete).toHaveBeenCalled();
+    expect(deleteChain.in).toHaveBeenCalledWith("id", ["q1", "q2"]);
+    expect(deleteChain.eq).toHaveBeenCalledWith("teacher_id", "teacher-1");
+    expect(remove).toHaveBeenCalledWith(["teacher-1/a.png"]);
+  });
+
+  it("removes later copies in a section and keeps the first", async () => {
+    const { removePracticeDuplicatesAction } = await import("@/app/protected/teacher/practice-actions");
+    const client = createMockSupabaseClient({
+      practice_sections: { data: SECTION, error: null },
+      practice_questions: [
+        { data: [row("q1", "$2 + 2$", 0), row("q2", "$3 + 3$", 1), row("q3", "$2  + 2$", 2), row("q4", "$3 + 3$", 3)], error: null },
+        { data: [{ id: "q3", image_path: null }, { id: "q4", image_path: null }], error: null },
+        { data: null, error: null },
+      ],
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+    expect(await removePracticeDuplicatesAction(SECTION.id)).toEqual({ removed: 2 });
+    const lookup = client.from.mock.results.filter((_, index) => client.from.mock.calls[index][0] === "practice_questions")[1].value;
+    expect(lookup.in).toHaveBeenCalledWith("id", ["q3", "q4"]);
+  });
+});
+
 describe("importPracticeMarkdownAction", () => {
   const FILE = `# Πολυώνυμα
 ## $P(1)$ για $P(x) = x^2$;
@@ -133,13 +177,13 @@ Answer: Σωστό
         { data: null, error: null },
         { data: { id: "sec-new", grade: "lyk_b", name: "Πολυώνυμα", position: 0, is_public: false }, error: null },
       ],
-      practice_questions: [{ data: null, error: null }, { data: null, error: null }],
+      practice_questions: [{ data: [], error: null }, { data: null, error: null }, { data: null, error: null }],
     });
     vi.mocked(createClient).mockResolvedValue(client as never);
     const result = await importPracticeMarkdownAction({ grade: "lyk_b", markdown: FILE });
     expect(result).toEqual({
-      ok: true, sectionId: "sec-new", imported: 2, createdSection: true,
-      sections: [{ id: "sec-new", name: "Πολυώνυμα", imported: 2, created: true }],
+      ok: true, sectionId: "sec-new", imported: 2, skipped: 0, createdSection: true,
+      sections: [{ id: "sec-new", name: "Πολυώνυμα", imported: 2, skipped: 0, created: true }],
     });
     const rows = insertsInto(client, "practice_questions")[0] as unknown[];
     expect(rows).toHaveLength(2);
@@ -155,6 +199,7 @@ Answer: Σωστό
         { data: { id: "sec-b", grade: "lyk_b", name: "Β", position: 1, is_public: false }, error: null }, // ...so it's created
       ],
       practice_questions: [
+        { data: [], error: null }, // the grade's existing questions: none
         { data: { position: 4 }, error: null }, // next position in Α: 5
         { data: null, error: null }, // Β is empty: 0
         { data: null, error: null }, // the insert
@@ -166,14 +211,55 @@ Answer: Σωστό
       markdown: "# Α\n## $1+1$;\nAnswer: 2\n# Β\n## $2+2$;\nAnswer: 4\n## $3+3$;\nAnswer: 6\n",
     });
     expect(result).toEqual({
-      ok: true, sectionId: "sec-a", imported: 3, createdSection: true,
+      ok: true, sectionId: "sec-a", imported: 3, skipped: 0, createdSection: true,
       sections: [
-        { id: "sec-a", name: "Α", imported: 1, created: false },
-        { id: "sec-b", name: "Β", imported: 2, created: true },
+        { id: "sec-a", name: "Α", imported: 1, skipped: 0, created: false },
+        { id: "sec-b", name: "Β", imported: 2, skipped: 0, created: true },
       ],
     });
     const rows = insertsInto(client, "practice_questions")[0] as { section_id: string; position: number }[];
     expect(rows.map((row) => [row.section_id, row.position])).toEqual([["sec-a", 5], ["sec-b", 0], ["sec-b", 1]]);
+  });
+
+  it("leaves out questions the grade already has, and repeats within the file", async () => {
+    // Already in the grade (another section): the first question of FILE.
+    const existing = {
+      id: "q-old", section_id: "sec-other", type: "number", prompt: "$P(1)$ για $P(x) = x^2$;", options: null, answer: "1", tolerance: null,
+      slider_min: null, slider_max: null, slider_step: null, graph: null, variables: null, condition: null, explanation: "Άλλη εξήγηση",
+      origin: null, origin_detail: null, image_path: null, source: "import", source_quiz_question_id: null, position: 0, is_active: true, created_at: "",
+    };
+    const client = createMockSupabaseClient({
+      practice_sections: [{ data: { id: "sec-poly" }, error: null }],
+      practice_questions: [{ data: [existing], error: null }, { data: { position: 2 }, error: null }, { data: null, error: null }],
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+    const result = await importPracticeMarkdownAction({ grade: "lyk_b", markdown: FILE + "\n## Το $x - 1$ διαιρεί το $x^2 - 1$.\nAnswer: true\n" });
+    expect(result).toEqual({
+      ok: true, sectionId: "sec-poly", imported: 1, skipped: 2, createdSection: false,
+      sections: [{ id: "sec-poly", name: "Πολυώνυμα", imported: 1, skipped: 2, created: false }],
+    });
+    const rows = insertsInto(client, "practice_questions")[0] as { prompt: string; position: number }[];
+    expect(rows.map((row) => [row.prompt, row.position])).toEqual([["Το $x - 1$ διαιρεί το $x^2 - 1$.", 3]]);
+    // The grade's questions were looked up across all its sections.
+    const lookup = client.from.mock.results.find((_, index) => client.from.mock.calls[index][0] === "practice_questions")!.value;
+    expect(lookup.eq).toHaveBeenCalledWith("practice_sections.grade", "lyk_b");
+  });
+
+  it("adds nothing - and creates no section - when every question is already there", async () => {
+    const existing = {
+      id: "q-old", section_id: "sec-other", type: "number", prompt: "$P(1)$ για $P(x) = x^2$;", options: null, answer: "1", tolerance: null,
+      slider_min: null, slider_max: null, slider_step: null, graph: null, variables: null, condition: null, explanation: null,
+      origin: null, origin_detail: null, image_path: null, source: "import", source_quiz_question_id: null, position: 0, is_active: true, created_at: "",
+    };
+    const client = createMockSupabaseClient({
+      practice_sections: [{ data: null, error: null }],
+      practice_questions: [{ data: [existing, { ...existing, id: "q-old2", type: "true_false", prompt: "Το $x - 1$ διαιρεί το $x^2 - 1$.", answer: "true" }], error: null }],
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+    const result = await importPracticeMarkdownAction({ grade: "lyk_b", markdown: FILE });
+    expect(result).toMatchObject({ ok: true, sectionId: null, imported: 0, skipped: 2, createdSection: false });
+    expect(insertsInto(client, "practice_questions")).toEqual([]);
+    expect(insertsInto(client, "practice_sections")).toEqual([]);
   });
 
   it("won't import questions that sit above every section heading", async () => {
