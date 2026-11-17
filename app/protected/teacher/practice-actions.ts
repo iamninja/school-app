@@ -12,7 +12,11 @@ import {
   quizQuestionToPractice,
   toPracticeQuestion,
   toPracticeQuestionColumns,
+  addCounterexampleAnswer,
   duplicateQuestions,
+  emptyCounterexampleTally,
+  type CounterexampleTally,
+  type PracticeQuestionStats,
   practiceQuestionKey,
   type CopyableQuizQuestion,
   summarizeAnswers,
@@ -716,7 +720,7 @@ export async function copyQuizQuestionsToPracticeAction(input: {
 export async function getPracticeProgressOverviewAction(): Promise<PracticeStudentProgress[]> {
   const { supabase } = await requireTeacherSession();
   const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-  const [{ data: students, error }, { data: recent }, { data: progressRows }, { data: sections }, { data: totals }] = await Promise.all([
+  const [{ data: students, error }, { data: recent }, { data: progressRows }, { data: sections }, { data: totals }, { data: counterexample }] = await Promise.all([
     supabase
       .from("students")
       .select("id, first_name, last_name, withdrawn_at, student_class_assignments(classes(name))")
@@ -726,6 +730,11 @@ export async function getPracticeProgressOverviewAction(): Promise<PracticeStude
     supabase.from("practice_progress").select("student_id, data"),
     supabase.from("practice_sections").select("id, name"),
     supabase.from("practice_answers").select("student_id, correct").limit(200_000),
+    supabase
+      .from("practice_answers")
+      .select("student_id, correct, detail, practice_questions!inner(type)")
+      .eq("practice_questions.type", "counterexample")
+      .limit(50_000),
   ]);
   if (error) throw error;
   const today = athensToday();
@@ -740,6 +749,13 @@ export async function getPracticeProgressOverviewAction(): Promise<PracticeStude
     entry.answers++;
     if (row.correct) entry.right++;
     allTime.set(row.student_id, entry);
+  }
+
+  const counterexampleBy = new Map<string, CounterexampleTally>();
+  for (const row of (counterexample ?? []) as unknown as { student_id: string; correct: boolean; detail: string | null }[]) {
+    const tally = counterexampleBy.get(row.student_id) ?? emptyCounterexampleTally();
+    addCounterexampleAnswer(tally, row.correct, row.detail);
+    counterexampleBy.set(row.student_id, tally);
   }
 
   type StudentRow = { id: string; first_name: string; last_name: string; student_class_assignments: { classes: { name: string } | null }[] | null };
@@ -759,24 +775,27 @@ export async function getPracticeProgressOverviewAction(): Promise<PracticeStude
       sections: [...(answers?.recent ?? new Map()).entries()]
         .map(([sectionId, stats]) => ({ sectionId, name: sectionName.get(sectionId) ?? "", ...stats }))
         .sort((a, b) => b.answers - a.answers),
+      counterexample: counterexampleBy.get(student.id) ?? emptyCounterexampleTally(),
     };
   });
 }
 
 /** Per question of a section: how often answered and how often right (students only - guests aren't recorded). */
-export async function getPracticeQuestionStatsAction(sectionId: string): Promise<Record<string, { answers: number; right: number; reports: number }>> {
+export async function getPracticeQuestionStatsAction(sectionId: string): Promise<Record<string, PracticeQuestionStats>> {
   const { supabase, userId } = await requireTeacherSession();
   await ownedSection(supabase, userId, sectionId);
   const [{ data: answers }, { data: reports }] = await Promise.all([
-    supabase.from("practice_answers").select("question_id, correct").eq("section_id", sectionId).limit(100_000),
+    supabase.from("practice_answers").select("question_id, correct, detail").eq("section_id", sectionId).limit(100_000),
     supabase.from("practice_reports").select("question_id, practice_questions!inner(section_id)").is("resolved_at", null).eq("practice_questions.section_id", sectionId),
   ]);
-  const stats: Record<string, { answers: number; right: number; reports: number }> = {};
-  for (const row of (answers ?? []) as { question_id: string | null; correct: boolean }[]) {
+  const stats: Record<string, PracticeQuestionStats> = {};
+  for (const row of (answers ?? []) as { question_id: string | null; correct: boolean; detail: string | null }[]) {
     if (!row.question_id) continue;
     const entry = (stats[row.question_id] ??= { answers: 0, right: 0, reports: 0 });
     entry.answers++;
     if (row.correct) entry.right++;
+    // Only counterexample answers carry a detail.
+    if (row.detail) addCounterexampleAnswer((entry.mistakes ??= { claim: 0, h: 0, c: 0, other: 0 }), false, row.detail);
   }
   for (const row of (reports ?? []) as { question_id: string }[]) {
     (stats[row.question_id] ??= { answers: 0, right: 0, reports: 0 }).reports++;
