@@ -100,6 +100,8 @@ type Draft = {
   variables: string;
   condition: string;
   explanation: string;
+  /** TikZ, optional. */
+  figure: string;
   origin: PracticeOrigin | "";
   originDetail: string;
   imagePath: string | null;
@@ -146,6 +148,7 @@ export function draftFrom(question: Partial<PracticeQuestion> | null): Draft {
     variables: question?.variables ?? "",
     condition: question?.condition ?? "",
     explanation: question?.explanation ?? "",
+    figure: question?.figure ?? "",
     origin: question?.origin ?? "",
     originDetail: question?.originDetail ?? "",
     imagePath: question?.imagePath ?? null,
@@ -166,6 +169,7 @@ export function specFrom(draft: Draft): PracticeQuestionSpec {
     variables: draft.variables.trim() || null,
     condition: draft.condition.trim() || null,
     explanation: draft.explanation.trim() || null,
+    figure: draft.figure.trim() || null,
     origin: draft.origin || null,
     originDetail: draft.origin ? draft.originDetail.trim() || null : null,
   };
@@ -808,6 +812,24 @@ export function PracticeQuestionEditor({
               ) : null}
             </div>
             ) : null}
+
+            <div className="space-y-2">
+              <Label htmlFor="pq-figure">
+                Figure <span className="text-muted-foreground">(optional, TikZ - paste it from the book)</span>
+              </Label>
+              <Textarea
+                id="pq-figure"
+                rows={draft.figure ? 6 : 2}
+                value={draft.figure}
+                onChange={(event) => update({ figure: event.target.value })}
+                placeholder={"\\draw (0,0) -- (4,0) -- (0,3) -- cycle;\n\\node[below left] at (0,0) {$A$};"}
+                className="font-mono text-xs"
+                spellCheck={false}
+              />
+              <p className="text-xs text-muted-foreground">
+                \coordinate, \draw, \fill, \node, angle marks (\pic) and arrows. Random numbers work as <code>{"{{a}}"}</code>. It appears in the preview.
+              </p>
+            </div>
 
             <div className="space-y-2">
               <Label htmlFor="pq-explanation">

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowRight, CheckIcon, XIcon } from "lucide-react";
 
 import { MathText } from "@/components/math-text";
+import { PracticeFigure } from "@/components/practice/practice-figure";
 import { PracticeOriginBadge } from "@/components/practice/practice-origin-badge";
 import type { RoundQuestion } from "@/lib/practice-server";
 import { cn } from "@/lib/utils";
@@ -36,6 +37,7 @@ export function HomePracticeQuestion({ question, gradeLabel, className }: { ques
       <p className="mt-3 whitespace-pre-line text-lg font-bold leading-snug">
         <MathText text={question.prompt} />
       </p>
+      {question.figure ? <PracticeFigure source={question.figure} className="mt-3 max-w-[260px]" /> : null}
       <div className="mt-4 grid gap-2">
         {choices.map((choice, index) => {
           const showRight = answered && choice.correct;

@@ -14,6 +14,7 @@ import {
 import { BrandMark } from "@/components/brand";
 import { MathText } from "@/components/math-text";
 import { exprToTex } from "@/lib/practice-expr";
+import { PracticeFigure } from "@/components/practice/practice-figure";
 import { PracticeGraphView } from "@/components/practice/practice-graph";
 import {
   CHOICE,
@@ -795,6 +796,7 @@ export function QuestionScreen({
       <p className="whitespace-pre-line text-[1.35rem] font-bold leading-snug text-balance">
         <MathText text={question.prompt} />
       </p>
+      {question.figure ? <PracticeFigure source={question.figure} className="max-w-[340px]" /> : null}
       {question.imageUrl ? (
         // eslint-disable-next-line @next/next/no-img-element -- public bucket image of any size
         <img src={question.imageUrl} alt="" className="max-h-60 self-start rounded-xl border object-contain" />

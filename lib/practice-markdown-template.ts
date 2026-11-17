@@ -51,9 +51,8 @@ students. Follow these rules exactly:
    with the real page and exercise; if you aren't sure of them, write just
    "Source: Σχολικό βιβλίο". "Source: Πανελλαδικές <year> · Θέμα <letter>"
    only for a question from an actual past paper you were given.
-12. Every question must stand on its own: no "in the figure", "στο
-   σχήμα" or "as in exercise 3". There is no picture unless the teacher
-   adds one later.
+12. Every question must stand on its own: no "as in exercise 3". Say
+   "στο σχήμα" only when the question has its own figure (see FIGURES).
 13. Check each question before writing it down: solve it yourself, make
    sure the answer and the explanation agree, and that every wrong option
    really is wrong. For a template, try a few draws and check the numbers
@@ -173,6 +172,27 @@ Expressions know + - * / ^, sqrt abs round(v, digits) floor ceil min max
 mod gcd lcm, sin cos tan (radians), sind cosd tand (degrees), ln log log2
 exp, pi and e.
 
+FIGURES (optional)
+------------------
+A question may have one figure, written in TikZ inside a ${"```"}tikz block
+(or a bare \begin{tikzpicture} ... \end{tikzpicture}) anywhere under its
+heading. The app draws it; students never see the code. Supported:
+  \coordinate (A) at (0,0);   points: (1,2)  (A)  (30:2)  ++(1,0)
+                              ($(A)!0.5!(B)$)  ($(B)+(D)-(A)$)  (M |- 0,0)
+  \draw / \fill / \filldraw [options] path;   with -- , -- cycle,
+      circle (r), arc (a:b:r), rectangle (P), grid (P),
+      node[midway, above] {$a$}, coordinate (M)
+  \node[below left] at (A) {$A$};
+  \pic[draw] {right angle = B--A--C};
+  \pic[draw, "$\omega$", angle eccentricity=1.6] {angle = C--B--A};
+  options: thick, very thick, dashed, dotted, red/blue/green/orange/...,
+  fill=blue!15, ->, <->, help lines; \begin{tikzpicture}[scale=0.8].
+  Inside {...} numbers, sin/cos take degrees, as in TikZ.
+Not supported (the import says so): \foreach, \clip, tkz-euclide,
+decorations, plots. Use {{a}} in coordinates and labels for random
+numbers: (0,{{b}}) and {$ {{a}} $}. Keep figures simple and label every
+point the question names.
+
 SOURCE (optional)
 -----------------
 Students see where a question comes from as a small label. One per question:
@@ -285,4 +305,22 @@ Type: expression
 Answer: a x + b
 Variables: a=-4..4 !0 !1, b=-5..5 !0
 Explanation: Η ευθεία $y = λx + β$ έχει κλίση $λ$ και τέμνει τον $y'y$ στο $β$: $y = {{a}}x {{+b}}$.
+
+## Στο σχήμα, πόση είναι η υποτείνουσα $B\Gamma$;
+Answer: sqrt(a^2 + b^2)
+Variables: a=3|6|5, b=4|8|12
+Condition: (a == 3 and b == 4) or (a == 6 and b == 8) or (a == 5 and b == 12)
+Explanation: Από το Πυθαγόρειο θεώρημα $B\Gamma^2 = {{a}}^2 + {{b}}^2 = {{a^2 + b^2}}$, άρα $B\Gamma = {{sqrt(a^2 + b^2)}}$.
+${"```"}tikz
+\coordinate (A) at (0,0);
+\coordinate (B) at ({{b}},0);
+\coordinate (C) at (0,{{a}});
+\draw[thick] (A) -- (B) -- (C) -- cycle;
+\pic[draw] {right angle = B--A--C};
+\node[below left] at (A) {$A$};
+\node[below right] at (B) {$B$};
+\node[above left] at (C) {$\Gamma$};
+\path (A) -- (B) node[midway, below] {$ {{b}} $};
+\path (A) -- (C) node[midway, left] {$ {{a}} $};
+${"```"}
 `;

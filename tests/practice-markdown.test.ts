@@ -18,7 +18,7 @@ describe("the practice template", () => {
     expect(parsed.sectionName).toBe("Η ευθεία");
     expect(parsed.questions.map((q) => q.type)).toEqual([
       "choice", "true_false", "number", "choice", "slider", "point", "point", "counterexample",
-      "multi", "order", "match", "sign_table", "interval", "expression",
+      "multi", "order", "match", "sign_table", "interval", "expression", "number",
     ]);
   });
 
