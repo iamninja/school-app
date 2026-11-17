@@ -82,8 +82,16 @@ export interface AnsweredQuestion {
 
 /** Points for a right answer: 10, plus 5 from the third right answer in a row. */
 export function pointsFor(streakAfterAnswer: number): number {
-  return 10 + (streakAfterAnswer >= 3 ? 5 : 0);
+  return pointsWithBase(streakAfterAnswer, 10);
 }
+
+/** pointsFor with another base (a counterexample typed or after switching to the options). */
+export function pointsWithBase(streakAfterAnswer: number, base: number): number {
+  return base + (streakAfterAnswer >= 3 ? 5 : 0);
+}
+
+/** A right counterexample's base points: typed 15, from the options 10, after switching to them 5. */
+export const COUNTEREXAMPLE_POINTS = { typed: 15, options: 10, switched: 5 } as const;
 
 /**
  * Records one answer: section counts, and the mistakes pack (a wrong

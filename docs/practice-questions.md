@@ -12,8 +12,9 @@ You are writing practice questions for Greek secondary-school maths
 students. Follow these rules exactly:
 
 1. Write the questions, options and explanations in Greek. Keep the
-   keywords (Answer, Type, Tolerance, Range, Step, Window, Plot,
-   Variables, Condition, Explanation, Source) in English, as below.
+   keywords (Answer, Type, Tolerance, Range, Step, Window, Plot, Roots,
+   Row, Mode, Variables, Condition, Explanation, Source) in English, as
+   below.
 2. Put ALL mathematics in LaTeX between single dollar signs: $x^2 - 4$,
    $\frac{1}{2}$, $\sqrt{50}$. Never use $$...$$ display maths. Use a
    decimal comma inside maths as {,} : $7{,}5$.
@@ -97,7 +98,12 @@ counterexample  A claim the student marks Αληθής/Ψευδής; if false, t
             the hypothesis fails, [c] one where the conclusion still
             holds, [ ] wrong for another reason. Under each option, an
             indented line says why it is or isn't a counterexample. No
-            Variables/Condition in this type.
+            Variables/Condition in this type. Write each option as
+            "$f(x) = ...$" (optionally ", στο $x_0 = 0$") when you can:
+            then a student who knows the question may type the
+            counterexample instead of picking it. Optional "Mode: options"
+            keeps a question multiple choice; "Mode: typed" always asks
+            for it typed (default: auto).
 If "Type:" is left out it is worked out: options -> choice (multi if
 several are [x]), numbered items -> order, "->" pairs -> match, Roots ->
 sign_table, Range -> slider, a point answer or Window/Plot -> point,

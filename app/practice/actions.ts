@@ -55,7 +55,13 @@ export interface PracticeAnswerUpload {
   answeredAt: string;
   /** Counterexample questions: what went wrong (lib/practice-template.ts checkCounterexample). */
   detail?: CounterexampleDetail | null;
+  /** Counterexample step 2: picked from the options, typed, or switched to the options (v3). */
+  mode?: "options" | "typed" | "switched" | null;
+  /** What the student typed, for the teacher. */
+  typed?: string | null;
 }
+
+const ANSWER_MODES = ["options", "typed", "switched"] as const;
 
 const ANSWER_DETAILS: CounterexampleDetail[] = ["claim", "h", "c", "other"];
 
@@ -103,6 +109,8 @@ export async function syncPracticeProgressAction(input: {
         answered_at: new Date(answer.answeredAt).toISOString(),
         // Only when there is one: plain answers stay the same shape as before.
         ...(answer.detail && ANSWER_DETAILS.includes(answer.detail) ? { detail: answer.detail } : {}),
+        ...(answer.mode && ANSWER_MODES.includes(answer.mode) ? { mode: answer.mode } : {}),
+        ...(typeof answer.typed === "string" && answer.typed.trim() ? { typed: answer.typed.trim().slice(0, 200) } : {}),
       })),
       { onConflict: "student_id,client_id", ignoreDuplicates: true },
     );

@@ -23,6 +23,7 @@ import {
   PRIMARY,
   SECONDARY,
   SignTableInput,
+  TypedCounterexampleInput,
   newTypeCorrectText,
   useInsert,
 } from "@/components/practice/practice-inputs";
@@ -38,13 +39,21 @@ import {
   localDay,
   mergeProgress,
   parseProgress,
-  pointsFor,
+  COUNTEREXAMPLE_POINTS,
+  pointsWithBase,
   recordAnswer,
   recordRoundEnd,
   sectionMastery,
   type PracticeProgress,
 } from "@/lib/practice-progress";
-import { checkCounterexample, formatNumber, isCorrect, parseTypedValue, type CounterexampleDetail } from "@/lib/practice-template";
+import {
+  checkCounterexample,
+  formatNumber,
+  isCorrect,
+  matchTypedCounterexample,
+  parseTypedValue,
+  type CounterexampleDetail,
+} from "@/lib/practice-template";
 import { cn } from "@/lib/utils";
 
 const TYPE_LABEL: Record<string, string> = {
@@ -77,6 +86,9 @@ const fmt2 = (value: number) => formatNumber(Math.round(value * 100) / 100, fals
 type Viewer = { kind: "guest" | "parent" | "teacher" } | { kind: "student"; firstName: string; grade: string | null };
 
 type Screen = "grade" | "sections" | "loading" | "question" | "summary" | "mistakes";
+
+/** How a counterexample's step 2 was answered, and what the student typed (counterexample v3). */
+type AnswerExtra = { mode?: "options" | "typed" | "switched"; typed?: string };
 
 interface Result {
   question: RoundQuestion;
@@ -299,10 +311,10 @@ export function PracticeGame({
     setScreen("question");
   };
 
-  const answer = (correct: boolean, detail: CounterexampleDetail | null = null) => {
+  const answer = (correct: boolean, detail: CounterexampleDetail | null = null, extra: AnswerExtra = {}) => {
     const question = round[index];
     const nextStreak = correct ? streak + 1 : 0;
-    const points = correct ? pointsFor(nextStreak) : 0;
+    const points = correct ? pointsWithBase(nextStreak, extra.mode ? COUNTEREXAMPLE_POINTS[extra.mode] : 10) : 0;
     setStreak(nextStreak);
     setBestStreak((value) => Math.max(value, nextStreak));
     setResults((prev) => [...prev, { question, correct, points }]);
@@ -322,6 +334,8 @@ export function PracticeGame({
       points,
       answeredAt: new Date().toISOString(),
       ...(detail ? { detail } : {}),
+      ...(extra.mode ? { mode: extra.mode } : {}),
+      ...(extra.typed ? { typed: extra.typed.slice(0, 200) } : {}),
     });
     return { points, streak: nextStreak };
   };
@@ -648,7 +662,7 @@ export function QuestionScreen({
   index: number;
   total: number;
   results: Result[];
-  onAnswer: (correct: boolean, detail?: CounterexampleDetail | null) => { points: number; streak: number };
+  onAnswer: (correct: boolean, detail?: CounterexampleDetail | null, extra?: AnswerExtra) => { points: number; streak: number };
   onNext: () => void;
 }) {
   const [given, setGiven] = React.useState<number | { x: number; y: number } | null>(null);
@@ -662,11 +676,37 @@ export function QuestionScreen({
   // Counterexample: step 1 (the claim called true/false), then step 2 (the pick).
   const [claim, setClaim] = React.useState<boolean | null>(null);
   const [pick, setPick] = React.useState<number | null>(null);
+  // Counterexample v3: step 2 typed, unless the student asked for the
+  // options ("switched") or typed something no option matches ("unknown").
+  const [optionsBecause, setOptionsBecause] = React.useState<"switched" | "unknown" | null>(null);
+  const [typedAnswer, setTypedAnswer] = React.useState<{ text: string; shown: string; option: number } | null>(null);
+  const [unmatchedTyped, setUnmatchedTyped] = React.useState<string | null>(null);
+  const typedStep = question.step2 === "typed" && optionsBecause === null;
 
   const finishCounterexample = (claimTrue: boolean, picked: number | null) => {
     if (answered) return;
     const result = checkCounterexample(question, claimTrue, picked);
-    setFeedback({ correct: result.correct, ...onAnswer(result.correct, result.detail) });
+    const extra: AnswerExtra =
+      picked === null
+        ? {}
+        : { mode: optionsBecause === "switched" ? "switched" : "options", ...(unmatchedTyped ? { typed: unmatchedTyped } : {}) };
+    setFeedback({ correct: result.correct, ...onAnswer(result.correct, result.detail, extra) });
+    setTimeout(() => nextRef.current?.focus({ preventScroll: true }), 50);
+  };
+  const checkTyped = (text: string, x0: string | null) => {
+    if (answered) return;
+    const option = matchTypedCounterexample(question, text, x0);
+    if (option === null) {
+      // v3a can't judge it: the options instead, not counted against the student.
+      setUnmatchedTyped(x0 === null ? text : `${text} @ ${x0}`);
+      setOptionsBecause("unknown");
+      return;
+    }
+    const marker = question.options[option].marker;
+    const correct = marker === "x";
+    const detail: CounterexampleDetail | null = correct ? null : marker === "h" ? "h" : marker === "c" ? "c" : "other";
+    setTypedAnswer({ text, shown: question.options[option].text, option });
+    setFeedback({ correct, ...onAnswer(correct, detail, { mode: "typed", typed: x0 === null ? text : `${text} @ ${x0}` }) });
     setTimeout(() => nextRef.current?.focus({ preventScroll: true }), 50);
   };
   const chooseClaim = (claimTrue: boolean) => {
@@ -793,9 +833,30 @@ export function QuestionScreen({
             </div>
           </div>
 
-          {claim === false && question.answer === 0 ? (
+          {claim === false && question.answer === 0 && typedStep ? (
+            <div className="grid animate-[practice-rise_.28s_ease-out] gap-3">
+              <p className="text-sm font-semibold text-muted-foreground">Σωστά, είναι ψευδής. Γράψε ένα αντιπαράδειγμα:</p>
+              <TypedCounterexampleInput
+                needsPoint={Boolean(question.typeable?.x0)}
+                disabled={answered}
+                onCheck={checkTyped}
+                onShowOptions={() => setOptionsBecause("switched")}
+              />
+              {typedAnswer ? (
+                <TypedVerdict option={question.options[typedAnswer.option]} />
+              ) : null}
+            </div>
+          ) : null}
+
+          {claim === false && question.answer === 0 && !typedStep ? (
             <div className="grid animate-[practice-rise_.28s_ease-out] gap-2">
-              <p className="text-sm font-semibold text-muted-foreground">Σωστά, είναι ψευδής. Διάλεξε ένα αντιπαράδειγμα:</p>
+              <p className="text-sm font-semibold text-muted-foreground">
+                {optionsBecause === "unknown"
+                  ? "Δεν μπορώ ακόμα να ελέγξω αυτό που έγραψες - διάλεξε από τις επιλογές (δεν μετράει ως λάθος):"
+                  : optionsBecause === "switched"
+                    ? "Διάλεξε ένα αντιπαράδειγμα:"
+                    : "Σωστά, είναι ψευδής. Διάλεξε ένα αντιπαράδειγμα:"}
+              </p>
               {question.options.map((option, i) => {
                 const tag = answered ? MARKER_TAG[option.marker ?? ""] : undefined;
                 const state = !answered ? "" : option.marker === "x" ? "right" : pick === i ? "wrong" : "dim";
@@ -1006,7 +1067,7 @@ export function QuestionScreen({
               <span className="font-semibold">Σωστή απάντηση:</span> {correctText}
             </p>
           ) : null}
-          {question.type === "counterexample" && !feedback.correct && claim !== false && counterexample ? (
+          {question.type === "counterexample" && !feedback.correct && (claim !== false || typedAnswer) && counterexample ? (
             <p>
               <span className="font-semibold">Αντιπαράδειγμα:</span> <MathText text={counterexample.text} />
               {counterexample.reason ? (
@@ -1029,6 +1090,26 @@ export function QuestionScreen({
         </div>
       ) : null}
     </section>
+  );
+}
+
+/** What a typed counterexample turned out to be: the option it equals, its tag and why. */
+function TypedVerdict({ option }: { option: { text: string; marker?: string; reason?: string | null } }) {
+  const tag = MARKER_TAG[option.marker ?? ""];
+  const good = option.marker === "x";
+  return (
+    <div className={cn("grid gap-1.5 rounded-2xl border-2 px-4 py-3", good ? "border-emerald-500 bg-emerald-500/10" : "border-red-500 bg-red-500/10")}>
+      <span className="flex flex-wrap items-center gap-2">
+        <span className="text-sm text-muted-foreground">Έγραψες:</span>
+        <MathText text={option.text} />
+        <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-bold", good ? "bg-emerald-600 text-white" : "bg-red-500/15 text-red-700 dark:text-red-300")}>
+          {tag?.text ?? "✗ δεν είναι αντιπαράδειγμα"}
+        </span>
+      </span>
+      {option.reason ? (
+        <span className="text-sm text-muted-foreground"><MathText text={option.reason} /></span>
+      ) : null}
+    </div>
   );
 }
 
