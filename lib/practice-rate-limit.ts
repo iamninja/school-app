@@ -29,3 +29,8 @@ export function allowDraw(key: string, now = Date.now()): boolean {
 export function allowReport(key: string, now = Date.now()): boolean {
   return allow(`report:${key}`, 10, now);
 }
+
+/** AI checks of typed counterexamples: 10 per 5 minutes per address (the daily cap per student is in the database). */
+export function allowAiCheck(key: string, now = Date.now()): boolean {
+  return allow(`ai:${key}`, 10, now);
+}

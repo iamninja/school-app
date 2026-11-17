@@ -5,6 +5,7 @@ import Link from "next/link";
 import { CheckIcon, FlameIcon, InfoIcon, StarIcon } from "lucide-react";
 
 import {
+  checkTypedCounterexampleAction,
   drawPracticeRoundAction,
   reportPracticeQuestionAction,
   syncPracticeProgressAction,
@@ -12,6 +13,7 @@ import {
 } from "@/app/practice/actions";
 import { BrandMark } from "@/components/brand";
 import { MathText } from "@/components/math-text";
+import { exprToTex } from "@/lib/practice-expr";
 import { PracticeGraphView } from "@/components/practice/practice-graph";
 import {
   CHOICE,
@@ -51,6 +53,7 @@ import {
   formatNumber,
   isCorrect,
   matchTypedCounterexample,
+  parseTypedExpression,
   parseTypedValue,
   type CounterexampleDetail,
 } from "@/lib/practice-template";
@@ -678,7 +681,10 @@ export function QuestionScreen({
   const [pick, setPick] = React.useState<number | null>(null);
   // Counterexample v3: step 2 typed, unless the student asked for the
   // options ("switched") or typed something no option matches ("unknown").
-  const [optionsBecause, setOptionsBecause] = React.useState<"switched" | "unknown" | null>(null);
+  const [optionsBecause, setOptionsBecause] = React.useState<"switched" | "unknown" | "cap" | null>(null);
+  // v3b: an answer no option matches goes to the AI check.
+  const [aiChecking, setAiChecking] = React.useState(false);
+  const [aiVerdict, setAiVerdict] = React.useState<{ verdict: string; reason: string; typed: string; x0: string | null } | null>(null);
   const [typedAnswer, setTypedAnswer] = React.useState<{ text: string; shown: string; option: number } | null>(null);
   const [unmatchedTyped, setUnmatchedTyped] = React.useState<string | null>(null);
   const typedStep = question.step2 === "typed" && optionsBecause === null;
@@ -693,13 +699,30 @@ export function QuestionScreen({
     setFeedback({ correct: result.correct, ...onAnswer(result.correct, result.detail, extra) });
     setTimeout(() => nextRef.current?.focus({ preventScroll: true }), 50);
   };
-  const checkTyped = (text: string, x0: string | null) => {
-    if (answered) return;
+  const checkTyped = async (text: string, x0: string | null) => {
+    if (answered || aiChecking) return;
     const option = matchTypedCounterexample(question, text, x0);
     if (option === null) {
-      // v3a can't judge it: the options instead, not counted against the student.
-      setUnmatchedTyped(x0 === null ? text : `${text} @ ${x0}`);
-      setOptionsBecause("unknown");
+      // No option is the same function: ask the AI (v3b); if it can't answer, the options, not counted.
+      setAiChecking(true);
+      const result = await checkTypedCounterexampleAction({ questionId: question.id, typed: text, x0 }).catch(() => null);
+      setAiChecking(false);
+      if (!result || !result.ok) {
+        setUnmatchedTyped(x0 === null ? text : `${text} @ ${x0}`);
+        setOptionsBecause(result && !result.ok && result.reason === "cap" ? "cap" : "unknown");
+        return;
+      }
+      const correct = result.verdict === "valid";
+      const detail: CounterexampleDetail | null = correct
+        ? null
+        : result.verdict === "hypothesis_fails"
+          ? "h"
+          : result.verdict === "conclusion_holds"
+            ? "c"
+            : "other";
+      setAiVerdict({ verdict: result.verdict, reason: result.reason, typed: text, x0 });
+      setFeedback({ correct, ...onAnswer(correct, detail, { mode: "typed", typed: x0 === null ? text : `${text} @ ${x0}` }) });
+      setTimeout(() => nextRef.current?.focus({ preventScroll: true }), 50);
       return;
     }
     const marker = question.options[option].marker;
@@ -838,21 +861,27 @@ export function QuestionScreen({
               <p className="text-sm font-semibold text-muted-foreground">Σωστά, είναι ψευδής. Γράψε ένα αντιπαράδειγμα:</p>
               <TypedCounterexampleInput
                 needsPoint={Boolean(question.typeable?.x0)}
-                disabled={answered}
-                onCheck={checkTyped}
+                disabled={answered || aiChecking}
+                onCheck={(text, x0) => void checkTyped(text, x0)}
                 onShowOptions={() => setOptionsBecause("switched")}
               />
+              {aiChecking ? (
+                <p className="animate-pulse text-center text-sm text-muted-foreground" role="status">Ελέγχω το αντιπαράδειγμά σου…</p>
+              ) : null}
               {typedAnswer ? (
                 <TypedVerdict option={question.options[typedAnswer.option]} />
               ) : null}
+              {aiVerdict ? <AiVerdict {...aiVerdict} /> : null}
             </div>
           ) : null}
 
           {claim === false && question.answer === 0 && !typedStep ? (
             <div className="grid animate-[practice-rise_.28s_ease-out] gap-2">
               <p className="text-sm font-semibold text-muted-foreground">
-                {optionsBecause === "unknown"
-                  ? "Δεν μπορώ ακόμα να ελέγξω αυτό που έγραψες - διάλεξε από τις επιλογές (δεν μετράει ως λάθος):"
+                {optionsBecause === "cap"
+                  ? "Έφτασες το όριο των ελέγχων για σήμερα - διάλεξε από τις επιλογές (δεν μετράει ως λάθος):"
+                  : optionsBecause === "unknown"
+                  ? "Δεν μπορώ να ελέγξω αυτό που έγραψες - διάλεξε από τις επιλογές (δεν μετράει ως λάθος):"
                   : optionsBecause === "switched"
                     ? "Διάλεξε ένα αντιπαράδειγμα:"
                     : "Σωστά, είναι ψευδής. Διάλεξε ένα αντιπαράδειγμα:"}
@@ -1067,7 +1096,7 @@ export function QuestionScreen({
               <span className="font-semibold">Σωστή απάντηση:</span> {correctText}
             </p>
           ) : null}
-          {question.type === "counterexample" && !feedback.correct && (claim !== false || typedAnswer) && counterexample ? (
+          {question.type === "counterexample" && !feedback.correct && (claim !== false || typedAnswer || aiVerdict) && counterexample ? (
             <p>
               <span className="font-semibold">Αντιπαράδειγμα:</span> <MathText text={counterexample.text} />
               {counterexample.reason ? (
@@ -1109,6 +1138,38 @@ function TypedVerdict({ option }: { option: { text: string; marker?: string; rea
       {option.reason ? (
         <span className="text-sm text-muted-foreground"><MathText text={option.reason} /></span>
       ) : null}
+    </div>
+  );
+}
+
+const AI_TAG: Record<string, string> = {
+  valid: "✓ αντιπαράδειγμα",
+  hypothesis_fails: "✗ δεν ισχύει η υπόθεση",
+  conclusion_holds: "✗ ισχύει το συμπέρασμα",
+  invalid: "✗ δεν είναι αντιπαράδειγμα",
+};
+
+/** The AI's verdict on a typed counterexample, labelled as an AI check. */
+function AiVerdict({ verdict, reason, typed, x0 }: { verdict: string; reason: string; typed: string; x0: string | null }) {
+  const good = verdict === "valid";
+  let tex = typed;
+  try {
+    const parsed = parseTypedExpression(typed);
+    if (parsed) tex = exprToTex(parsed);
+  } catch {
+    // keep what was typed
+  }
+  return (
+    <div className={cn("grid gap-1.5 rounded-2xl border-2 px-4 py-3", good ? "border-emerald-500 bg-emerald-500/10" : "border-red-500 bg-red-500/10")}>
+      <span className="flex flex-wrap items-center gap-2">
+        <span className="text-sm text-muted-foreground">Έγραψες:</span>
+        <MathText text={`$f(x) = ${tex}$${x0 !== null ? `, στο $x_0 = ${x0}$` : ""}`} />
+        <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-bold", good ? "bg-emerald-600 text-white" : "bg-red-500/15 text-red-700 dark:text-red-300")}>
+          {AI_TAG[verdict] ?? AI_TAG.invalid}
+        </span>
+      </span>
+      {reason ? <span className="text-sm text-muted-foreground"><MathText text={reason} /></span> : null}
+      <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Έλεγχος από AI · αν κάνει λάθος, πες το στον καθηγητή παρακάτω</span>
     </div>
   );
 }

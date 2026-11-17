@@ -39,6 +39,9 @@ import {
   reorderPracticeSectionsAction,
   setPracticeQuestionActiveAction,
   updatePracticeSectionAction,
+  listPracticeAiChecksAction,
+  correctPracticeAiCheckAction,
+  type PracticeAiCheck,
 } from "@/app/protected/teacher/practice-actions";
 import { MathText } from "@/components/math-text";
 import { PRACTICE_TYPE_LABELS, PracticeQuestionEditor } from "@/components/practice/practice-question-editor";
@@ -657,6 +660,7 @@ function PracticeBank({
                             ) : (
                               <p className="text-sm text-destructive">This question can&apos;t be played as it is - edit it to see why.</p>
                             )}
+                            {question.type === "counterexample" && question.answer === "false" ? <AiChecksList questionId={question.id} /> : null}
                           </div>
                         ) : null}
                       </li>
@@ -1208,5 +1212,72 @@ function CounterexampleMistakesBadge({ mistakes }: { mistakes: CounterexampleMis
     >
       Wrong: {parts.map((key) => `${mistakes[key]} ${MISTAKE_SHORT[key]}`).join(" · ")}
     </Badge>
+  );
+}
+
+const AI_VERDICT_LABELS: Record<PracticeAiCheck["verdict"], string> = {
+  valid: "✓ Counterexample",
+  hypothesis_fails: "Hypothesis fails",
+  conclusion_holds: "Conclusion holds",
+  invalid: "Not a counterexample",
+};
+
+/** The counterexamples students typed that the AI checked, with its reason; the teacher can overrule it. */
+function AiChecksList({ questionId }: { questionId: string }) {
+  const [checks, setChecks] = React.useState<PracticeAiCheck[] | null>(null);
+  React.useEffect(() => {
+    listPracticeAiChecksAction(questionId)
+      .then(setChecks)
+      .catch(() => setChecks([]));
+  }, [questionId]);
+  if (checks === null || checks.length === 0) return null;
+  const correct = async (check: PracticeAiCheck, value: string) => {
+    const verdict = value === "" ? null : (value as PracticeAiCheck["verdict"]);
+    try {
+      await correctPracticeAiCheckAction(check.id, verdict);
+      setChecks((prev) => (prev ?? []).map((item) => (item.id === check.id ? { ...item, teacherVerdict: verdict } : item)));
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, "Couldn't save"));
+    }
+  };
+  return (
+    <div className="mt-3 space-y-2 border-t pt-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Typed by students, checked by AI</p>
+      <ul className="space-y-2">
+        {checks.map((check) => {
+          const [fn, point] = check.typed.split(" @ ");
+          const shown = check.teacherVerdict ?? check.verdict;
+          return (
+            <li key={check.id} className="rounded-md border px-3 py-2 text-sm">
+              <div className="flex flex-wrap items-center gap-2">
+                <code className="rounded bg-muted px-1.5 py-0.5">f(x) = {fn}{point ? `, x₀ = ${point}` : ""}</code>
+                <span className={cn("text-xs font-semibold", shown === "valid" ? "text-emerald-700 dark:text-emerald-400" : "text-red-600 dark:text-red-400")}>
+                  {AI_VERDICT_LABELS[shown]}
+                  {check.teacherVerdict ? " (you)" : " (AI)"}
+                </span>
+                <span className="ml-auto text-xs text-muted-foreground">{check.studentName ?? "You, trying it"}</span>
+              </div>
+              {check.reason ? (
+                <p className="mt-1 text-xs text-muted-foreground"><MathText text={check.reason} /></p>
+              ) : null}
+              <label className="mt-1.5 flex items-center gap-2 text-xs text-muted-foreground">
+                Your verdict
+                <select
+                  className="h-7 rounded-md border border-input bg-transparent px-1.5 text-xs"
+                  value={check.teacherVerdict ?? ""}
+                  onChange={(event) => void correct(check, event.target.value)}
+                  aria-label={`Your verdict on ${fn}`}
+                >
+                  <option value="">Agree with the AI</option>
+                  {(Object.keys(AI_VERDICT_LABELS) as PracticeAiCheck["verdict"][]).map((verdict) => (
+                    <option key={verdict} value={verdict}>{AI_VERDICT_LABELS[verdict]}</option>
+                  ))}
+                </select>
+              </label>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }

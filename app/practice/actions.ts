@@ -2,11 +2,13 @@
 
 import { headers } from "next/headers";
 
+import { judgeCounterexampleWithAI, type AiCounterexampleVerdict } from "@/lib/ai-counterexample";
+import { PRACTICE_QUESTION_COLUMNS, toPracticeQuestion, type PracticeQuestionRow } from "@/lib/practice-bank";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { canSeeQuestion, drawPracticeRound, getPracticeViewer, type RoundQuestion } from "@/lib/practice-server";
 import { sanitizeProgress } from "@/lib/practice-progress";
-import { allowDraw, allowReport } from "@/lib/practice-rate-limit";
-import type { CounterexampleDetail } from "@/lib/practice-template";
+import { allowAiCheck, allowDraw, allowReport } from "@/lib/practice-rate-limit";
+import { instantiate, matchTypedCounterexample, parseTypedExpression, parseTypedValue, type CounterexampleDetail } from "@/lib/practice-template";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -143,4 +145,88 @@ export async function reportPracticeQuestionAction(input: {
     });
   if (error) return { ok: false, error: "Η αναφορά δεν στάλθηκε - ξαναδοκίμασε." };
   return { ok: true };
+}
+
+/** AI checks of typed counterexamples a student gets per 24 hours (counterexample v3b). */
+const AI_CHECKS_PER_DAY = 20;
+
+export type TypedCounterexampleCheck =
+  | { ok: true; verdict: AiCounterexampleVerdict; reason: string; by: "ai" | "options" }
+  | { ok: false; reason: "cap" | "unavailable" | "unreadable" };
+
+const VERDICT_BY_MARKER: Record<string, AiCounterexampleVerdict> = { x: "valid", h: "hypothesis_fails", c: "conclusion_holds" };
+
+/**
+ * Checks a counterexample a student typed that matched none of the
+ * teacher's options (counterexample v3b): by the options again on the
+ * server, then by the Claude API - for logged-in students (capped per day)
+ * and the teacher trying a question. Every AI check is kept for the
+ * teacher (practice_ai_checks). Anything that goes wrong is
+ * { ok: false } and the game offers the options instead.
+ */
+export async function checkTypedCounterexampleAction(input: {
+  questionId: string;
+  typed: string;
+  x0?: string | null;
+}): Promise<TypedCounterexampleCheck> {
+  const viewer = await getPracticeViewer();
+  if (viewer.kind !== "student" && viewer.kind !== "teacher") return { ok: false, reason: "unavailable" };
+  if (!UUID.test(input.questionId) || typeof input.typed !== "string") return { ok: false, reason: "unreadable" };
+  const typed = input.typed.trim().slice(0, 120);
+  const x0 = typeof input.x0 === "string" && input.x0.trim() ? input.x0.trim().slice(0, 30) : null;
+  const expr = parseTypedExpression(typed);
+  if (!expr || (x0 !== null && parseTypedValue(x0) === null)) return { ok: false, reason: "unreadable" };
+  if (!(await canSeeQuestion(viewer, input.questionId))) return { ok: false, reason: "unavailable" };
+
+  const service = createServiceRoleClient();
+  const { data: row } = await service.from("practice_questions").select(PRACTICE_QUESTION_COLUMNS).eq("id", input.questionId).maybeSingle();
+  if (!row) return { ok: false, reason: "unavailable" };
+  const spec = toPracticeQuestion(row as PracticeQuestionRow);
+  if (spec.type !== "counterexample") return { ok: false, reason: "unavailable" };
+  let played;
+  try {
+    played = instantiate(spec);
+  } catch {
+    return { ok: false, reason: "unavailable" };
+  }
+  if (played.answer !== 0 || !played.typeable) return { ok: false, reason: "unavailable" };
+  if (played.typeable.x0 && x0 === null) return { ok: false, reason: "unreadable" };
+
+  // The same function as an option: that option's verdict, no AI needed.
+  const option = matchTypedCounterexample(played, typed, x0);
+  if (option !== null) {
+    const chosen = played.options[option];
+    return { ok: true, verdict: VERDICT_BY_MARKER[chosen.marker ?? ""] ?? "invalid", reason: chosen.reason ?? "", by: "options" };
+  }
+
+  const requestHeaders = await headers();
+  const ip = (requestHeaders.get("x-forwarded-for") ?? "").split(",")[0].trim() || "unknown";
+  if (!allowAiCheck(ip)) return { ok: false, reason: "cap" };
+  if (viewer.kind === "student") {
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { count } = await service
+      .from("practice_ai_checks")
+      .select("id", { count: "exact", head: true })
+      .eq("student_id", viewer.studentId)
+      .gte("created_at", since);
+    if ((count ?? 0) >= AI_CHECKS_PER_DAY) return { ok: false, reason: "cap" };
+  }
+
+  const result = await judgeCounterexampleWithAI({
+    claim: played.prompt,
+    typed: expr,
+    x0,
+    options: played.options.map((item) => ({ text: item.text, marker: item.marker ?? "", reason: item.reason ?? null })),
+    explanation: played.explanation,
+  });
+  if (!result) return { ok: false, reason: "unavailable" };
+
+  await service.from("practice_ai_checks").insert({
+    question_id: input.questionId,
+    student_id: viewer.kind === "student" ? viewer.studentId : null,
+    typed: x0 === null ? typed : `${typed} @ ${x0}`,
+    verdict: result.verdict,
+    reason: result.reason,
+  });
+  return { ok: true, verdict: result.verdict, reason: result.reason, by: "ai" };
 }

@@ -256,6 +256,28 @@ describe("RLS: practice", () => {
       expect(error).not.toBeNull();
     });
 
+    it("AI checks (v3b): written by the server, read and corrected by the teacher only", async () => {
+      const { data: inserted, error } = await serviceClient()
+        .from("practice_ai_checks")
+        .insert({ question_id: questionId, student_id: fixtures.studentA.id, typed: "x^3 + x^5", verdict: "valid", reason: "Σωστά." })
+        .select("id")
+        .single();
+      expect(error).toBeNull();
+      const { data: forTeacher } = await teacherA.from("practice_ai_checks").select("typed, verdict").eq("id", inserted!.id);
+      expect(forTeacher).toEqual([{ typed: "x^3 + x^5", verdict: "valid" }]);
+      const { data: corrected } = await teacherA.from("practice_ai_checks").update({ teacher_verdict: "invalid" }).eq("id", inserted!.id).select("teacher_verdict");
+      expect(corrected).toEqual([{ teacher_verdict: "invalid" }]);
+      for (const client of [studentA, parentA1, anon]) {
+        const { data } = await client.from("practice_ai_checks").select("id").eq("id", inserted!.id);
+        expect(data ?? []).toEqual([]);
+      }
+      // A student can't make up checks (that would dodge or fill the daily cap).
+      const { error: forged } = await studentA.from("practice_ai_checks").insert({ question_id: questionId, student_id: fixtures.studentA.id, typed: "x", verdict: "valid" });
+      expect(forged).not.toBeNull();
+      const { error: badVerdict } = await teacherA.from("practice_ai_checks").update({ teacher_verdict: "maybe" }).eq("id", inserted!.id);
+      expect(badVerdict).not.toBeNull();
+    });
+
     it("refuses a detail that isn't one of claim, h, c, other", async () => {
       const { error } = await serviceClient().from("practice_answers").insert({
         student_id: fixtures.studentA.id, question_id: questionId, section_id: sectionId, correct: false, points: 0, client_id: "rls-ce-bad", detail: "x",
