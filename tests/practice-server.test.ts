@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createServiceRoleClient } from "@/lib/supabase/server";
-import { drawPracticeRound, getPracticeCatalog, seesPrivateSections } from "@/lib/practice-server";
+import { drawPracticeRound, getPracticeCatalog, samplePracticeQuestion, seesPrivateSections } from "@/lib/practice-server";
 import { allowDraw } from "@/lib/practice-rate-limit";
 import { createMockSupabaseClient } from "./support/mock-supabase";
 
@@ -83,6 +83,33 @@ describe("drawPracticeRound", () => {
     vi.mocked(createServiceRoleClient).mockReturnValue(service as never);
     const round = await drawPracticeRound({ kind: "teacher" }, { sectionIds: [PUBLIC.id], mistakeIds: [], mistakesOnly: false });
     expect(round.map((q) => q.id)).toEqual(["q1"]);
+  });
+});
+
+describe("samplePracticeQuestion", () => {
+  const catalog = [{ code: "lyk_b", label: "Β Λυκείου", sections: [{ id: PUBLIC.id, name: "Η ευθεία", count: 2 }], count: 2 }];
+
+  it("picks a question that can be answered with one tap", async () => {
+    const choice = { ...question("q2", PUBLIC.id), type: "choice", answer: null, options: [{ text: "1", correct: true }, { text: "2", correct: false }] };
+    const service = createMockSupabaseClient({
+      practice_sections: { data: [PUBLIC], error: null },
+      practice_questions: [
+        { data: [{ id: "q1", section_id: PUBLIC.id }, { id: "q2", section_id: PUBLIC.id }], error: null },
+        { data: [question("q1", PUBLIC.id), choice], error: null },
+      ],
+    });
+    vi.mocked(createServiceRoleClient).mockReturnValue(service as never);
+    expect((await samplePracticeQuestion(catalog))?.id).toBe("q2");
+  });
+
+  it("is null when there's nothing to tap, or nothing public", async () => {
+    const service = createMockSupabaseClient({
+      practice_sections: { data: [PUBLIC], error: null },
+      practice_questions: [{ data: [{ id: "q1", section_id: PUBLIC.id }], error: null }, { data: [question("q1", PUBLIC.id)], error: null }],
+    });
+    vi.mocked(createServiceRoleClient).mockReturnValue(service as never);
+    expect(await samplePracticeQuestion(catalog)).toBeNull();
+    expect(await samplePracticeQuestion([])).toBeNull();
   });
 });
 

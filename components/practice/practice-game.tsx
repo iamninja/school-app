@@ -209,15 +209,20 @@ export function PracticeGame({
   catalog,
   viewer,
   savedProgress = null,
+  startGrade = null,
 }: {
   catalog: PracticeCatalogGrade[];
   viewer: Viewer;
+  /** Open at this grade's sections (/practice?grade=..., from the homepage). */
+  startGrade?: string | null;
   /** A student's progress from their account. */
   savedProgress?: PracticeProgress | null;
 }) {
   const { progress, update: updateProgress, queueAnswer, carriedOver } = useProgress(viewer.kind === "student", savedProgress);
   const today = localDay();
-  const studentGrade = viewer.kind === "student" && viewer.grade && catalog.some((grade) => grade.code === viewer.grade) ? viewer.grade : null;
+  const ownGrade = viewer.kind === "student" && viewer.grade && catalog.some((grade) => grade.code === viewer.grade) ? viewer.grade : null;
+  // The grade to open at: the one asked for, else a student's own.
+  const studentGrade = (startGrade && catalog.some((grade) => grade.code === startGrade) ? startGrade : null) ?? ownGrade;
 
   const [screen, setScreen] = React.useState<Screen>(studentGrade ? "sections" : "grade");
   const [grade, setGrade] = React.useState<string | null>(studentGrade);
