@@ -28,7 +28,7 @@ students. Follow these rules exactly:
    lines right under it continue the question text.
 4. Every question gets an "Explanation:" - one or two short sentences a
    student can learn from: the method, not just the result.
-5. Questions must be checkable automatically. Use only the five types
+5. Questions must be checkable automatically. Use only the six types
    below. Never ask for a proof, a sketch or a written answer.
 6. Each question must have exactly one correct answer. For multiple choice,
    make the wrong options the mistakes students really make (sign errors,
@@ -60,8 +60,8 @@ students. Follow these rules exactly:
    "# <section name>", nothing before or after it. Unless you are asked
    for a number, write 15 to 25 questions per section.
 
-THE FIVE TYPES
---------------
+THE SIX TYPES
+-------------
 choice      Multiple choice. 2 to 6 options, exactly one marked [x].
 true_false  "Answer: Σωστό" or "Answer: Λάθος" (True/False also work).
 number      The student types a number. "Answer:" is the number or an
@@ -75,9 +75,17 @@ point       The student drags a point on a coordinate grid (snaps to 0.5).
             then y range; default -5..5 for both), "Plot: x + 1" to draw
             a curve on the grid (repeatable), optional "Tolerance:"
             (default 0.25).
+counterexample  A claim the student marks Αληθής/Ψευδής; if false, they
+            then pick the counterexample. "Type: counterexample" is
+            required. "Answer: Σωστό" (no options) or "Answer: Λάθος" with
+            2 to 6 options: [x] the counterexample, [h] an option where
+            the hypothesis fails, [c] one where the conclusion still
+            holds, [ ] wrong for another reason. Under each option, an
+            indented line says why it is or isn't a counterexample. No
+            Variables/Condition in this type.
 If "Type:" is left out it is worked out: options -> choice, Range ->
 slider, a point answer or Window/Plot -> point, Σωστό/Λάθος -> true_false,
-otherwise number.
+otherwise number. A counterexample question always needs its "Type:".
 
 WHAT TO ASK WITH EACH TYPE
 --------------------------
@@ -93,6 +101,11 @@ slider      Estimating where a value lies: roots, square roots, a
             probability between 0 and 1, a percentage.
 point       Coordinates: a vertex, an intersection, a point on a line, a
             symmetric point, an extremum of a plotted function.
+counterexample  Claims students believe but are false (converse of a
+            theorem, a dropped condition): "continuous => differentiable",
+            "f'(x0) = 0 => extremum". Make the wrong options one [h] and
+            one [c] at least - the two checks every counterexample needs.
+            Mix in some true claims, so the answer isn't always Ψευδής.
 The format can't check proofs, sketches, tables of variation, answers with
 several parts, or expressions typed by the student. Turn such exercises
 into one of the above: ask for one value (f'(2), the coefficient of x),
@@ -177,4 +190,15 @@ Window: -5..5, -5..5
 Plot: (x - k)^2 + l
 Variables: k=-3..3 !0, l=-3..3
 Explanation: Η $y = (x - κ)^2 + λ$ έχει κορυφή το $(κ, λ)$, εδώ $({{k}}, {{l}})$.
+
+## Ο ισχυρισμός «αν η $f$ είναι συνεχής στο $x_0$, τότε είναι παραγωγίσιμη στο $x_0$».
+Type: counterexample
+Answer: Λάθος
+- [x] $f(x) = |x|$ στο $x_0 = 0$
+  Είναι συνεχής στο $0$, αλλά δεν είναι παραγωγίσιμη εκεί (γωνία).
+- [c] $f(x) = x^2$ στο $x_0 = 0$
+  Είναι παραγωγίσιμη στο $0$, οπότε δεν διαψεύδει τον ισχυρισμό.
+- [h] $f(x) = \frac{|x|}{x}$ στο $x_0 = 0$
+  Δεν ορίζεται στο $0$, άρα δεν είναι συνεχής εκεί.
+Explanation: Ισχύει το αντίστροφο: παραγωγίσιμη στο $x_0$ $\Rightarrow$ συνεχής στο $x_0$.
 `;

@@ -6,6 +6,7 @@ import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { canSeeQuestion, drawPracticeRound, getPracticeViewer, type RoundQuestion } from "@/lib/practice-server";
 import { sanitizeProgress } from "@/lib/practice-progress";
 import { allowDraw, allowReport } from "@/lib/practice-rate-limit";
+import type { CounterexampleDetail } from "@/lib/practice-template";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -52,7 +53,11 @@ export interface PracticeAnswerUpload {
   correct: boolean;
   points: number;
   answeredAt: string;
+  /** Counterexample questions: what went wrong (lib/practice-template.ts checkCounterexample). */
+  detail?: CounterexampleDetail | null;
 }
+
+const ANSWER_DETAILS: CounterexampleDetail[] = ["claim", "h", "c", "other"];
 
 /**
  * Saves a logged-in student's practice: their progress (as the game keeps
@@ -96,6 +101,8 @@ export async function syncPracticeProgressAction(input: {
         correct: Boolean(answer.correct),
         points: Math.max(0, Math.min(100, Math.floor(Number(answer.points) || 0))),
         answered_at: new Date(answer.answeredAt).toISOString(),
+        // Only when there is one: plain answers stay the same shape as before.
+        ...(answer.detail && ANSWER_DETAILS.includes(answer.detail) ? { detail: answer.detail } : {}),
       })),
       { onConflict: "student_id,client_id", ignoreDuplicates: true },
     );

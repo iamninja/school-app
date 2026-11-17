@@ -3,7 +3,7 @@
 // Pure - shared by app/protected/teacher/practice-actions.ts and the
 // Practice tab.
 
-import { trueFalseValue, type PracticeGraph, type PracticeOrigin, type PracticeQuestionSpec, type PracticeQuestionType } from "@/lib/practice-template";
+import { trueFalseValue, type PracticeGraph, type PracticeOption, type PracticeOrigin, type PracticeQuestionSpec, type PracticeQuestionType } from "@/lib/practice-template";
 
 export interface PracticeSection {
   id: string;
@@ -34,7 +34,7 @@ export type PracticeQuestionRow = {
   section_id: string;
   type: PracticeQuestionType;
   prompt: string;
-  options: { text: string; correct: boolean }[] | null;
+  options: PracticeOption[] | null;
   answer: string | null;
   tolerance: number | string | null;
   slider_min: number | string | null;
@@ -93,15 +93,21 @@ export function toPracticeQuestionColumns(spec: PracticeQuestionSpec) {
   return {
     type: spec.type,
     prompt: spec.prompt.trim(),
-    options: spec.type === "choice"
-      ? (spec.options ?? []).map((option) => ({ text: option.text.trim(), correct: Boolean(option.correct) }))
-      : null,
+    options:
+      spec.type === "choice"
+        ? (spec.options ?? []).map((option) => ({ text: option.text.trim(), correct: Boolean(option.correct) }))
+        : spec.type === "counterexample" && trueFalseValue(spec.answer) === false
+          ? (spec.options ?? []).map((option) => {
+              const marker = option.marker ?? (option.correct ? "x" : "");
+              return { text: option.text.trim(), correct: marker === "x", marker, reason: clean(option.reason) };
+            })
+          : null,
     // True/false is stored as "true"/"false" (a check on the table), however
     // it was written ("Σωστό", "Λάθος"...).
     answer:
       spec.type === "choice"
         ? null
-        : spec.type === "true_false"
+        : spec.type === "true_false" || spec.type === "counterexample"
           ? trueFalseValue(spec.answer) === false
             ? "false"
             : "true"
@@ -237,7 +243,7 @@ export function practiceQuestionKey(spec: PracticeQuestionSpec): string {
   return JSON.stringify([
     c.type,
     squash(c.prompt),
-    c.options ? c.options.map((option) => [squash(option.text), option.correct]) : null,
+    c.options ? c.options.map((option) => [squash(option.text), option.correct, "marker" in option ? option.marker : null, "reason" in option ? squash(option.reason) : null]) : null,
     squash(c.answer),
     c.tolerance ?? null,
     c.slider_min ?? null,

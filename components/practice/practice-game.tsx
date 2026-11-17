@@ -31,7 +31,7 @@ import {
   sectionMastery,
   type PracticeProgress,
 } from "@/lib/practice-progress";
-import { formatNumber, isCorrect, parseTypedNumber } from "@/lib/practice-template";
+import { checkCounterexample, formatNumber, isCorrect, parseTypedNumber, type CounterexampleDetail } from "@/lib/practice-template";
 import { cn } from "@/lib/utils";
 
 const TYPE_LABEL: Record<string, string> = {
@@ -40,6 +40,14 @@ const TYPE_LABEL: Record<string, string> = {
   number: "Αριθμός",
   slider: "Σύρε στην τιμή",
   point: "Στο γράφημα",
+  counterexample: "Αντιπαράδειγμα",
+};
+
+/** What each counterexample option was, shown after the answer. */
+const MARKER_TAG: Record<string, { text: string; good: boolean } | undefined> = {
+  x: { text: "✓ αντιπαράδειγμα", good: true },
+  h: { text: "✗ δεν ισχύει η υπόθεση", good: false },
+  c: { text: "✗ ισχύει το συμπέρασμα", good: false },
 };
 
 const fmt = (value: number) => formatNumber(value, false);
@@ -279,7 +287,7 @@ export function PracticeGame({
     setScreen("question");
   };
 
-  const answer = (correct: boolean) => {
+  const answer = (correct: boolean, detail: CounterexampleDetail | null = null) => {
     const question = round[index];
     const nextStreak = correct ? streak + 1 : 0;
     const points = correct ? pointsFor(nextStreak) : 0;
@@ -301,6 +309,7 @@ export function PracticeGame({
       correct,
       points,
       answeredAt: new Date().toISOString(),
+      ...(detail ? { detail } : {}),
     });
     return { points, streak: nextStreak };
   };
@@ -614,7 +623,8 @@ function ProgressBar({ index, total, results }: { index: number; total: number; 
   );
 }
 
-function QuestionScreen({
+/** Exported for tests. */
+export function QuestionScreen({
   question,
   index,
   total,
@@ -626,7 +636,7 @@ function QuestionScreen({
   index: number;
   total: number;
   results: Result[];
-  onAnswer: (correct: boolean) => { points: number; streak: number };
+  onAnswer: (correct: boolean, detail?: CounterexampleDetail | null) => { points: number; streak: number };
   onNext: () => void;
 }) {
   const [given, setGiven] = React.useState<number | { x: number; y: number } | null>(null);
@@ -637,6 +647,28 @@ function QuestionScreen({
   const [point, setPoint] = React.useState({ x: 0, y: 0 });
   const nextRef = React.useRef<HTMLButtonElement>(null);
   const answered = feedback !== null;
+  // Counterexample: step 1 (the claim called true/false), then step 2 (the pick).
+  const [claim, setClaim] = React.useState<boolean | null>(null);
+  const [pick, setPick] = React.useState<number | null>(null);
+
+  const finishCounterexample = (claimTrue: boolean, picked: number | null) => {
+    if (answered) return;
+    const result = checkCounterexample(question, claimTrue, picked);
+    setFeedback({ correct: result.correct, ...onAnswer(result.correct, result.detail) });
+    setTimeout(() => nextRef.current?.focus({ preventScroll: true }), 50);
+  };
+  const chooseClaim = (claimTrue: boolean) => {
+    if (answered || claim !== null) return;
+    setClaim(claimTrue);
+    // A false claim called false goes on to step 2; anything else ends here.
+    if (claimTrue || question.answer === 1) finishCounterexample(claimTrue, null);
+  };
+  const choosePick = (i: number) => {
+    if (answered || pick !== null) return;
+    setPick(i);
+    finishCounterexample(false, i);
+  };
+  const counterexample = question.type === "counterexample" ? question.options.find((option) => option.marker === "x") ?? null : null;
 
   const submit = (value: number | { x: number; y: number }) => {
     if (answered) return;
@@ -649,6 +681,12 @@ function QuestionScreen({
   const correctText =
     question.type === "choice"
       ? null
+      : question.type === "counterexample"
+        ? claim === null || claim === (question.answer === 1)
+          ? null
+          : question.answer === 1
+            ? "ο ισχυρισμός είναι αληθής"
+            : "ο ισχυρισμός είναι ψευδής"
       : question.type === "true_false"
         ? question.answer ? "Σωστό" : "Λάθος"
         : question.type === "point"
@@ -697,6 +735,77 @@ function QuestionScreen({
               </button>
             );
           })}
+        </div>
+      ) : null}
+
+      {question.type === "counterexample" ? (
+        <div className="grid gap-4">
+          <div className="grid gap-2">
+            <p className="text-sm font-semibold text-muted-foreground">Είναι αληθής ή ψευδής;</p>
+            <div className="grid grid-cols-2 gap-3">
+              {[true, false].map((value) => {
+                const state = claim === null ? "" : value === (question.answer === 1) && answered ? "right" : claim === value ? (answered && !feedback?.correct && claim !== (question.answer === 1) ? "wrong" : "picked") : "dim";
+                return (
+                  <button
+                    key={String(value)}
+                    type="button"
+                    disabled={claim !== null}
+                    onClick={() => chooseClaim(value)}
+                    className={cn(
+                      CHOICE,
+                      "justify-center py-4 text-lg font-bold",
+                      state === "right" && "border-emerald-500 bg-emerald-500/10",
+                      state === "picked" && "border-brand bg-brand/10",
+                      state === "wrong" && "animate-[practice-shake_.35s_ease-out] border-red-500 bg-red-500/10",
+                      state === "dim" && "opacity-50",
+                    )}
+                  >
+                    {value ? "Αληθής" : "Ψευδής"}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {claim === false && question.answer === 0 ? (
+            <div className="grid animate-[practice-rise_.28s_ease-out] gap-2">
+              <p className="text-sm font-semibold text-muted-foreground">Σωστά, είναι ψευδής. Διάλεξε ένα αντιπαράδειγμα:</p>
+              {question.options.map((option, i) => {
+                const tag = answered ? MARKER_TAG[option.marker ?? ""] : undefined;
+                const state = !answered ? "" : option.marker === "x" ? "right" : pick === i ? "wrong" : "dim";
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    disabled={answered}
+                    onClick={() => choosePick(i)}
+                    className={cn(
+                      CHOICE,
+                      "flex-col items-stretch gap-1.5",
+                      state === "right" && "border-emerald-500 bg-emerald-500/10",
+                      state === "wrong" && "animate-[practice-shake_.35s_ease-out] border-red-500 bg-red-500/10",
+                      state === "dim" && "opacity-75",
+                    )}
+                  >
+                    <span className="flex items-center gap-3">
+                      <span className="grid size-7 shrink-0 place-items-center rounded-lg border-2 border-border text-xs font-bold text-muted-foreground">
+                        {"ΑΒΓΔΕΣ"[i]}
+                      </span>
+                      <span className="min-w-0 flex-1"><MathText text={option.text} /></span>
+                      {tag ? (
+                        <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold", tag.good ? "bg-emerald-600 text-white" : "bg-red-500/15 text-red-700 dark:text-red-300")}>
+                          {tag.text}
+                        </span>
+                      ) : null}
+                    </span>
+                    {answered && option.reason ? (
+                      <span className="pl-10 text-sm font-normal text-muted-foreground"><MathText text={option.reason} /></span>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -845,6 +954,17 @@ function QuestionScreen({
           {!feedback.correct && correctText ? (
             <p>
               <span className="font-semibold">Σωστή απάντηση:</span> {correctText}
+            </p>
+          ) : null}
+          {question.type === "counterexample" && !feedback.correct && claim !== false && counterexample ? (
+            <p>
+              <span className="font-semibold">Αντιπαράδειγμα:</span> <MathText text={counterexample.text} />
+              {counterexample.reason ? (
+                <>
+                  {" - "}
+                  <MathText text={counterexample.reason} />
+                </>
+              ) : null}
             </p>
           ) : null}
           {question.explanation ? (

@@ -10,6 +10,13 @@ import { cn } from "@/lib/utils";
 
 const fmt = (value: number) => formatNumber(value, false);
 
+const MARKER_LABEL: Record<string, string> = {
+  x: "✓ αντιπαράδειγμα",
+  h: "δεν ισχύει η υπόθεση",
+  c: "ισχύει το συμπέρασμα",
+  "": "άλλος λόγος",
+};
+
 /** One played version of a question, answer shown - for the editor and the list. */
 export function PracticeQuestionPreview({
   question,
@@ -49,6 +56,38 @@ export function PracticeQuestionPreview({
             </li>
           ))}
         </ul>
+      ) : null}
+
+      {question.type === "counterexample" ? (
+        <div className="space-y-2">
+          <p className="text-sm">
+            Ο ισχυρισμός είναι <strong>{question.answer ? "αληθής" : "ψευδής"}</strong>
+          </p>
+          {question.options.length ? (
+            <ul className="grid gap-1.5">
+              {question.options.map((option, index) => (
+                <li
+                  key={index}
+                  className={cn("rounded-md border px-3 py-1.5 text-sm", option.marker === "x" && "border-emerald-500/60 bg-emerald-500/10")}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="min-w-0 flex-1">
+                      <MathText text={option.text} />
+                    </span>
+                    <span className={cn("shrink-0 text-xs font-semibold", option.marker === "x" ? "text-emerald-700 dark:text-emerald-400" : "text-muted-foreground")}>
+                      {MARKER_LABEL[option.marker ?? ""]}
+                    </span>
+                  </div>
+                  {option.reason ? (
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      <MathText text={option.reason} />
+                    </p>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
       ) : null}
 
       {question.type === "true_false" ? (

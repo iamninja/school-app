@@ -159,7 +159,7 @@ export async function drawPracticeRound(
       const played = instantiate(question);
       round.push({
         ...played,
-        options: question.type === "choice" ? shuffleOptions(played.options) : played.options,
+        options: question.type === "choice" || question.type === "counterexample" ? shuffleOptions(played.options) : played.options,
         id: question.id,
         sectionId: question.sectionId,
         sectionName: nameBySection.get(question.sectionId) ?? "",

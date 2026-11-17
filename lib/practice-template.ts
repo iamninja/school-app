@@ -17,7 +17,23 @@
 
 import { evalExpr, exprVariables, PracticeExprError } from "@/lib/practice-expr";
 
-export type PracticeQuestionType = "choice" | "true_false" | "number" | "slider" | "point";
+export type PracticeQuestionType = "choice" | "true_false" | "number" | "slider" | "point" | "counterexample";
+
+/**
+ * A counterexample question's option: "x" the counterexample, "h" the
+ * claim's hypothesis fails for it, "c" its conclusion still holds, ""
+ * wrong for another reason. Each says why in its reason.
+ */
+export type CounterexampleMarker = "x" | "h" | "c" | "";
+export const COUNTEREXAMPLE_MARKERS: CounterexampleMarker[] = ["x", "h", "c", ""];
+
+export interface PracticeOption {
+  text: string;
+  correct: boolean;
+  /** Counterexample questions only. */
+  marker?: CounterexampleMarker;
+  reason?: string | null;
+}
 
 /** Where a question comes from, shown to students as a small label. */
 export type PracticeOrigin = "panhellenic" | "textbook" | "custom";
@@ -82,7 +98,7 @@ export interface PracticeGraph {
 export interface PracticeQuestionSpec {
   type: PracticeQuestionType;
   prompt: string;
-  options?: { text: string; correct: boolean }[] | null;
+  options?: PracticeOption[] | null;
   answer?: string | null;
   tolerance?: number | null;
   sliderMin?: number | null;
@@ -101,7 +117,7 @@ export interface PracticeQuestionSpec {
 export interface PlayableQuestion {
   type: PracticeQuestionType;
   prompt: string;
-  options: { text: string; correct: boolean }[];
+  options: PracticeOption[];
   /** true_false: 1/0; number/slider: the value; point: x (and answerY). */
   answer: number;
   answerY: number;
@@ -344,14 +360,14 @@ function numberAnswer(answer: string | null | undefined, scope: Record<string, n
  * (or PracticeExprError) when the question can't be played as written.
  */
 /**
- * A true/false answer as written - "Σωστό"/"Λάθος", "true"/"false", "Σ"/"Λ",
+ * A true/false answer as written - "Σωστό"/"Λάθος", "Αληθής"/"Ψευδής", "true"/"false", "Σ"/"Λ",
  * any case, with or without accents - or null when it's neither. Stored
  * as "true"/"false" (lib/practice-bank.ts).
  */
 export function trueFalseValue(raw: string | null | undefined): boolean | null {
   const text = plain((raw ?? "").trim());
-  if (["true", "σωστο", "σ"].includes(text)) return true;
-  if (["false", "λαθος", "λ"].includes(text)) return false;
+  if (["true", "σωστο", "σ", "αληθης", "α"].includes(text)) return true;
+  if (["false", "λαθος", "λ", "ψευδης", "ψ"].includes(text)) return false;
   return null;
 }
 
@@ -365,7 +381,7 @@ export function instantiate(spec: PracticeQuestionSpec, rng: Rng = Math.random):
     prompt: fill(spec.prompt),
     explanation: spec.explanation ? fill(spec.explanation) : null,
     originLabel: practiceOriginLabel(spec.origin, spec.originDetail),
-    options: [] as { text: string; correct: boolean }[],
+    options: [] as PracticeOption[],
     answer: 0,
     answerY: 0,
     tolerance: Math.max(0, spec.tolerance ?? 0),
@@ -385,6 +401,27 @@ export function instantiate(spec: PracticeQuestionSpec, rng: Rng = Math.random):
         throw new PracticeTemplateError("Two options came out the same for these numbers");
       }
       return { ...base, options };
+    }
+    case "counterexample": {
+      const value = trueFalseValue(spec.answer);
+      if (value === null) throw new PracticeTemplateError("A counterexample question's answer is Σωστό (the claim is true) or Λάθος");
+      const given = spec.options ?? [];
+      if (value) {
+        if (given.length) throw new PracticeTemplateError("A true claim has no counterexamples - leave out the options");
+        return { ...base, answer: 1 };
+      }
+      const options: PracticeOption[] = given.map((option) => {
+        const marker: CounterexampleMarker = option.marker ?? (option.correct ? "x" : "");
+        return { text: fill(option.text), correct: marker === "x", marker, reason: option.reason ? fill(option.reason) : null };
+      });
+      if (options.length < 2 || options.length > 6) throw new PracticeTemplateError("A false claim needs 2 to 6 options to pick the counterexample from");
+      if (options.filter((option) => option.marker === "x").length !== 1) {
+        throw new PracticeTemplateError("Mark exactly one option as the counterexample [x]");
+      }
+      if (options.some((option) => !COUNTEREXAMPLE_MARKERS.includes(option.marker as CounterexampleMarker))) {
+        throw new PracticeTemplateError("Options are marked [x], [h], [c] or [ ]");
+      }
+      return { ...base, answer: 0, options };
     }
     case "true_false": {
       const value = trueFalseValue(spec.answer);
@@ -492,6 +529,28 @@ export function validatePracticeQuestion(spec: PracticeQuestionSpec, samples = 4
     }
   }
   return [...problems];
+}
+
+/** What a counterexample answer's mistake was, kept with the answer for the teacher. */
+export type CounterexampleDetail = "claim" | "h" | "c" | "other";
+
+/**
+ * A counterexample question's two steps: the claim called true or false,
+ * then (for a false claim called false) the option picked. Right only if
+ * both are; otherwise which step failed - the claim, or a pick whose
+ * hypothesis fails (h), whose conclusion holds (c), or another (other).
+ */
+export function checkCounterexample(
+  question: PlayableQuestion,
+  claimTrue: boolean,
+  pick: number | null,
+): { correct: boolean; detail: CounterexampleDetail | null } {
+  const isTrue = question.answer === 1;
+  if (claimTrue !== isTrue) return { correct: false, detail: "claim" };
+  if (isTrue) return { correct: true, detail: null };
+  const option = pick === null ? undefined : question.options[pick];
+  if (option?.marker === "x") return { correct: true, detail: null };
+  return { correct: false, detail: option?.marker === "h" ? "h" : option?.marker === "c" ? "c" : "other" };
 }
 
 /** Does the student's answer count? Tolerance applies to number, slider and point. */

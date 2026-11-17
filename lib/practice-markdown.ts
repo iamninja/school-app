@@ -26,6 +26,8 @@
 
 import {
   parseOriginText,
+  trueFalseValue,
+  type CounterexampleMarker,
   validatePracticeQuestion,
   type PracticeGraph,
   type PracticeQuestionSpec,
@@ -57,6 +59,9 @@ const TYPE_ALIASES: Record<string, PracticeQuestionType> = {
   slider: "slider",
   point: "point",
   graph: "point",
+  counterexample: "counterexample",
+  "αντιπαράδειγμα": "counterexample",
+  "αντιπαραδειγμα": "counterexample",
 };
 
 const KEYS = ["type", "answer", "tolerance", "range", "step", "window", "plot", "variables", "condition", "explanation", "source"] as const;
@@ -66,7 +71,11 @@ const KEY_ALIASES: Record<string, Key> = { "πηγή": "source", "πηγη": "so
 const keyName = (raw: string): Key => (KEY_ALIASES[raw.toLowerCase()] ?? raw.toLowerCase()) as Key;
 
 const KEY_LINE = new RegExp(`^\\s*(${[...KEYS, ...Object.keys(KEY_ALIASES)].join("|")})\\s*:\\s*(.*)$`, "iu");
-const OPTION_LINE = /^\s*[-*]\s*\[([ xX])\]\s*(.+?)\s*$/;
+// [x] right / [ ] wrong; counterexample questions also take [h] (hypothesis
+// fails) and [c] (conclusion holds).
+const OPTION_LINE = /^\s*[-*]\s*\[([ xXhHcC])\]\s*(.+?)\s*$/;
+/** An indented line right under an option: that option's reason (counterexample questions). */
+const INDENTED = /^[ \t]+\S/;
 const ATTRIBUTE_TAIL = /^(.*?)\s*\{((?:\s*[a-z_]+\s*=[^,}]*,?)+)\}\s*$/i;
 
 function parseNumber(raw: string): number | null {
@@ -128,7 +137,8 @@ export function parsePracticeMarkdown(source: string): ParsedPracticeMarkdown {
     }
 
     const promptLines = [heading.trim()];
-    const options: { text: string; correct: boolean }[] = [];
+    const options: { text: string; marker: CounterexampleMarker; reasonLines: string[] }[] = [];
+    let lastOption: (typeof options)[number] | null = null;
     let bodyStarted = false;
     let explanationLines: string[] | null = null;
 
@@ -138,9 +148,14 @@ export function parsePracticeMarkdown(source: string): ParsedPracticeMarkdown {
       if (option) {
         bodyStarted = true;
         explanationLines = null;
-        options.push({ text: option[2], correct: option[1].toLowerCase() === "x" });
+        const mark = option[1].toLowerCase();
+        lastOption = { text: option[2], marker: (mark === " " ? "" : mark) as CounterexampleMarker, reasonLines: [] };
+        options.push(lastOption);
+      } else if (lastOption && INDENTED.test(line) && !key) {
+        lastOption.reasonLines.push(line.trim());
       } else if (key) {
         bodyStarted = true;
+        lastOption = null;
         const name = keyName(key[1]);
         const value = key[2].trim();
         if (name === "explanation") {
@@ -155,6 +170,7 @@ export function parsePracticeMarkdown(source: string): ParsedPracticeMarkdown {
       } else if (!bodyStarted) {
         promptLines.push(line);
       } else if (line.trim()) {
+        lastOption = null;
         problems.push(`didn't understand "${line.trim().slice(0, 60)}" (options start with "- [ ]", settings with "Answer:", "Range:"…)`);
       }
     }
@@ -168,13 +184,13 @@ export function parsePracticeMarkdown(source: string): ParsedPracticeMarkdown {
     const typeRaw = values.get("type");
     if (typeRaw) {
       type = TYPE_ALIASES[typeRaw.toLowerCase().replace(/[\s-]/g, "_")] ?? null;
-      if (!type) problems.push(`unknown type "${typeRaw}" (use choice, true_false, number, slider or point)`);
+      if (!type) problems.push(`unknown type "${typeRaw}" (use choice, true_false, number, slider, point or counterexample)`);
     }
     if (!type) {
       if (options.length) type = "choice";
       else if (values.has("range")) type = "slider";
       else if (values.has("window") || plots.length || (answer && /^\(.*[,;].*\)$/.test(answer.trim()))) type = "point";
-      else if (answer && /^(true|false|σωστό|σωστο|λάθος|λαθος)$/i.test(answer.trim())) type = "true_false";
+      else if (answer && trueFalseValue(answer) !== null && !/^\s*[αψσλ]\s*$/i.test(answer)) type = "true_false";
       else type = "number";
     }
 
@@ -194,11 +210,38 @@ export function parsePracticeMarkdown(source: string): ParsedPracticeMarkdown {
       else spec.tolerance = tolerance;
     }
 
-    if (type === "choice") {
-      spec.options = options;
+    const reasons = options.some((option) => option.reasonLines.length > 0);
+    const counterMarks = options.some((option) => option.marker === "h" || option.marker === "c");
+    if (type === "counterexample") {
+      spec.answer = answer;
+      const claimTrue = trueFalseValue(answer);
+      if (!answer) problems.push('needs "Answer: Σωστό" (the claim is true) or "Answer: Λάθος"');
+      else if (claimTrue === null) problems.push(`the answer is Σωστό or Λάθος (Αληθής/Ψευδής), not "${answer}"`);
+      else if (claimTrue) {
+        if (options.length) problems.push('a true claim has no options - leave them out, or the answer is "Λάθος"');
+      } else {
+        spec.options = options.map((option) => ({
+          text: option.text,
+          correct: option.marker === "x",
+          marker: option.marker,
+          reason: option.reasonLines.join(" ") || null,
+        }));
+        if (options.length < 2 || options.length > 6) problems.push('a false claim needs 2 to 6 options to pick the counterexample from ("- [x]", "- [h]", "- [c]", "- [ ]")');
+        const found = options.filter((option) => option.marker === "x").length;
+        if (found !== 1) problems.push(`needs exactly one counterexample "- [x]" (found ${found})`);
+      }
+      if (values.has("variables") || values.has("condition")) {
+        problems.push("random numbers (Variables, Condition) aren't supported in counterexample questions yet");
+      }
+    } else if (counterMarks) {
+      problems.push('[h] and [c] marks only go with "Type: counterexample"');
+    } else if (reasons) {
+      problems.push('lines under an option only go with "Type: counterexample" (they give its reason)');
+    } else if (type === "choice") {
+      spec.options = options.map((option) => ({ text: option.text, correct: option.marker === "x" }));
       if (options.length < 2) problems.push('needs at least 2 options ("- [ ] text")');
       if (options.length > 6) problems.push("can have at most 6 options");
-      const correct = options.filter((option) => option.correct).length;
+      const correct = options.filter((option) => option.marker === "x").length;
       if (correct !== 1) problems.push(`needs exactly one correct option "- [x]" (found ${correct})`);
     } else {
       if (options.length) problems.push(`options only go with multiple choice, not ${type}`);

@@ -17,7 +17,7 @@ describe("the practice template", () => {
     expect(parsed.errors).toEqual([]);
     expect(parsed.sectionName).toBe("Η ευθεία");
     expect(parsed.questions.map((q) => q.type)).toEqual([
-      "choice", "true_false", "number", "choice", "slider", "point", "point",
+      "choice", "true_false", "number", "choice", "slider", "point", "point", "counterexample",
     ]);
   });
 
@@ -134,7 +134,7 @@ Condition: a > 10
     expect(parsed.errors).toEqual([
       'Question 1 "Δύο σωστές": needs exactly one correct option "- [x]" (found 2)',
       'Question 2 "Χωρίς απάντηση": needs an "Answer:" line',
-      'Question 3 "Αγνώστου τύπου": unknown type "essay" (use choice, true_false, number, slider or point)',
+      'Question 3 "Αγνώστου τύπου": unknown type "essay" (use choice, true_false, number, slider, point or counterexample)',
       'Question 4 "Slider χωρίς εύρος": a slider needs "Range: 0..10"',
       'Question 5 "Περίεργη γραμμή": didn\'t understand "blah blah" (options start with "- [ ]", settings with "Answer:", "Range:"…)',
       'Question 6 "Πρότυπο που δε βγαίνει": No numbers met the condition - check it and the ranges',

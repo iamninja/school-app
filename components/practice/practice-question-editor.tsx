@@ -26,7 +26,9 @@ import {
   PRACTICE_ORIGIN_LABELS,
   seededRng,
   validatePracticeQuestion,
+  type CounterexampleMarker,
   type PlayableQuestion,
+  type PracticeOption,
   type PracticeOrigin,
   type PracticeQuestionSpec,
   type PracticeQuestionType,
@@ -40,13 +42,16 @@ export const PRACTICE_TYPE_LABELS: Record<PracticeQuestionType, string> = {
   number: "Number",
   slider: "Slider",
   point: "Graph point",
+  counterexample: "Counterexample",
 };
 
 type Draft = {
   type: PracticeQuestionType;
   prompt: string;
-  options: { text: string; correct: boolean }[];
+  options: PracticeOption[];
   tfAnswer: "true" | "false";
+  /** Counterexample: is the claim true? (Usually not.) */
+  ceAnswer: "true" | "false";
   answer: string;
   tolerance: string;
   sliderMin: string;
@@ -80,7 +85,8 @@ export function draftFrom(question: Partial<PracticeQuestion> | null): Draft {
           { text: "", correct: false },
         ],
     tfAnswer: question?.type === "true_false" && question.answer === "false" ? "false" : "true",
-    answer: question?.type === "true_false" ? "" : (question?.answer ?? ""),
+    ceAnswer: question?.type === "counterexample" && question.answer === "true" ? "true" : "false",
+    answer: question?.type === "true_false" || question?.type === "counterexample" ? "" : (question?.answer ?? ""),
     tolerance: text(question?.tolerance),
     sliderMin: text(question?.sliderMin ?? (question?.type === "slider" ? null : 0)),
     sliderMax: text(question?.sliderMax ?? (question?.type === "slider" ? null : 10)),
@@ -116,8 +122,21 @@ export function specFrom(draft: Draft): PracticeQuestionSpec {
     origin: draft.origin || null,
     originDetail: draft.origin ? draft.originDetail.trim() || null : null,
   };
-  if (draft.type === "choice") spec.options = draft.options.filter((option) => option.text.trim());
-  else if (draft.type === "true_false") spec.answer = draft.tfAnswer;
+  if (draft.type === "choice") {
+    spec.options = draft.options.filter((option) => option.text.trim()).map((option) => ({ text: option.text, correct: option.correct }));
+  } else if (draft.type === "counterexample") {
+    spec.answer = draft.ceAnswer;
+    spec.variables = null;
+    spec.condition = null;
+    if (draft.ceAnswer === "false") {
+      spec.options = draft.options
+        .filter((option) => option.text.trim())
+        .map((option) => {
+          const marker = option.marker ?? (option.correct ? "x" : "");
+          return { text: option.text, correct: marker === "x", marker, reason: option.reason?.trim() || null };
+        });
+    }
+  } else if (draft.type === "true_false") spec.answer = draft.tfAnswer;
   else spec.answer = draft.answer;
   if (draft.type === "number" || draft.type === "slider" || draft.type === "point") {
     spec.tolerance = toNumber(draft.tolerance);
@@ -250,7 +269,7 @@ export function PracticeQuestionEditor({
 
         <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_minmax(0,380px)]">
           <div className="min-w-0 space-y-4">
-            <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1 text-sm sm:grid-cols-5" role="radiogroup" aria-label="Question type">
+            <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1 text-sm sm:grid-cols-3" role="radiogroup" aria-label="Question type">
               {(Object.keys(PRACTICE_TYPE_LABELS) as PracticeQuestionType[]).map((type) => (
                 <button
                   key={type}
@@ -327,6 +346,98 @@ export function PracticeQuestionEditor({
                   </Button>
                 ) : null}
               </fieldset>
+            ) : null}
+
+            {draft.type === "counterexample" ? (
+              <div className="space-y-3">
+                <fieldset className="flex flex-wrap gap-4 text-sm">
+                  <legend className="mb-2 text-sm font-medium">The claim is</legend>
+                  {(["false", "true"] as const).map((value) => (
+                    <label key={value} className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="pq-ce"
+                        className="size-4 accent-emerald-600"
+                        checked={draft.ceAnswer === value}
+                        onChange={() => update({ ceAnswer: value })}
+                      />
+                      {value === "true" ? "True (Αληθής) - no counterexample" : "False (Ψευδής) - students pick the counterexample"}
+                    </label>
+                  ))}
+                </fieldset>
+                {draft.ceAnswer === "false" ? (
+                  <fieldset className="space-y-3">
+                    <legend className="text-sm font-medium">Options · one counterexample, and the usual wrong ones with why</legend>
+                    {draft.options.map((option, index) => {
+                      const marker = option.marker ?? (option.correct ? "x" : "");
+                      const setOption = (changes: Partial<PracticeOption>) =>
+                        update({ options: draft.options.map((item, i) => (i === index ? { ...item, ...changes } : item)) });
+                      return (
+                        <div key={index} className="space-y-2 rounded-lg border p-2.5">
+                          <div className="flex items-center gap-2">
+                            <select
+                              aria-label={`Option ${index + 1} is`}
+                              className="h-9 shrink-0 rounded-md border border-input bg-transparent px-2 text-sm shadow-xs"
+                              value={marker}
+                              onChange={(event) => {
+                                const next = event.target.value as CounterexampleMarker;
+                                setOption({ marker: next, correct: next === "x" });
+                              }}
+                            >
+                              <option value="x">✓ Counterexample</option>
+                              <option value="h">Hypothesis fails</option>
+                              <option value="c">Conclusion holds</option>
+                              <option value="">Other reason</option>
+                            </select>
+                            <Input
+                              aria-label={`Option ${index + 1}`}
+                              value={option.text}
+                              onChange={(event) => setOption({ text: event.target.value })}
+                              placeholder={marker === "x" ? "$f(x) = |x|$ στο $x_0 = 0$" : "$f(x) = x^2$"}
+                            />
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="size-8 shrink-0 p-0"
+                              disabled={draft.options.length <= 2}
+                              onClick={() => update({ options: draft.options.filter((_, i) => i !== index) })}
+                              aria-label={`Remove option ${index + 1}`}
+                            >
+                              <XIcon className="size-4" />
+                            </Button>
+                          </div>
+                          <Input
+                            aria-label={`Why, option ${index + 1}`}
+                            value={option.reason ?? ""}
+                            onChange={(event) => setOption({ reason: event.target.value })}
+                            placeholder={
+                              marker === "x"
+                                ? "Optional: why it works"
+                                : marker === "h"
+                                  ? "Why the hypothesis fails"
+                                  : marker === "c"
+                                    ? "Why the conclusion still holds"
+                                    : "Why it isn't a counterexample"
+                            }
+                            className="text-sm"
+                          />
+                        </div>
+                      );
+                    })}
+                    {draft.options.length < 6 ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => update({ options: [...draft.options, { text: "", correct: false, marker: "h", reason: "" }] })}
+                      >
+                        <PlusIcon className="size-3.5" /> Add option
+                      </Button>
+                    ) : null}
+                  </fieldset>
+                ) : null}
+              </div>
             ) : null}
 
             {draft.type === "true_false" ? (
@@ -419,6 +530,7 @@ export function PracticeQuestionEditor({
               </div>
             ) : null}
 
+            {draft.type !== "counterexample" ? (
             <div className="rounded-lg border">
               <button
                 type="button"
@@ -464,6 +576,7 @@ export function PracticeQuestionEditor({
                 </div>
               ) : null}
             </div>
+            ) : null}
 
             <div className="space-y-2">
               <Label htmlFor="pq-explanation">
