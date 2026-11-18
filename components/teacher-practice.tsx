@@ -28,6 +28,7 @@ import {
   createPracticeSectionAction,
   deletePracticeQuestionAction,
   deletePracticeSectionAction,
+  deletePracticeSectionsAction,
   checkPracticeImportAction,
   deletePracticeQuestionsAction,
   importPracticeMarkdownAction,
@@ -168,6 +169,10 @@ function PracticeBank({
   const [copyOpen, setCopyOpen] = React.useState(false);
   const [newSectionName, setNewSectionName] = React.useState("");
   const [renaming, setRenaming] = React.useState<string | null>(null);
+  // Several sections at once (remaking a grade): ticked in the list, deleted together.
+  const [pickingSections, setPickingSections] = React.useState(false);
+  const [pickedSections, setPickedSections] = React.useState<Set<string>>(new Set());
+  const [bulkDeleteOpen, setBulkDeleteOpen] = React.useState(false);
   const [expanded, setExpanded] = React.useState<string | null>(null);
   // Ticked questions (of the open section) and the "Move to..." dialog.
   const [selection, setSelection] = React.useState<{ sectionId: string | null; ids: Set<string> }>({ sectionId: null, ids: new Set() });
@@ -322,6 +327,31 @@ function PracticeBank({
     }
   };
 
+  const togglePickedSection = (id: string) =>
+    setPickedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const stopPickingSections = () => {
+    setPickingSections(false);
+    setPickedSections(new Set());
+  };
+  const deletePickedSections = async () => {
+    const ids = gradeSections.filter((item) => pickedSections.has(item.id)).map((item) => item.id);
+    try {
+      const { deleted, questions: removedQuestions } = await deletePracticeSectionsAction(ids);
+      setSections((prev) => (prev ?? []).filter((item) => !ids.includes(item.id)));
+      if (sectionId && ids.includes(sectionId)) setSectionId(null);
+      toast.success(`Deleted ${deleted} section${deleted === 1 ? "" : "s"} and ${removedQuestions} question${removedQuestions === 1 ? "" : "s"}`);
+      setBulkDeleteOpen(false);
+      stopPickingSections();
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, "Couldn't delete the sections"));
+    }
+  };
+
   const toggleActive = async (question: PracticeQuestion) => {
     const isActive = !question.isActive;
     setQuestions((prev) => (prev ?? []).map((item) => (item.id === question.id ? { ...item, isActive } : item)));
@@ -414,6 +444,40 @@ function PracticeBank({
           ) : gradeSections.length === 0 ? (
             <p className="text-sm text-muted-foreground">No sections for this grade yet. Add one below, or import a file.</p>
           ) : (
+            <>
+            <div className="flex items-center gap-2 text-xs">
+              {pickingSections ? (
+                <>
+                  <label className="flex items-center gap-1.5 text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      className="size-3.5 accent-emerald-600"
+                      checked={gradeSections.length > 0 && gradeSections.every((item) => pickedSections.has(item.id))}
+                      onChange={(event) => setPickedSections(event.target.checked ? new Set(gradeSections.map((item) => item.id)) : new Set())}
+                      aria-label="Select all sections"
+                    />
+                    All
+                  </label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="ml-auto h-7 gap-1 px-2 text-xs text-destructive"
+                    disabled={pickedSections.size === 0}
+                    onClick={() => setBulkDeleteOpen(true)}
+                  >
+                    <Trash2Icon className="size-3.5" /> Delete {pickedSections.size || ""}
+                  </Button>
+                  <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={stopPickingSections}>
+                    Done
+                  </Button>
+                </>
+              ) : (
+                <Button type="button" variant="ghost" size="sm" className="ml-auto h-7 px-2 text-xs text-muted-foreground" onClick={() => setPickingSections(true)}>
+                  Select sections
+                </Button>
+              )}
+            </div>
             <ul className="space-y-1" aria-label="Sections">
               {gradeSections.map((item, index) => (
                 <li key={item.id}>
@@ -423,7 +487,16 @@ function PracticeBank({
                       item.id === sectionId ? "border-brand/60 bg-brand/5" : "border-transparent hover:bg-muted/60",
                     )}
                   >
-                    <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left" onClick={() => setSectionId(item.id)}>
+                    {pickingSections ? (
+                      <input
+                        type="checkbox"
+                        className="mr-1 size-3.5 shrink-0 accent-emerald-600"
+                        checked={pickedSections.has(item.id)}
+                        onChange={() => togglePickedSection(item.id)}
+                        aria-label={`Select ${item.name}`}
+                      />
+                    ) : null}
+                    <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left" onClick={() => (pickingSections ? togglePickedSection(item.id) : setSectionId(item.id))}>
                       {item.isPublic ? (
                         <GlobeIcon className="size-3.5 shrink-0 text-emerald-600" aria-label="Public" />
                       ) : (
@@ -442,7 +515,16 @@ function PracticeBank({
                 </li>
               ))}
             </ul>
+            </>
           )}
+          <DeleteSectionsDialog
+            open={bulkDeleteOpen}
+            sections={gradeSections.filter((item) => pickedSections.has(item.id))}
+            gradeLabel={CLASS_GRADES.find((item) => item.code === grade)?.label ?? grade}
+            allOfGrade={pickedSections.size === gradeSections.length}
+            onClose={() => setBulkDeleteOpen(false)}
+            onConfirm={deletePickedSections}
+          />
           <form onSubmit={addSection} className="flex gap-2">
             <Input id="practice-new-section" value={newSectionName} onChange={(event) => setNewSectionName(event.target.value)} placeholder="New section, e.g. Παράγωγοι" aria-label="New section name" />
             <Button type="submit" size="sm" variant="outline" disabled={!newSectionName.trim()} aria-label="Add section">
@@ -806,9 +888,18 @@ export function ImportDialog({
   const skipped = checked ? checked.reduce((sum, item) => sum + item.skipped, 0) : 0;
   const ready = valid && fresh !== 0;
 
-  const readFile = async (file: File) => {
+  const [fileNames, setFileNames] = React.useState<string[]>([]);
+  const [dragging, setDragging] = React.useState(false);
+  // One or several files (e.g. one per chapter, to remake a grade): read in
+  // name order and joined; a file with no "# " heading is named after itself.
+  const readFiles = async (files: File[]) => {
+    const picked = files.filter((file) => /\.(md|markdown|txt)$/i.test(file.name) || file.type.startsWith("text/"));
+    if (!picked.length) return;
+    picked.sort((a, b) => a.name.localeCompare(b.name, "el", { numeric: true }));
     setServerErrors([]);
-    setMarkdown(await file.text());
+    const texts = await Promise.all(picked.map((file) => file.text()));
+    setMarkdown(texts.map((text, index) => withSectionHeading(text, picked[index].name)).join("\n\n"));
+    setFileNames(picked.map((file) => file.name));
   };
 
   const submit = async () => {
@@ -831,6 +922,7 @@ export function ImportDialog({
             : `Imported ${result.imported} question${result.imported === 1 ? "" : "s"}${result.createdSection ? " into a new section" : ""}${skippedNote}`,
       );
       setMarkdown("");
+      setFileNames([]);
       onImported(result.sectionId);
     } catch (error: unknown) {
       toast.error(getErrorMessage(error, "Couldn't import the file"));
@@ -848,24 +940,42 @@ export function ImportDialog({
             A Markdown file in the practice format (download the template for the details). Nothing is saved until the whole file is right.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4">
+        <div
+          className={cn("space-y-4 rounded-lg", dragging && "outline-2 outline-dashed outline-brand outline-offset-4")}
+          onDragOver={(event) => {
+            event.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={(event) => {
+            event.preventDefault();
+            setDragging(false);
+            void readFiles([...event.dataTransfer.files]);
+          }}
+        >
           <div className="flex flex-wrap items-center gap-3">
             <Label htmlFor="practice-import-file" className="flex cursor-pointer items-center gap-2 rounded-md border px-3 py-1.5 text-sm font-normal">
-              <FileUpIcon className="size-4" aria-hidden="true" /> Choose a .md file
+              <FileUpIcon className="size-4" aria-hidden="true" /> Choose .md files
             </Label>
             <input
               id="practice-import-file"
               type="file"
+              multiple
               accept=".md,.markdown,.txt,text/markdown,text/plain"
               className="sr-only"
               onChange={(event) => {
-                const file = event.target.files?.[0];
+                const files = [...(event.target.files ?? [])];
                 event.target.value = "";
-                if (file) void readFile(file);
+                void readFiles(files);
               }}
             />
-            <span className="text-sm text-muted-foreground">or paste it below</span>
+            <span className="text-sm text-muted-foreground">one or several (e.g. one per chapter), drop them here, or paste below</span>
           </div>
+          {fileNames.length > 1 ? (
+            <p className="text-xs text-muted-foreground">
+              {fileNames.length} files, in this order: {fileNames.join(" · ")}
+            </p>
+          ) : null}
           <Textarea
             id="practice-import-text"
             rows={8}
@@ -873,6 +983,7 @@ export function ImportDialog({
             onChange={(event) => {
               setServerErrors([]);
               setMarkdown(event.target.value);
+              setFileNames([]);
             }}
             placeholder={"# Η ευθεία\n\n## Ποια είναι η κλίση της $y = 3x - 2$;\n- [x] $3$\n- [ ] $-2$"}
             className="font-mono text-xs"
@@ -1280,4 +1391,97 @@ function AiChecksList({ questionId }: { questionId: string }) {
       </ul>
     </div>
   );
+}
+
+/**
+ * Confirms deleting several sections: what goes (sections, questions) and
+ * what stays (students' past answers). Typing "delete" arms the button -
+ * this can wipe a whole grade.
+ */
+export function DeleteSectionsDialog({
+  open,
+  sections,
+  gradeLabel,
+  allOfGrade,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean;
+  sections: PracticeSection[];
+  gradeLabel: string;
+  allOfGrade: boolean;
+  onClose: () => void;
+  onConfirm: () => Promise<void>;
+}) {
+  const [typed, setTyped] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [wasOpen, setWasOpen] = React.useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) setTyped("");
+  }
+  const questions = sections.reduce((sum, item) => sum + item.questionCount, 0);
+  const armed = typed.trim().toLowerCase() === "delete";
+  return (
+    <Dialog open={open} onOpenChange={(next) => !next && !busy && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>
+            Delete {allOfGrade ? `all ${sections.length} sections of ${gradeLabel}` : `${sections.length} section${sections.length === 1 ? "" : "s"}`}?
+          </DialogTitle>
+          <DialogDescription>
+            {sections.length} section{sections.length === 1 ? "" : "s"} and their {questions} active question{questions === 1 ? "" : "s"} (and any switched off) are deleted. Students&apos; past answers stay in Progress. This can&apos;t be undone.
+          </DialogDescription>
+        </DialogHeader>
+        <ul className="max-h-48 space-y-0.5 overflow-y-auto rounded-md border px-3 py-2 text-sm">
+          {sections.map((item) => (
+            <li key={item.id} className="flex justify-between gap-3">
+              <span className="truncate">{item.name}</span>
+              <span className="shrink-0 tabular-nums text-muted-foreground">{item.questionCount}</span>
+            </li>
+          ))}
+        </ul>
+        <div className="space-y-1.5">
+          <Label htmlFor="delete-sections-confirm" className="text-sm font-normal">
+            Type <strong>delete</strong> to confirm
+          </Label>
+          <Input id="delete-sections-confirm" value={typed} onChange={(event) => setTyped(event.target.value)} autoComplete="off" />
+        </div>
+        <DialogFooter className="gap-2">
+          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="destructive"
+            disabled={!armed || busy}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                await onConfirm();
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {busy ? "Deleting…" : `Delete ${sections.length} section${sections.length === 1 ? "" : "s"}`}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * A file's text with a "# " section heading: as written, or - when the file
+ * has questions but no heading before them - one named after the file
+ * ("Α2.4 Πρόσθεση κλασμάτων.md" -> "# Α2.4 Πρόσθεση κλασμάτων").
+ */
+export function withSectionHeading(text: string, fileName: string): string {
+  const withoutComments = text.replace(/<!--[\s\S]*?-->/g, "");
+  const firstQuestion = withoutComments.search(/^##\s+\S/m);
+  const firstSection = withoutComments.search(/^#\s+\S/m);
+  if (firstQuestion === -1 || (firstSection !== -1 && firstSection < firstQuestion)) return text;
+  const name = fileName.replace(/\.(md|markdown|txt)$/i, "").replace(/[_]+/g, " ").trim();
+  return `# ${name}\n\n${text}`;
 }

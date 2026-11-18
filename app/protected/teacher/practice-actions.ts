@@ -192,6 +192,28 @@ export async function deletePracticeSectionAction(sectionId: string): Promise<vo
   if (paths.length) await supabase.storage.from(PRACTICE_IMAGES_BUCKET).remove(paths);
 }
 
+/**
+ * Deletes several sections at once - e.g. a whole grade, to import it again
+ * from new files. Their questions go with them (and their images from
+ * storage); students' past answers stay, without the link to the question.
+ * Refuses the lot if any section isn't the teacher's.
+ */
+export async function deletePracticeSectionsAction(sectionIds: string[]): Promise<{ deleted: number; questions: number }> {
+  const { supabase, userId } = await requireTeacherSession();
+  const ids = [...new Set(sectionIds)].slice(0, 500);
+  if (!ids.length) return { deleted: 0, questions: 0 };
+  const { data: owned, error: ownedError } = await supabase.from("practice_sections").select("id").in("id", ids).eq("teacher_id", userId);
+  if (ownedError) throw ownedError;
+  if ((owned ?? []).length !== ids.length) throw new ExpectedError("Some of these sections no longer exist - reload and try again.");
+  const { data: questions } = await supabase.from("practice_questions").select("id, image_path").in("section_id", ids);
+  const { error } = await supabase.from("practice_sections").delete().in("id", ids).eq("teacher_id", userId);
+  if (error) throw error;
+  const rows = (questions ?? []) as { id: string; image_path: string | null }[];
+  const paths = rows.map((row) => row.image_path).filter((path): path is string => Boolean(path));
+  if (paths.length) await supabase.storage.from(PRACTICE_IMAGES_BUCKET).remove(paths);
+  return { deleted: ids.length, questions: rows.length };
+}
+
 // ---------------------------------------------------------------------------
 // Questions
 // ---------------------------------------------------------------------------
