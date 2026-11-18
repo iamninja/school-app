@@ -55,4 +55,10 @@ describe("evalExpr", () => {
   it("lists the variables an expression uses", () => {
     expect(exprVariables("a*x + b - pi + sqrt(c)").sort()).toEqual(["a", "b", "c", "x"]);
   });
+
+  it("knows every comparison the template lists for Condition: ==, !=, <, >, <=, >=", () => {
+    const scope = { a: 2, b: 2, c: 3 };
+    expect(["a == b", "a != c", "a < c", "c > a", "a <= b", "c >= b", "a <= c and not (a >= c)"].map((expr) => evalExpr(expr, scope))).toEqual([1, 1, 1, 1, 1, 1, 1]);
+    expect(["a != b", "a > b", "c <= a", "a >= c"].map((expr) => evalExpr(expr, scope))).toEqual([0, 0, 0, 0]);
+  });
 });
