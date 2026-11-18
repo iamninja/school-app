@@ -102,7 +102,7 @@ Variables: a=2..9, x=-10..10, b=-20..20 !0, c=a*x+b
   b=-20..20 !0         exclude a value (several: !0 !1)
   s=-1|1               one of a list
   c=a*x+b              computed from earlier variables
-Condition: a != b      every draw must satisfy it (and, or, not, ==, !=, <, >)
+Condition: a != b      every draw must satisfy it (and, or, not, ==, !=, <, >, <=, >=)
 Use {{a}} in the question, options, answer and explanation for a value,
 {{a*x+b}} for any expression, and {{+b}} for a signed value ("x {{+b}}"
 gives "x + 3" or "x - 3"). In "Answer:" you can write the expression
