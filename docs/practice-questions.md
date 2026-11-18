@@ -1,58 +1,31 @@
 <!--
-MODUS PRACTICE QUESTIONS - FORMAT AND INSTRUCTIONS
-===================================================
+MODUS PRACTICE QUESTIONS - FORMAT
+=================================
 
-This file is both a template and a specification. Import it on the
-Practice tab of the Modus console ("Import from file"). Everything inside
-<!-- ... --> comments is ignored by the importer.
+This file is both a template and a specification of the format. Import
+it on the Practice tab of the Modus console ("Import from file").
+Everything inside <!-- ... --> comments is ignored by the importer.
+It describes only the format: what to write and how is up to whoever
+writes the questions.
 
-INSTRUCTIONS FOR AN AI WRITING QUESTIONS IN THIS FORMAT
--------------------------------------------------------
-You are writing practice questions for Greek secondary-school maths
-students. Follow these rules exactly:
-
-1. Write the questions, options and explanations in Greek. Keep the
-   keywords (Answer, Type, Tolerance, Range, Step, Window, Plot, Roots,
-   Row, Mode, Variables, Condition, Explanation, Source) in English, as
-   below.
-2. Put ALL mathematics in LaTeX between single dollar signs: $x^2 - 4$,
-   $\frac{1}{2}$, $\sqrt{50}$. Never use $$...$$ display maths. Use a
-   decimal comma inside maths as {,} : $7{,}5$.
-3. One question per "## " heading. The heading is the question; extra
+FORMAT RULES
+------------
+1. One question per "## " heading. The heading is the question; extra
    lines right under it continue the question text.
-4. Every question gets an "Explanation:" - one or two short sentences a
-   student can learn from: the method, not just the result.
-5. Questions must be checkable automatically. Use only the types below.
-   Never ask for a proof, a sketch or a written answer.
-6. Each question must have exactly one correct answer (for multi: one
-   correct set of options). Make the wrong options the mistakes students
-   really make (sign errors, forgetting a case, a wrong formula) - not
-   random numbers.
-7. Prefer templates with random numbers (see VARIABLES) for routine
-   exercises, so practice never repeats the same numbers. Use fixed
-   questions for concepts and definitions.
-8. Stay within the chapter or section you were given. Start the file with
-   "# <section name>". For several sections, put them in one file, each
-   under its own "# <section name>" heading: every question goes into the
-   section above it.
-9. Mix the types, and order questions from easier to harder.
-10. Add "Source:" only when a question really comes from somewhere, and
-   never invent one. See SOURCE below.
-11. When you are given the school book, follow it: its terminology, its
-   notation and its order of topics. A question taken or adapted from one
-   of its exercises gets "Source: Σχολικό βιβλίο σελ. N, άσκ. M" - only
-   with the real page and exercise; if you aren't sure of them, write just
-   "Source: Σχολικό βιβλίο". "Source: Πανελλαδικές <year> · Θέμα <letter>"
-   only for a question from an actual past paper you were given.
-12. Every question must stand on its own: no "as in exercise 3". Say
-   "στο σχήμα" only when the question has its own figure (see FIGURES).
-13. Check each question before writing it down: solve it yourself, make
-   sure the answer and the explanation agree, and that every wrong option
-   really is wrong. For a template, try a few draws and check the numbers
-   stay friendly and the Condition can be met.
-14. Reply with the file only - one Markdown code block, starting with
-   "# <section name>", nothing before or after it. Unless you are asked
-   for a number, write 15 to 25 questions per section.
+2. "# <section name>" starts a section: every question goes into the
+   section above it. A file may hold several sections.
+3. Settings are "Key: value" lines under the question. The keys (Answer,
+   Type, Tolerance, Range, Step, Window, Plot, Roots, Row, Mode,
+   Variables, Condition, Explanation, Source) are written in English,
+   in any case.
+4. Mathematics goes in LaTeX between dollar signs: $x^2 - 4$,
+   $\frac{1}{2}$, $\sqrt{50}$ inline, $$...$$ on a line of its own. No
+   space right inside the dollars: "$ x $" is shown as plain text. A
+   decimal comma inside maths is written {,} : $7{,}5$.
+5. "Explanation:" (optional) is shown after the student answers. It may
+   run over several lines.
+6. A question has exactly one correct answer (for multi: one correct set
+   of options), checked automatically - only the types below.
 
 THE TYPES
 ---------
@@ -95,12 +68,11 @@ counterexample  A claim the student marks Αληθής/Ψευδής; if false, t
             required. "Answer: Σωστό" (no options) or "Answer: Λάθος" with
             2 to 6 options: [x] the counterexample, [h] an option where
             the hypothesis fails, [c] one where the conclusion still
-            holds, [ ] wrong for another reason. Under each option, an
-            indented line says why it is or isn't a counterexample. No
-            Variables/Condition in this type. Write each option as
-            "$f(x) = ...$" (optionally ", στο $x_0 = 0$") when you can:
-            then a student who knows the question may type the
-            counterexample instead of picking it. Optional "Mode: options"
+            holds, [ ] wrong for another reason. An indented line under
+            an option is its reason, shown after answering. No
+            Variables/Condition in this type. When the [x] option is
+            written "$f(x) = ...$" (optionally ", στο $x_0 = 0$"),
+            students may also type the counterexample. Optional "Mode: options"
             keeps a question multiple choice; "Mode: typed" always asks
             for it typed (default: auto).
 If "Type:" is left out it is worked out: options -> choice (multi if
@@ -110,41 +82,10 @@ sign_table, Range -> slider, a point answer or Window/Plot -> point,
 counterexample questions always need their "Type:".
 Students may type exact values in number answers too: 3/4, √2, 2π.
 
-WHAT TO ASK WITH EACH TYPE
---------------------------
-choice      Concepts, choosing the right formula or method, recognising a
-            property or a graph; also answers that are intervals, sets,
-            expressions or signs (they can't be typed, so offer them as
-            options).
-true_false  Definitions, theorems and their conditions, properties students
-            mix up (e.g. "if f'(x0) = 0 then f has an extremum at x0").
-multi       Properties that several items have: which numbers are
-            rational, which points lie on the line, which functions are
-            increasing. Mix true and false ones; vary how many are right.
-number      Calculations with one numeric result: solutions of equations,
-            values of f, f', limits, slopes, areas, probabilities.
-slider      Estimating where a value lies: roots, square roots, a
-            probability between 0 and 1, a percentage.
-point       Coordinates: a vertex, an intersection, a point on a line, a
-            symmetric point, an extremum of a plotted function.
-interval    Solutions of inequalities, domains, where f is increasing or
-            positive.
-order       Numbers to sort (fractions, roots, negatives, powers), or the
-            steps of a method in order.
-match       Function <-> derivative or graph property, equation <-> slope or
-            solution, term <-> definition.
-sign_table  The sign of a polynomial, a product or f' - the step before
-            monotonicity and inequalities.
-expression  Derivatives, simplified forms, a line's or parabola's equation.
-counterexample  Claims students believe but are false (converse of a
-            theorem, a dropped condition): "continuous => differentiable",
-            "f'(x0) = 0 => extremum". Make the wrong options one [h] and
-            one [c] at least - the two checks every counterexample needs.
-            Mix in some true claims, so the answer isn't always Ψευδής.
-The format can't check proofs, sketches, full tables of variation or
-answers with several parts. Turn such exercises into one of the above:
-ask for one value (f'(2), the coefficient of x), the interval, the signs,
-or the expression.
+WHAT CAN'T BE CHECKED
+---------------------
+Proofs, sketches, full tables of variation and answers with several
+parts can't be checked automatically.
 
 VARIABLES (random numbers)
 --------------------------
@@ -158,8 +99,7 @@ Condition: a != b      every draw must satisfy it (and, or, not, ==, !=, <, >)
 Use {{a}} in the question, options, answer and explanation for a value,
 {{a*x+b}} for any expression, and {{+b}} for a signed value ("x {{+b}}"
 gives "x + 3" or "x - 3"). In "Answer:" you can write the expression
-directly: "Answer: x". Choose ranges so the numbers stay friendly
-(no 1x, no 0x, no huge results) - use exclusions and Condition for that.
+directly: "Answer: x". If no draw meets the Condition, the import says so.
 Don't name a variable x in a question that has a Plot (x is the axis).
 Expressions know + - * / ^, sqrt abs round(v, digits) floor ceil min max
 mod gcd lcm, sin cos tan (radians), sind cosd tand (degrees), ln log log2
@@ -183,8 +123,8 @@ heading. The app draws it; students never see the code. Supported:
   Inside {...} numbers, sin/cos take degrees, as in TikZ.
 Not supported (the import says so): \foreach, \clip, tkz-euclide,
 decorations, plots. Use {{a}} in coordinates and labels for random
-numbers: (0,{{b}}) and {$ {{a}} $}. Keep figures simple and label every
-point the question names.
+numbers: (0,{{b}}) and {$ {{a}} $} (in figure labels, spaces inside
+the dollars are fine).
 
 SOURCE (optional)
 -----------------
