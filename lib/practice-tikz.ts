@@ -36,6 +36,8 @@ export interface FigureStyle {
   fill: FigureColor | null;
   /** 0..1 */
   fillOpacity: number;
+  /** 0..1: a tint like `gray!40` on a line (on the white page, tint = opacity). */
+  strokeOpacity: number;
   opacity: number;
   /** In px at the figure's size: thin 1, normal 1.6, thick 2.4, very thick 3.2, ultra thick 4. */
   width: number;
@@ -141,6 +143,8 @@ interface Options {
   place: LabelPlace | null;
   pos: number | null;
   color: FigureColor | null;
+  /** The `!NN` of a bare colour key (`\fill[teal!25]`), 0..1. */
+  colorAmount: number;
   stepGrid: number | null;
   radius: number | null;
   startAngle: number | null;
@@ -167,7 +171,7 @@ const ANCHOR_TO_PLACE: Record<string, LabelPlace> = {
 
 function parseOptions(raw: string): Options {
   const options: Options = {
-    style: {}, place: null, pos: null, color: null, stepGrid: null, radius: null,
+    style: {}, place: null, pos: null, color: null, colorAmount: 1, stepGrid: null, radius: null,
     startAngle: null, endAngle: null, angleRadius: null, eccentricity: null, quote: null, scale: null,
   };
   for (const item of splitTop(raw, ",")) {
@@ -182,13 +186,18 @@ function parseOptions(raw: string): Options {
     const asColor = eq < 0 ? color(key) : null;
     if (asColor) {
       options.color = asColor.color;
+      options.colorAmount = asColor.amount;
       options.style.stroke = asColor.color;
+      if (asColor.amount < 1) options.style.strokeOpacity = asColor.amount;
       continue;
     }
     switch (key) {
       case "draw": {
         const c = value ? color(value) : { color: "black" as FigureColor, amount: 1 };
-        if (c) options.style.stroke = c.color;
+        if (c) {
+          options.style.stroke = c.color;
+          options.style.strokeOpacity = c.amount;
+        }
         break;
       }
       case "fill": {
@@ -315,7 +324,7 @@ function parseOptions(raw: string): Options {
 }
 
 const DEFAULT_STYLE: FigureStyle = {
-  stroke: "black", fill: null, fillOpacity: 1, opacity: 1, width: 1.6, dash: null, arrowStart: false, arrowEnd: false,
+  stroke: "black", fill: null, fillOpacity: 1, strokeOpacity: 1, opacity: 1, width: 1.6, dash: null, arrowStart: false, arrowEnd: false,
 };
 
 // ------------------------------------------------------------ coordinates
@@ -409,6 +418,11 @@ type Mode = "draw" | "fill" | "filldraw" | "path";
 
 function styleFor(mode: Mode, options: Options): FigureStyle {
   const style: FigureStyle = { ...DEFAULT_STYLE, ...options.style };
+  // `\fill[teal!25]`: the bare colour fills too, with its tint (unless the
+  // fill has its own colour or opacity).
+  if ((mode === "fill" || mode === "filldraw") && !options.style.fill && options.style.fillOpacity === undefined && options.color) {
+    style.fillOpacity = options.colorAmount;
+  }
   if (mode === "fill") {
     style.fill = options.style.fill ?? options.color ?? "black";
     style.stroke = options.style.stroke && options.style.stroke !== options.color ? options.style.stroke : null;
