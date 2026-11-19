@@ -85,6 +85,23 @@ describe("reading TikZ", () => {
     expect(figureProblems(String.raw`\draw (0,0) -- (1,1);`)).toEqual([]);
     expect(figureProblems("")).toEqual([]);
   });
+
+  it("keeps the tint of a bare colour (teal!25), so a grid in the same colour shows on its fill", () => {
+    const source = String.raw`\begin{tikzpicture}[scale=0.55]
+      \fill[teal!25] (0,0) rectangle (5,2);
+      \draw[teal, thick] (0,0) grid (5,2);
+    \end{tikzpicture}`;
+    const [fill] = only(source, "path");
+    expect(fill.style).toMatchObject({ fill: "teal", fillOpacity: 0.25, stroke: null });
+    const [grid] = only(source, "grid");
+    expect(grid.style).toMatchObject({ stroke: "teal", strokeOpacity: 1 });
+    expect(only(String.raw`\filldraw[blue!20] (0,0) rectangle (1,1);`, "path")[0].style).toMatchObject({ fill: "blue", fillOpacity: 0.2, strokeOpacity: 0.2 });
+    expect(only(String.raw`\draw[gray!40] (0,0) -- (1,1);`, "path")[0].style).toMatchObject({ stroke: "gray", strokeOpacity: 0.4, fill: null });
+    expect(only(String.raw`\draw[draw=red!50] (0,0) -- (1,1);`, "path")[0].style).toMatchObject({ stroke: "red", strokeOpacity: 0.5 });
+    // An explicit fill or fill opacity still wins over the bare colour's tint.
+    expect(only(String.raw`\fill[teal!25, fill opacity=0.6] (0,0) rectangle (1,1);`, "path")[0].style.fillOpacity).toBe(0.6);
+    expect(only(String.raw`\filldraw[teal!25, fill=blue] (0,0) rectangle (1,1);`, "path")[0].style).toMatchObject({ fill: "blue", fillOpacity: 1 });
+  });
 });
 
 describe("figures in questions", () => {

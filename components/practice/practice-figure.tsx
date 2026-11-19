@@ -116,6 +116,7 @@ export function FigureView({ figure, className, label = "Σχήμα" }: { figure
     strokeLinejoin: "round" as const,
     fill: style.fill ? color(style.fill) : "none",
     fillOpacity: style.fillOpacity,
+    strokeOpacity: style.strokeOpacity < 1 ? style.strokeOpacity : undefined,
     opacity: style.opacity,
   });
 
