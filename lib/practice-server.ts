@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
+import { selectAll } from "@/lib/supabase/select-all";
 import { CLASS_GRADES } from "@/lib/class-grades";
 import {
   PRACTICE_QUESTION_COLUMNS,
@@ -79,14 +80,17 @@ export async function getPracticeCatalog(viewer: PracticeViewer): Promise<Practi
   const sectionRows = (sections ?? []) as { id: string; grade: string; name: string; position: number }[];
   if (sectionRows.length === 0) return [];
 
-  const { data: questions, error: questionError } = await service
-    .from("practice_questions")
-    .select("section_id")
-    .eq("is_active", true)
-    .in("section_id", sectionRows.map((row) => row.id));
-  if (questionError) throw questionError;
+  const questions = await selectAll<{ section_id: string }>((from, to) =>
+    service
+      .from("practice_questions")
+      .select("section_id")
+      .eq("is_active", true)
+      .in("section_id", sectionRows.map((row) => row.id))
+      .order("id")
+      .range(from, to),
+  );
   const counts = new Map<string, number>();
-  for (const row of (questions ?? []) as { section_id: string }[]) {
+  for (const row of questions) {
     counts.set(row.section_id, (counts.get(row.section_id) ?? 0) + 1);
   }
 
@@ -150,16 +154,17 @@ export async function drawPracticeRound(
   const nameBySection = new Map(allowed.map((section) => [section.id, section.name]));
   if (allowed.length === 0) return [];
 
-  let poolQuery = service
-    .from("practice_questions")
-    .select("id, section_id")
-    .eq("is_active", true)
-    .in("section_id", allowed.map((section) => section.id));
-  if (input.mistakesOnly) poolQuery = poolQuery.in("id", input.mistakeIds.length ? input.mistakeIds : ["00000000-0000-0000-0000-000000000000"]);
-  const { data: pool, error: poolError } = await poolQuery;
-  if (poolError) throw poolError;
+  const pool = await selectAll<{ id: string }>((from, to) => {
+    let poolQuery = service
+      .from("practice_questions")
+      .select("id, section_id")
+      .eq("is_active", true)
+      .in("section_id", allowed.map((section) => section.id));
+    if (input.mistakesOnly) poolQuery = poolQuery.in("id", input.mistakeIds.length ? input.mistakeIds : ["00000000-0000-0000-0000-000000000000"]);
+    return poolQuery.order("id").range(from, to);
+  });
 
-  const poolIds = ((pool ?? []) as { id: string }[]).map((row) => row.id);
+  const poolIds = pool.map((row) => row.id);
   const picked = input.mistakesOnly ? pickRound(poolIds, []) : pickRound(poolIds, input.mistakeIds);
   if (picked.length === 0) return [];
 

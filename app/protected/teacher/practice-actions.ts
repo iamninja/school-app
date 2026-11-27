@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
+import { selectAll } from "@/lib/supabase/select-all";
 import { requireTeacher } from "@/lib/auth/require-teacher";
 import { ExpectedError } from "@/lib/expected-error";
 import { CLASS_GRADES } from "@/lib/class-grades";
@@ -88,19 +89,20 @@ function uniqueViolation(error: { code?: string } | null): boolean {
 
 export async function listPracticeSectionsAction(): Promise<PracticeSection[]> {
   const { supabase, userId } = await requireTeacherSession();
-  const [{ data: sections, error }, { data: counts, error: countError }] = await Promise.all([
+  const [{ data: sections, error }, counts] = await Promise.all([
     supabase
       .from("practice_sections")
       .select("id, grade, name, position, is_public")
       .eq("teacher_id", userId)
       .order("position", { ascending: true })
       .order("created_at", { ascending: true }),
-    supabase.from("practice_questions").select("section_id").eq("teacher_id", userId).eq("is_active", true),
+    selectAll<{ section_id: string }>((from, to) =>
+      supabase.from("practice_questions").select("section_id").eq("teacher_id", userId).eq("is_active", true).order("id").range(from, to),
+    ),
   ]);
   if (error) throw error;
-  if (countError) throw countError;
   const countBySection = new Map<string, number>();
-  for (const row of (counts ?? []) as { section_id: string }[]) {
+  for (const row of counts) {
     countBySection.set(row.section_id, (countBySection.get(row.section_id) ?? 0) + 1);
   }
   return ((sections ?? []) as { id: string; grade: string; name: string; position: number; is_public: boolean }[]).map(
@@ -205,10 +207,11 @@ export async function deletePracticeSectionsAction(sectionIds: string[]): Promis
   const { data: owned, error: ownedError } = await supabase.from("practice_sections").select("id").in("id", ids).eq("teacher_id", userId);
   if (ownedError) throw ownedError;
   if ((owned ?? []).length !== ids.length) throw new ExpectedError("Some of these sections no longer exist - reload and try again.");
-  const { data: questions } = await supabase.from("practice_questions").select("id, image_path").in("section_id", ids);
+  const rows = await selectAll<{ id: string; image_path: string | null }>((from, to) =>
+    supabase.from("practice_questions").select("id, image_path").in("section_id", ids).order("id").range(from, to),
+  );
   const { error } = await supabase.from("practice_sections").delete().in("id", ids).eq("teacher_id", userId);
   if (error) throw error;
-  const rows = (questions ?? []) as { id: string; image_path: string | null }[];
   const paths = rows.map((row) => row.image_path).filter((path): path is string => Boolean(path));
   if (paths.length) await supabase.storage.from(PRACTICE_IMAGES_BUCKET).remove(paths);
   return { deleted: ids.length, questions: rows.length };
@@ -742,31 +745,38 @@ export async function copyQuizQuestionsToPracticeAction(input: {
 export async function getPracticeProgressOverviewAction(): Promise<PracticeStudentProgress[]> {
   const { supabase } = await requireTeacherSession();
   const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-  const [{ data: students, error }, { data: recent }, { data: progressRows }, { data: sections }, { data: totals }, { data: counterexample }] = await Promise.all([
+  const [{ data: students, error }, recent, { data: progressRows }, { data: sections }, totals, counterexample] = await Promise.all([
     supabase
       .from("students")
       .select("id, first_name, last_name, withdrawn_at, student_class_assignments(classes(name))")
       .is("withdrawn_at", null)
       .order("last_name", { ascending: true }),
-    supabase.from("practice_answers").select("student_id, section_id, correct, answered_at").gte("answered_at", since).limit(50_000),
+    selectAll<{ student_id: string; section_id: string; correct: boolean; answered_at: string }>((from, to) =>
+      supabase.from("practice_answers").select("student_id, section_id, correct, answered_at").gte("answered_at", since).order("id").range(from, to),
+    50_000),
     supabase.from("practice_progress").select("student_id, data"),
     supabase.from("practice_sections").select("id, name"),
-    supabase.from("practice_answers").select("student_id, correct").limit(200_000),
-    supabase
-      .from("practice_answers")
-      .select("student_id, correct, detail, mode, practice_questions!inner(type)")
-      .eq("practice_questions.type", "counterexample")
-      .limit(50_000),
+    selectAll<{ student_id: string; correct: boolean }>((from, to) =>
+      supabase.from("practice_answers").select("student_id, correct").order("id").range(from, to),
+    ),
+    selectAll<{ student_id: string; correct: boolean; detail: string | null; mode: string | null }>((from, to) =>
+      supabase
+        .from("practice_answers")
+        .select("student_id, correct, detail, mode, practice_questions!inner(type)")
+        .eq("practice_questions.type", "counterexample")
+        .order("id")
+        .range(from, to),
+    50_000),
   ]);
   if (error) throw error;
   const today = athensToday();
-  const summary = summarizeAnswers((recent ?? []) as never, new Date(), athensDayOf);
+  const summary = summarizeAnswers(recent as never, new Date(), athensDayOf);
   const progressBy = new Map(
     ((progressRows ?? []) as { student_id: string; data: unknown }[]).map((row) => [row.student_id, sanitizeProgress(row.data)]),
   );
   const sectionName = new Map(((sections ?? []) as { id: string; name: string }[]).map((row) => [row.id, row.name]));
   const allTime = new Map<string, { answers: number; right: number }>();
-  for (const row of (totals ?? []) as { student_id: string; correct: boolean }[]) {
+  for (const row of totals) {
     const entry = allTime.get(row.student_id) ?? { answers: 0, right: 0 };
     entry.answers++;
     if (row.correct) entry.right++;
@@ -774,7 +784,7 @@ export async function getPracticeProgressOverviewAction(): Promise<PracticeStude
   }
 
   const counterexampleBy = new Map<string, CounterexampleTally>();
-  for (const row of (counterexample ?? []) as unknown as { student_id: string; correct: boolean; detail: string | null; mode: string | null }[]) {
+  for (const row of counterexample) {
     const tally = counterexampleBy.get(row.student_id) ?? emptyCounterexampleTally();
     addCounterexampleAnswer(tally, row.correct, row.detail, row.mode);
     counterexampleBy.set(row.student_id, tally);
