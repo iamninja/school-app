@@ -40,6 +40,7 @@ const CHAIN_METHODS = [
   "lte",
   "order",
   "limit",
+  "range",
   "single",
   "maybeSingle",
 ] as const;
